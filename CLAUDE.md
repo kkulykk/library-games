@@ -30,6 +30,7 @@ pnpm test -- src/games/wordle/logic.test.ts
 **Path alias:** `@/` maps to `src/`.
 
 **Key paths:**
+
 - `src/app/page.tsx` — home page game grid
 - `src/app/games/<slug>/page.tsx` — per-game route (server component, just wraps game component)
 - `src/components/GameCard.tsx` — card shown on home page
@@ -56,6 +57,7 @@ pnpm test -- src/games/wordle/logic.test.ts
 ## CI/CD
 
 Single workflow (`.github/workflows/ci.yml`):
+
 1. **lint-and-test** — runs on every push and PR
 2. **build** — only on `main` push, only if lint-and-test passes
 3. **deploy** — GitHub Pages, only after build succeeds
