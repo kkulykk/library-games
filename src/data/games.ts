@@ -86,6 +86,15 @@ export const games: GameMeta[] = [
     emoji: '🏓',
   },
   {
+    slug: 'hangman',
+    title: 'Hangman',
+    description: 'Guess the hidden word one letter at a time before you run out of tries.',
+    tags: ['word', 'puzzle', 'classic'],
+    status: 'live',
+    category: 'single-player',
+    emoji: '🪢',
+  },
+  {
     slug: 'skribbl',
     title: 'Skribbl',
     description: 'Draw and guess with friends online. Pictionary-style fun for everyone.',
