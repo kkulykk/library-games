@@ -1,0 +1,87 @@
+'use client'
+
+import { useState, useCallback } from 'react'
+import { createDeck, flipCard, checkMatch, isGameComplete, type MemoryCard } from './logic'
+import { cn } from '@/lib/utils'
+
+export function MemoryGame() {
+  const [cards, setCards] = useState<MemoryCard[]>(() => createDeck(8))
+  const [flipped, setFlipped] = useState<number[]>([])
+  const [moves, setMoves] = useState(0)
+  const [locked, setLocked] = useState(false)
+  const [won, setWon] = useState(false)
+
+  const restart = () => {
+    setCards(createDeck(8))
+    setFlipped([])
+    setMoves(0)
+    setLocked(false)
+    setWon(false)
+  }
+
+  const handleCardClick = useCallback(
+    (id: number) => {
+      if (locked || won) return
+      const card = cards.find((c) => c.id === id)
+      if (!card || card.flipped || card.matched) return
+      if (flipped.includes(id)) return
+
+      const newFlipped = [...flipped, id]
+      const newCards = flipCard(cards, id)
+      setCards(newCards)
+      setFlipped(newFlipped)
+
+      if (newFlipped.length === 2) {
+        setMoves((m) => m + 1)
+        setLocked(true)
+        setTimeout(() => {
+          setCards((prev) => {
+            const result = checkMatch(prev, newFlipped[0], newFlipped[1])
+            if (isGameComplete(result)) setWon(true)
+            return result
+          })
+          setFlipped([])
+          setLocked(false)
+        }, 800)
+      }
+    },
+    [cards, flipped, locked, won]
+  )
+
+  return (
+    <div className="flex w-full max-w-md flex-col items-center gap-4">
+      <div className="flex w-full items-center justify-between">
+        <span className="text-sm font-medium text-muted-foreground">Moves: {moves}</span>
+        <button
+          onClick={restart}
+          className="rounded-lg bg-secondary px-4 py-1.5 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+        >
+          Restart
+        </button>
+      </div>
+
+      {won && (
+        <div className="rounded-lg bg-emerald-100 px-4 py-2 font-semibold text-emerald-800">
+          You matched all pairs in {moves} moves! 🎉
+        </div>
+      )}
+
+      <div className="grid grid-cols-4 gap-3">
+        {cards.map((card) => (
+          <button
+            key={card.id}
+            onClick={() => handleCardClick(card.id)}
+            className={cn(
+              'flex h-16 w-16 select-none items-center justify-center rounded-xl text-3xl transition-all duration-200',
+              card.flipped || card.matched
+                ? 'bg-blue-100 shadow-inner dark:bg-blue-900'
+                : 'bg-secondary shadow-md hover:bg-secondary/80'
+            )}
+          >
+            {card.flipped || card.matched ? card.symbol : '?'}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
