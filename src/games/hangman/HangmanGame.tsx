@@ -1,0 +1,168 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import {
+  getRandomWord,
+  getMaskedWord,
+  getLetterState,
+  countWrongGuesses,
+  isWin,
+  isLoss,
+  WORD_LIST,
+  MAX_WRONG_GUESSES,
+  type LetterState,
+} from './logic'
+import { cn } from '@/lib/utils'
+
+const KEYBOARD_ROWS = [
+  ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+  ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+  ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
+]
+
+const KEY_COLORS: Record<LetterState, string> = {
+  correct: 'bg-emerald-500 text-white',
+  wrong: 'bg-zinc-500 text-white opacity-40',
+  unguessed: 'bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100',
+}
+
+const BODY_PARTS = [
+  // head
+  <circle key="head" cx="130" cy="60" r="15" fill="none" strokeWidth="3" />,
+  // body
+  <line key="body" x1="130" y1="75" x2="130" y2="140" strokeWidth="3" />,
+  // left arm
+  <line key="left-arm" x1="130" y1="90" x2="105" y2="120" strokeWidth="3" />,
+  // right arm
+  <line key="right-arm" x1="130" y1="90" x2="155" y2="120" strokeWidth="3" />,
+  // left leg
+  <line key="left-leg" x1="130" y1="140" x2="105" y2="175" strokeWidth="3" />,
+  // right leg
+  <line key="right-leg" x1="130" y1="140" x2="155" y2="175" strokeWidth="3" />,
+]
+
+function HangmanSvg({ wrongCount }: { wrongCount: number }) {
+  return (
+    <svg
+      viewBox="0 0 200 220"
+      className="h-52 w-52 text-foreground"
+      stroke="currentColor"
+      fill="none"
+      strokeLinecap="round"
+    >
+      {/* Gallows */}
+      <line x1="20" y1="210" x2="180" y2="210" strokeWidth="4" />
+      <line x1="60" y1="210" x2="60" y2="10" strokeWidth="4" />
+      <line x1="60" y1="10" x2="130" y2="10" strokeWidth="4" />
+      <line x1="130" y1="10" x2="130" y2="45" strokeWidth="3" />
+      {/* Body parts revealed progressively */}
+      {BODY_PARTS.slice(0, wrongCount)}
+    </svg>
+  )
+}
+
+export function HangmanGame() {
+  const [word, setWord] = useState(() => getRandomWord(WORD_LIST))
+  const [guessedLetters, setGuessedLetters] = useState<Set<string>>(new Set())
+
+  const wrongCount = countWrongGuesses(word, guessedLetters)
+  const won = isWin(word, guessedLetters)
+  const lost = isLoss(wrongCount)
+  const gameOver = won || lost
+  const masked = getMaskedWord(word, guessedLetters)
+
+  const handleGuess = useCallback(
+    (letter: string) => {
+      if (gameOver) return
+      if (guessedLetters.has(letter)) return
+      setGuessedLetters((prev) => new Set([...prev, letter]))
+    },
+    [gameOver, guessedLetters]
+  )
+
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.altKey || e.metaKey) return
+      const key = e.key.toUpperCase()
+      if (/^[A-Z]$/.test(key)) handleGuess(key)
+    }
+    window.addEventListener('keydown', listener)
+    return () => window.removeEventListener('keydown', listener)
+  }, [handleGuess])
+
+  function startNewGame() {
+    setWord(getRandomWord(WORD_LIST))
+    setGuessedLetters(new Set())
+  }
+
+  return (
+    <div className="flex w-full max-w-lg flex-col items-center gap-6">
+      {/* Hangman SVG */}
+      <HangmanSvg wrongCount={wrongCount} />
+
+      {/* Wrong guesses counter */}
+      <p className="text-sm text-muted-foreground">
+        {wrongCount} / {MAX_WRONG_GUESSES} wrong guesses
+      </p>
+
+      {/* Word display */}
+      <div className="flex flex-wrap justify-center gap-2">
+        {masked.map((char, i) => (
+          <div key={i} className="flex flex-col items-center">
+            <span className="min-w-[1.5rem] text-center text-2xl font-bold uppercase tracking-widest text-foreground">
+              {char === '_' ? '\u00A0' : char}
+            </span>
+            <span className="mt-1 h-0.5 w-6 bg-foreground" />
+          </div>
+        ))}
+      </div>
+
+      {/* Status banner */}
+      {won && (
+        <div className="rounded-lg bg-emerald-500 px-6 py-3 text-center font-bold text-white">
+          You won! The word was <span className="uppercase">{word}</span>
+        </div>
+      )}
+      {lost && (
+        <div className="rounded-lg bg-red-500 px-6 py-3 text-center font-bold text-white">
+          Game over! The word was <span className="uppercase">{word}</span>
+        </div>
+      )}
+
+      {/* Keyboard */}
+      <div className="flex flex-col items-center gap-1.5">
+        {KEYBOARD_ROWS.map((row, ri) => (
+          <div key={ri} className="flex gap-1.5">
+            {row.map((letter) => {
+              const state = getLetterState(word, guessedLetters, letter)
+              return (
+                <button
+                  key={letter}
+                  onClick={() => handleGuess(letter)}
+                  disabled={state !== 'unguessed' || gameOver}
+                  className={cn(
+                    'flex h-10 w-9 select-none items-center justify-center rounded text-sm font-bold transition-colors duration-200',
+                    KEY_COLORS[state],
+                    state !== 'unguessed' || gameOver ? 'cursor-default' : 'cursor-pointer'
+                  )}
+                >
+                  {letter}
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* New Game button */}
+      {gameOver && (
+        <button
+          onClick={startNewGame}
+          className="rounded-lg bg-foreground px-6 py-2 font-bold text-background transition-opacity hover:opacity-80"
+        >
+          New Game
+        </button>
+      )}
+    </div>
+  )
+}
