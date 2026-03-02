@@ -48,5 +48,9 @@ export function GameCard({ game }: GameCardProps) {
     return card
   }
 
-  return <Link href={`/games/${game.slug}`} className="h-full">{card}</Link>
+  return (
+    <Link href={`/games/${game.slug}`} className="h-full">
+      {card}
+    </Link>
+  )
 }
