@@ -6,19 +6,19 @@ A collection of classic and modern browser games built with Next.js 15.
 
 ## Games
 
-| Game | Category | Status |
-|------|----------|--------|
-| 🟩 Wordle | Puzzle / Word | Live |
-| 💣 Minesweeper | Puzzle / Classic | Live |
-| 🔢 2048 | Puzzle / Numbers | Live |
-| 🔲 Sudoku | Puzzle / Numbers | Live |
-| 🃏 Memory Pairs | Puzzle / Memory | Live |
-| 🐍 Snake | Arcade / Classic | Live |
-| 🧱 Tetris | Arcade / Classic | Live |
-| 🏓 Breakout | Arcade / Classic | Live |
-| 🎨 Skribbl | Multiplayer / Drawing | Coming Soon |
-| 🎴 Uno | Multiplayer / Cards | Coming Soon |
-| ♟️ Chess | Multiplayer / Strategy | Coming Soon |
+| Game            | Category               | Status      |
+| --------------- | ---------------------- | ----------- |
+| 🟩 Wordle       | Puzzle / Word          | Live        |
+| 💣 Minesweeper  | Puzzle / Classic       | Live        |
+| 🔢 2048         | Puzzle / Numbers       | Live        |
+| 🔲 Sudoku       | Puzzle / Numbers       | Live        |
+| 🃏 Memory Pairs | Puzzle / Memory        | Live        |
+| 🐍 Snake        | Arcade / Classic       | Live        |
+| 🧱 Tetris       | Arcade / Classic       | Live        |
+| 🏓 Breakout     | Arcade / Classic       | Live        |
+| 🎨 Skribbl      | Multiplayer / Drawing  | Coming Soon |
+| 🎴 Uno          | Multiplayer / Cards    | Coming Soon |
+| ♟️ Chess        | Multiplayer / Strategy | Coming Soon |
 
 ## Tech Stack
 
