@@ -3,6 +3,7 @@ export const CANVAS_HEIGHT = 580
 export const BALL_RADIUS = 13
 export const GRAVITY = 0.4
 export const BOUNCE_VY = -13.5
+export const SPRING_VY = -22
 export const H_SPEED = 5
 export const PLATFORM_H = 12
 export const MIN_PLAT_W = 55
@@ -13,7 +14,7 @@ export const GAP_MIN = 65
 export const GAP_MAX = 100
 export const HEIGHT_SCORE_DIVISOR = 8
 
-export type PlatformType = 'normal' | 'moving' | 'breaking'
+export type PlatformType = 'normal' | 'moving' | 'breaking' | 'spring'
 
 export interface Ball {
   x: number
@@ -42,6 +43,8 @@ export interface Star {
 export interface Input {
   left: boolean
   right: boolean
+  /** -1..1 from touch/tilt controls; overrides left/right when present */
+  analogX?: number
 }
 
 export interface GameState {
@@ -123,8 +126,15 @@ export function stepGame(state: GameState, input: Input): GameState {
   let nextStarId = state.nextStarId
   let starScore = state.starScore
 
-  // Horizontal control
-  if (input.left) {
+  // Analog input (touch/tilt) takes priority over digital buttons
+  if (input.analogX !== undefined) {
+    const ax = Math.max(-1, Math.min(1, input.analogX))
+    if (Math.abs(ax) < 0.05) {
+      ball.vx *= 0.8
+    } else {
+      ball.vx = ax * H_SPEED
+    }
+  } else if (input.left) {
     ball.vx = -H_SPEED
   } else if (input.right) {
     ball.vx = H_SPEED
@@ -160,7 +170,8 @@ export function stepGame(state: GameState, input: Input): GameState {
       ball.x - BALL_RADIUS < p.x + p.w
     ) {
       ball.y = p.y - BALL_RADIUS
-      ball.vy = BOUNCE_VY
+      // Spring platforms give a much bigger bounce
+      ball.vy = p.type === 'spring' ? SPRING_VY : BOUNCE_VY
       if (p.type === 'breaking') p.bounceCount++
     }
   }
@@ -214,8 +225,13 @@ export function stepGame(state: GameState, input: Input): GameState {
 
     let type: PlatformType = 'normal'
     const r = Math.random()
-    if (difficulty > 0.25 && r < 0.18) type = 'moving'
-    else if (difficulty > 0.5 && r < 0.28) type = 'breaking'
+    if (r < 0.06) {
+      type = 'spring'
+    } else if (difficulty > 0.25 && r < 0.2) {
+      type = 'moving'
+    } else if (difficulty > 0.5 && r < 0.32) {
+      type = 'breaking'
+    }
 
     const vx = type === 'moving' ? rand(1.5, 2.8) * (Math.random() < 0.5 ? 1 : -1) : 0
     platforms.push(makePlatform(nextPlatformId++, x, lowestGenY, w, type, vx))
