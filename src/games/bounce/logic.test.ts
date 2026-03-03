@@ -149,6 +149,7 @@ describe('stepGame', () => {
       ...base,
       ball: { x: 100, y: 200, vx: 0, vy: 1 },
       stars: [{ id: 0, x: 100, y: 200, collected: false }],
+      nextStarId: 1,
       platforms: [],
       cameraY: 0,
     }
