@@ -95,6 +95,16 @@ export const games: GameMeta[] = [
     emoji: '🪢',
   },
   {
+    slug: 'bounce',
+    title: 'Bounce',
+    description:
+      'Guide the bouncing ball through platforms, collect stars, and climb as high as you can.',
+    tags: ['arcade', 'classic', 'nokia'],
+    status: 'live',
+    category: 'single-player',
+    emoji: '🔴',
+  },
+  {
     slug: 'skribbl',
     title: 'Skribbl',
     description: 'Draw and guess with friends online. Pictionary-style fun for everyone.',
