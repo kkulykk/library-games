@@ -96,13 +96,12 @@ export const games: GameMeta[] = [
   },
   {
     slug: 'bounce',
-    title: 'Bounce',
-    description:
-      'Guide the bouncing ball through platforms, collect stars, and climb as high as you can.',
-    tags: ['arcade', 'classic', 'nokia'],
+    title: 'Doodle Jump',
+    description: 'Jump your doodle through platforms, collect stars, and climb as high as you can.',
+    tags: ['arcade', 'classic', 'mobile'],
     status: 'live',
     category: 'single-player',
-    emoji: '🔴',
+    emoji: '🟢',
   },
   {
     slug: 'skribbl',
