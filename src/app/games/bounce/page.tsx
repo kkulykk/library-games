@@ -1,4 +1,4 @@
-import GameLayout from '@/components/GameLayout'
+import { GameLayout } from '@/components/GameLayout'
 import BounceGame from '@/games/bounce/BounceGame'
 
 export default function BouncePage() {
