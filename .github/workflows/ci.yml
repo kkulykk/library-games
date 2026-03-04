@@ -51,7 +51,6 @@ jobs:
   build:
     name: Build
     needs: lint-and-test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
 
     steps:
@@ -91,6 +90,7 @@ jobs:
   deploy:
     name: Deploy
     needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
