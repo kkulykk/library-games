@@ -104,6 +104,15 @@ export const games: GameMeta[] = [
     emoji: '🟢',
   },
   {
+    slug: 'tic-tac-toe',
+    title: 'Tic-Tac-Toe',
+    description: 'Classic X and O game. Play against a friend locally or challenge the computer.',
+    tags: ['classic', 'strategy', 'multiplayer'],
+    status: 'live',
+    category: 'single-player',
+    emoji: '⭕',
+  },
+  {
     slug: 'skribbl',
     title: 'Skribbl',
     description: 'Draw and guess with friends online. Pictionary-style fun for everyone.',
