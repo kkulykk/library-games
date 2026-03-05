@@ -126,7 +126,7 @@ export const games: GameMeta[] = [
     title: 'Uno',
     description: 'Play the classic card game with friends. Be the first to empty your hand!',
     tags: ['multiplayer', 'cards'],
-    status: 'coming-soon',
+    status: 'live',
     category: 'online-multiplayer',
     emoji: '🎴',
   },
