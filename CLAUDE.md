@@ -48,6 +48,22 @@ pnpm test -- src/games/wordle/logic.test.ts
 4. Create `src/games/<slug>/<Name>Game.tsx` — `'use client'` component
 5. Create `src/app/games/<slug>/page.tsx` — wraps game in `<GameLayout>`
 
+## Online multiplayer games (Supabase)
+
+Online games use Supabase as a real-time state bus — no custom WebSocket server.
+
+**Pattern (see `src/games/uno/` as reference):**
+- `logic.ts` — pure state machine: all actions are plain functions `(state, action) => newState`
+- `use<Name>Room.ts` — React hook that owns room lifecycle: create/join/restore session, subscribe to `postgres_changes`, and `dispatch` actions by writing new state to Supabase
+- Game state lives entirely in a single `jsonb` column; every action overwrites it with `update()`
+- Realtime subscription fires on `UPDATE` and calls `setGameState(payload.new.state)`
+
+**Local env:** copy `.env.local.example` → `.env.local` and fill in Supabase URL + anon key.
+
+**CI:** `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must be set as GitHub Actions secrets for the build to connect.
+
+**Database:** schema lives in `supabase-schema.sql`. Apply via Supabase MCP (`mcp__supabase__apply_migration`) or paste into the Supabase SQL Editor. Rooms auto-delete after 24 hours via a `pg_cron` job scheduled at `0 * * * *`.
+
 ## Constraints
 
 - **No server-side features** — no `getServerSideProps`, no API routes, no server actions that write data. Everything must be statically renderable.
@@ -59,7 +75,7 @@ pnpm test -- src/games/wordle/logic.test.ts
 Single workflow (`.github/workflows/ci.yml`):
 
 1. **lint-and-test** — runs on every push and PR
-2. **build** — only on `main` push, only if lint-and-test passes
+2. **build** — only on `main` push, only if lint-and-test passes; injects Supabase secrets
 3. **deploy** — GitHub Pages, only after build succeeds
 
 Never skip the lint or test step. Do not force-push to `main`.
