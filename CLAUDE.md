@@ -53,6 +53,7 @@ pnpm test -- src/games/wordle/logic.test.ts
 Online games use Supabase as a real-time state bus — no custom WebSocket server.
 
 **Pattern (see `src/games/uno/` as reference):**
+
 - `logic.ts` — pure state machine: all actions are plain functions `(state, action) => newState`
 - `use<Name>Room.ts` — React hook that owns room lifecycle: create/join/restore session, subscribe to `postgres_changes`, and `dispatch` actions by writing new state to Supabase
 - Game state lives entirely in a single `jsonb` column; every action overwrites it with `update()`
