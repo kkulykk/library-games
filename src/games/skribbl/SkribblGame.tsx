@@ -679,6 +679,8 @@ function WordPicker({ words, onPick }: WordPickerProps) {
 
 // ─── Round End Screen ─────────────────────────────────────────────────────────
 
+const ROUND_END_DELAY = 5
+
 interface RoundEndProps {
   gameState: GameState
   playerId: string
@@ -689,11 +691,34 @@ interface RoundEndProps {
 function RoundEndScreen({ gameState, playerId, onNext, onLeave }: RoundEndProps) {
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const drawer = getCurrentDrawer(gameState)
+  const [countdown, setCountdown] = useState(ROUND_END_DELAY)
+  const advancedRef = useRef(false)
+
+  useEffect(() => {
+    advancedRef.current = false
+    setCountdown(ROUND_END_DELAY)
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        const next = prev - 1
+        if (next <= 0 && isHost && !advancedRef.current) {
+          advancedRef.current = true
+          onNext()
+        }
+        return Math.max(0, next)
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [isHost, onNext])
+
+  const allGuessed =
+    gameState.guessedPlayers.length >= gameState.players.length - 1 && gameState.players.length > 1
 
   return (
     <div className="flex flex-col items-center gap-5">
       <div className="text-center">
-        <h2 className="text-xl font-bold">Time&apos;s up!</h2>
+        <h2 className="text-xl font-bold">
+          {allGuessed ? 'Everyone guessed it!' : 'Time\u2019s up!'}
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           The word was: <span className="font-bold text-foreground">{gameState.word}</span>
         </p>
@@ -709,23 +734,30 @@ function RoundEndScreen({ gameState, playerId, onNext, onLeave }: RoundEndProps)
         playerId={playerId}
       />
 
-      <div className="flex gap-3">
-        {isHost ? (
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex gap-3">
+          {isHost ? (
+            <button
+              onClick={() => {
+                if (!advancedRef.current) {
+                  advancedRef.current = true
+                  onNext()
+                }
+              }}
+              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground active:scale-95"
+            >
+              Next Turn ({countdown}s)
+            </button>
+          ) : (
+            <p className="text-sm text-muted-foreground">Next turn in {countdown}s&hellip;</p>
+          )}
           <button
-            onClick={onNext}
-            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground active:scale-95"
+            onClick={onLeave}
+            className="rounded-lg border px-5 py-2.5 text-sm font-semibold hover:bg-secondary"
           >
-            Next Turn
+            Leave
           </button>
-        ) : (
-          <p className="text-sm text-muted-foreground">Waiting for host&hellip;</p>
-        )}
-        <button
-          onClick={onLeave}
-          className="rounded-lg border px-5 py-2.5 text-sm font-semibold hover:bg-secondary"
-        >
-          Leave
-        </button>
+        </div>
       </div>
     </div>
   )
