@@ -400,8 +400,8 @@ describe('pickRandomWords', () => {
   })
 
   it('excludes specified words', () => {
-    const words = pickRandomWords(3, ['apple', 'banana'])
-    expect(words).not.toContain('apple')
-    expect(words).not.toContain('banana')
+    const words = pickRandomWords(3, ['accordion', 'avalanche'])
+    expect(words).not.toContain('accordion')
+    expect(words).not.toContain('avalanche')
   })
 })
