@@ -276,9 +276,9 @@ function ChatPanel({ messages, isDrawer, hasGuessed, onGuess }: ChatPanelProps) 
   const canGuess = !isDrawer && !hasGuessed
 
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-background">
+    <div className="flex max-h-[400px] flex-col rounded-xl border bg-background">
       <div className="border-b px-3 py-2 text-xs font-semibold text-muted-foreground">Chat</div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-2" style={{ minHeight: 200 }}>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-2">
         {messages.map((msg) => (
           <div
             key={msg.id}
