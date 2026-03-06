@@ -2,6 +2,7 @@ import {
   createDeck,
   shuffleDeck,
   canPlayCard,
+  canPlayWild4,
   getPlayableCards,
   createLobbyState,
   addPlayer,
@@ -127,6 +128,33 @@ describe('canPlayCard', () => {
   })
 })
 
+// ─── canPlayWild4 ────────────────────────────────────────────────────────────
+
+describe('canPlayWild4', () => {
+  it('allows wild4 when no cards match current color', () => {
+    const hand: Card[] = [
+      { id: 'w4', color: 'wild', value: 'wild4' },
+      { id: 'b1', color: 'blue', value: 1 },
+      { id: 'g2', color: 'green', value: 2 },
+    ]
+    expect(canPlayWild4(hand, 'w4', 'red')).toBe(true)
+  })
+
+  it('disallows wild4 when a card matches current color', () => {
+    const hand: Card[] = [
+      { id: 'w4', color: 'wild', value: 'wild4' },
+      { id: 'r1', color: 'red', value: 1 },
+      { id: 'b2', color: 'blue', value: 2 },
+    ]
+    expect(canPlayWild4(hand, 'w4', 'red')).toBe(false)
+  })
+
+  it('does not count the wild4 card itself as a match', () => {
+    const hand: Card[] = [{ id: 'w4', color: 'wild', value: 'wild4' }]
+    expect(canPlayWild4(hand, 'w4', 'red')).toBe(true)
+  })
+})
+
 // ─── addPlayer / removePlayer ─────────────────────────────────────────────────
 
 describe('addPlayer', () => {
@@ -198,10 +226,11 @@ describe('startGame', () => {
     expect(typeof top?.value).toBe('number')
   })
 
-  it('resets pendingDrawCount and direction', () => {
+  it('resets pendingDrawCount, direction, and drawnCardId', () => {
     const state = startGame(makeLobby(p1, p2))
     expect(state.pendingDrawCount).toBe(0)
     expect(state.direction).toBe(1)
+    expect(state.drawnCardId).toBeNull()
   })
 })
 
@@ -249,7 +278,6 @@ describe('applyAction – PLAY_CARD', () => {
   it('skip card advances two players', () => {
     const players = [p1, p2, p3]
     let state = makePlayingState(players)
-    // extra card prevents the win condition from triggering
     const skipCard: Card = { id: 'skip1', color: state.currentColor, value: 'skip' }
     const extra: Card = { id: 'extra1', color: state.currentColor, value: 1 }
     state = injectHand(state, 'p1', [skipCard, extra])
@@ -279,7 +307,7 @@ describe('applyAction – PLAY_CARD', () => {
     expect(next.currentPlayerIndex).toBe(0) // p1 goes again
   })
 
-  it('draw2 adds 2 to pendingDrawCount', () => {
+  it('draw2 sets pendingDrawCount to 2 (no stacking)', () => {
     let state = makePlayingState()
     const draw2: Card = { id: 'd2', color: state.currentColor, value: 'draw2' }
     const extra: Card = { id: 'extra4', color: state.currentColor, value: 4 }
@@ -288,10 +316,12 @@ describe('applyAction – PLAY_CARD', () => {
     expect(next.pendingDrawCount).toBe(2)
   })
 
-  it('wild4 adds 4 to pendingDrawCount', () => {
+  it('wild4 sets pendingDrawCount to 4 (no stacking)', () => {
     let state = makePlayingState()
+    // Give p1 only non-matching-color cards + the wild4
     const wild4: Card = { id: 'w4', color: 'wild', value: 'wild4' }
-    const extra: Card = { id: 'extra5', color: state.currentColor, value: 5 }
+    const otherColor = state.currentColor === 'red' ? 'blue' : 'red'
+    const extra: Card = { id: 'extra5', color: otherColor, value: 5 }
     state = injectHand(state, 'p1', [wild4, extra])
     const next = applyAction(state, {
       type: 'PLAY_CARD',
@@ -301,6 +331,20 @@ describe('applyAction – PLAY_CARD', () => {
     })
     expect(next.pendingDrawCount).toBe(4)
     expect(next.currentColor).toBe('blue')
+  })
+
+  it('wild4 is blocked when player has cards matching current color', () => {
+    let state = makePlayingState()
+    const wild4: Card = { id: 'w4', color: 'wild', value: 'wild4' }
+    const matchCard: Card = { id: 'match', color: state.currentColor, value: 3 }
+    state = injectHand(state, 'p1', [wild4, matchCard])
+    const next = applyAction(state, {
+      type: 'PLAY_CARD',
+      playerId: 'p1',
+      cardId: 'w4',
+      chosenColor: 'blue',
+    })
+    expect(next).toBe(state) // rejected
   })
 
   it('wild card sets the chosen color', () => {
@@ -327,30 +371,78 @@ describe('applyAction – PLAY_CARD', () => {
     expect(next.winnerId).toBe('p1')
   })
 
-  it('cannot play unrelated card when pendingDraw > 0', () => {
+  it('cannot play cards when pendingDraw > 0 (no stacking)', () => {
     let state = makePlayingState()
     state = { ...state, pendingDrawCount: 2 }
     const topDiscard: Card = { id: 'td', color: 'red', value: 'draw2' }
     state = { ...state, discardPile: [...state.discardPile, topDiscard] }
-    const blueCard: Card = { id: 'b3', color: 'blue', value: 3 }
-    state = injectHand(state, 'p1', [blueCard])
-    const next = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'b3' })
+    // Even a matching draw2 cannot be played — must draw
+    const draw2: Card = { id: 'd2', color: 'red', value: 'draw2' }
+    state = injectHand(state, 'p1', [draw2])
+    const next = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'd2' })
     expect(next).toBe(state)
+  })
+
+  it('can only play drawn card when drawnCardId is set', () => {
+    let state = makePlayingState()
+    const topCard = getTopCard(state)!
+    const drawnCard: Card = { id: 'drawn', color: topCard.color as 'red', value: 3 }
+    const otherCard: Card = { id: 'other', color: topCard.color as 'red', value: 5 }
+    state = injectHand(state, 'p1', [otherCard, drawnCard])
+    state = { ...state, drawnCardId: 'drawn', currentColor: topCard.color as 'red' }
+
+    // Cannot play the other card
+    const rejected = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'other' })
+    expect(rejected).toBe(state)
+
+    // Can play the drawn card
+    const accepted = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'drawn' })
+    expect(accepted).not.toBe(state)
+    expect(getTopCard(accepted)?.id).toBe('drawn')
+  })
+
+  it('clears drawnCardId after playing', () => {
+    let state = makePlayingState()
+    const topCard = getTopCard(state)!
+    const drawnCard: Card = { id: 'drawn', color: topCard.color as 'red', value: 3 }
+    state = injectHand(state, 'p1', [drawnCard, { id: 'x', color: 'blue', value: 9 }])
+    state = { ...state, drawnCardId: 'drawn', currentColor: topCard.color as 'red' }
+    const next = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'drawn' })
+    expect(next.drawnCardId).toBeNull()
   })
 })
 
 describe('applyAction – DRAW_CARD', () => {
-  it('draws 1 card when no pending draw', () => {
-    const state = makePlayingState()
+  it('draws 1 card when no pending draw and card is not playable', () => {
+    let state = makePlayingState()
+    // Make the top card something specific so we can control playability
+    const topCard: Card = { id: 'top', color: 'red', value: 5 }
+    state = { ...state, discardPile: [topCard], currentColor: 'red' }
+    // Put a non-matching card on top of draw pile
+    const unplayable: Card = { id: 'unplay', color: 'blue', value: 3 }
+    state = { ...state, drawPile: [unplayable, ...state.drawPile.slice(1)] }
     const handBefore = state.hands['p1'].length
     const next = applyAction(state, { type: 'DRAW_CARD', playerId: 'p1' })
     expect(next.hands['p1']).toHaveLength(handBefore + 1)
-    expect(next.currentPlayerIndex).toBe(1)
+    expect(next.currentPlayerIndex).toBe(1) // turn passed
+    expect(next.drawnCardId).toBeNull()
+  })
+
+  it('sets drawnCardId when drawn card is playable', () => {
+    let state = makePlayingState()
+    const topCard: Card = { id: 'top', color: 'red', value: 5 }
+    state = { ...state, discardPile: [topCard], currentColor: 'red' }
+    // Put a matching card on top of draw pile
+    const playableCard: Card = { id: 'play', color: 'red', value: 7 }
+    state = { ...state, drawPile: [playableCard, ...state.drawPile.slice(1)] }
+    const next = applyAction(state, { type: 'DRAW_CARD', playerId: 'p1' })
+    expect(next.drawnCardId).toBe('play')
+    expect(next.currentPlayerIndex).toBe(0) // turn NOT passed
   })
 
   it('draws pendingDrawCount cards and clears it', () => {
     let state = makePlayingState()
-    // First advance to p2's turn with pending draw (extra card avoids win condition)
+    // First advance to p2's turn with pending draw
     const draw2: Card = { id: 'da', color: state.currentColor, value: 'draw2' }
     const extra: Card = { id: 'extraDraw', color: state.currentColor, value: 6 }
     state = injectHand(state, 'p1', [draw2, extra])
@@ -362,6 +454,36 @@ describe('applyAction – DRAW_CARD', () => {
     const next = applyAction(state, { type: 'DRAW_CARD', playerId: 'p2' })
     expect(next.hands['p2']).toHaveLength(handBefore + 2)
     expect(next.pendingDrawCount).toBe(0)
+  })
+
+  it('is blocked when drawnCardId is already set', () => {
+    let state = makePlayingState()
+    state = { ...state, drawnCardId: 'some-card' }
+    const next = applyAction(state, { type: 'DRAW_CARD', playerId: 'p1' })
+    expect(next).toBe(state)
+  })
+})
+
+describe('applyAction – PASS_AFTER_DRAW', () => {
+  it('advances turn when drawnCardId is set', () => {
+    let state = makePlayingState()
+    state = { ...state, drawnCardId: 'some-card' }
+    const next = applyAction(state, { type: 'PASS_AFTER_DRAW', playerId: 'p1' })
+    expect(next.drawnCardId).toBeNull()
+    expect(next.currentPlayerIndex).toBe(1)
+  })
+
+  it('is a no-op when drawnCardId is not set', () => {
+    const state = makePlayingState()
+    const next = applyAction(state, { type: 'PASS_AFTER_DRAW', playerId: 'p1' })
+    expect(next).toBe(state)
+  })
+
+  it('is a no-op for non-current player', () => {
+    let state = makePlayingState()
+    state = { ...state, drawnCardId: 'some-card' }
+    const next = applyAction(state, { type: 'PASS_AFTER_DRAW', playerId: 'p2' })
+    expect(next).toBe(state)
   })
 })
 
@@ -388,6 +510,36 @@ describe('applyAction – SAY_UNO', () => {
   })
 })
 
+describe('applyAction – CATCH_UNO', () => {
+  it('forces target to draw 2 if they have 1 card and did not call UNO', () => {
+    let state = makePlayingState()
+    state = injectHand(state, 'p2', [{ id: 'only', color: 'red', value: 1 }])
+    const next = applyAction(state, { type: 'CATCH_UNO', playerId: 'p1', targetId: 'p2' })
+    expect(next.hands['p2']).toHaveLength(3) // 1 + 2 penalty
+  })
+
+  it('is a no-op if target already called UNO', () => {
+    let state = makePlayingState()
+    state = injectHand(state, 'p2', [{ id: 'only', color: 'red', value: 1 }])
+    state = { ...state, calledUno: ['p2'] }
+    const next = applyAction(state, { type: 'CATCH_UNO', playerId: 'p1', targetId: 'p2' })
+    expect(next).toBe(state)
+  })
+
+  it('is a no-op if target has more than 1 card', () => {
+    const state = makePlayingState()
+    const next = applyAction(state, { type: 'CATCH_UNO', playerId: 'p1', targetId: 'p2' })
+    expect(next).toBe(state)
+  })
+
+  it('cannot catch yourself', () => {
+    let state = makePlayingState()
+    state = injectHand(state, 'p1', [{ id: 'only', color: 'red', value: 1 }])
+    const next = applyAction(state, { type: 'CATCH_UNO', playerId: 'p1', targetId: 'p1' })
+    expect(next).toBe(state)
+  })
+})
+
 describe('applyAction – START_GAME / PLAY_AGAIN', () => {
   it('START_GAME only works for host', () => {
     const state = makeLobby(p1, p2)
@@ -410,10 +562,10 @@ describe('getPlayableCards', () => {
   it('returns cards playable on current color/value', () => {
     const topCard: Card = { id: 't', color: 'red', value: 5 }
     const hand: Card[] = [
-      { id: 'a', color: 'red', value: 3 }, // same color ✓
-      { id: 'b', color: 'blue', value: 5 }, // same value ✓
-      { id: 'c', color: 'green', value: 2 }, // neither ✗
-      { id: 'd', color: 'wild', value: 'wild' }, // wild ✓
+      { id: 'a', color: 'red', value: 3 }, // same color
+      { id: 'b', color: 'blue', value: 5 }, // same value
+      { id: 'c', color: 'green', value: 2 }, // neither
+      { id: 'd', color: 'wild', value: 'wild' }, // wild
     ]
     const playable = getPlayableCards(hand, topCard, 'red', 0)
     expect(playable.has('a')).toBe(true)
@@ -422,17 +574,47 @@ describe('getPlayableCards', () => {
     expect(playable.has('d')).toBe(true)
   })
 
-  it('with pendingDraw only allows matching draw cards', () => {
+  it('returns empty set when pendingDraw > 0 (no stacking)', () => {
     const topCard: Card = { id: 't', color: 'red', value: 'draw2' }
     const hand: Card[] = [
-      { id: 'a', color: 'blue', value: 'draw2' }, // can stack ✓
-      { id: 'b', color: 'wild', value: 'wild4' }, // can stack ✓
-      { id: 'c', color: 'red', value: 3 }, // cannot ✗
+      { id: 'a', color: 'blue', value: 'draw2' },
+      { id: 'b', color: 'wild', value: 'wild4' },
+      { id: 'c', color: 'red', value: 3 },
     ]
     const playable = getPlayableCards(hand, topCard, 'red', 2)
-    expect(playable.has('a')).toBe(true)
-    expect(playable.has('b')).toBe(true)
-    expect(playable.has('c')).toBe(false)
+    expect(playable.size).toBe(0)
+  })
+
+  it('wild4 only playable when no matching color in hand', () => {
+    const topCard: Card = { id: 't', color: 'red', value: 5 }
+    const hand: Card[] = [
+      { id: 'w', color: 'wild', value: 'wild4' },
+      { id: 'r', color: 'red', value: 3 }, // matches current color
+    ]
+    const playable = getPlayableCards(hand, topCard, 'red', 0)
+    expect(playable.has('w')).toBe(false)
+    expect(playable.has('r')).toBe(true)
+  })
+
+  it('wild4 playable when no matching color', () => {
+    const topCard: Card = { id: 't', color: 'red', value: 5 }
+    const hand: Card[] = [
+      { id: 'w', color: 'wild', value: 'wild4' },
+      { id: 'b', color: 'blue', value: 3 },
+    ]
+    const playable = getPlayableCards(hand, topCard, 'red', 0)
+    expect(playable.has('w')).toBe(true)
+  })
+
+  it('restricts to drawn card only when drawnCardId is set', () => {
+    const topCard: Card = { id: 't', color: 'red', value: 5 }
+    const hand: Card[] = [
+      { id: 'a', color: 'red', value: 3 },
+      { id: 'drawn', color: 'red', value: 7 },
+    ]
+    const playable = getPlayableCards(hand, topCard, 'red', 0, 'drawn')
+    expect(playable.has('drawn')).toBe(true)
+    expect(playable.has('a')).toBe(false)
   })
 })
 
