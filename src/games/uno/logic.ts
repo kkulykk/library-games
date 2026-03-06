@@ -42,17 +42,21 @@ export interface GameState {
   direction: Direction
   /** Active color — differs from top card's color when a wild is on top. */
   currentColor: CardColor
-  /** Accumulated draw count from stacked Draw 2 / Wild Draw 4 cards. */
+  /** Draw count from a Draw 2 or Wild Draw 4. No stacking — always 2 or 4. */
   pendingDrawCount: number
   /** Player ids who have declared "UNO!". */
   calledUno: string[]
   winnerId: string | null
+  /** After drawing a playable card, its id is stored so the player may play it or pass. */
+  drawnCardId: string | null
 }
 
 export type GameAction =
   | { type: 'PLAY_CARD'; playerId: string; cardId: string; chosenColor?: CardColor }
   | { type: 'DRAW_CARD'; playerId: string }
+  | { type: 'PASS_AFTER_DRAW'; playerId: string }
   | { type: 'SAY_UNO'; playerId: string }
+  | { type: 'CATCH_UNO'; playerId: string; targetId: string }
   | { type: 'START_GAME'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
 
@@ -107,18 +111,35 @@ export function canPlayCard(card: Card, topCard: Card, currentColor: CardColor):
   return false
 }
 
+/** Wild Draw 4 may only be played when the player has no cards matching the current color. */
+export function canPlayWild4(hand: Card[], cardId: string, currentColor: CardColor): boolean {
+  return !hand.some((c) => c.id !== cardId && c.color === currentColor)
+}
+
 export function getPlayableCards(
   hand: Card[],
   topCard: Card,
   currentColor: CardColor,
-  pendingDrawCount: number
+  pendingDrawCount: number,
+  drawnCardId?: string | null
 ): Set<string> {
+  // When draws are pending, player must draw — no cards are playable
+  if (pendingDrawCount > 0) return new Set()
+
+  // If a card was just drawn, only that card may be played
+  if (drawnCardId) {
+    const card = hand.find((c) => c.id === drawnCardId)
+    if (!card) return new Set()
+    if (card.value === 'wild4') {
+      return canPlayWild4(hand, card.id, currentColor) ? new Set([card.id]) : new Set()
+    }
+    return canPlayCard(card, topCard, currentColor) ? new Set([card.id]) : new Set()
+  }
+
   const playable = new Set<string>()
   for (const card of hand) {
-    if (pendingDrawCount > 0) {
-      // When draws are stacked, can only play matching draw cards
-      if (card.value === 'draw2' && topCard.value === 'draw2') playable.add(card.id)
-      else if (card.value === 'wild4') playable.add(card.id)
+    if (card.value === 'wild4') {
+      if (canPlayWild4(hand, card.id, currentColor)) playable.add(card.id)
     } else if (canPlayCard(card, topCard, currentColor)) {
       playable.add(card.id)
     }
@@ -164,6 +185,7 @@ export function createLobbyState(host: Player): GameState {
     pendingDrawCount: 0,
     calledUno: [],
     winnerId: null,
+    drawnCardId: null,
   }
 }
 
@@ -211,6 +233,7 @@ export function startGame(state: GameState): GameState {
     pendingDrawCount: 0,
     calledUno: [],
     winnerId: null,
+    drawnCardId: null,
   }
 }
 
@@ -234,6 +257,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
 
   const currentPlayer = state.players[state.currentPlayerIndex]
 
+  // SAY_UNO — any player can call it for themselves
   if (action.type === 'SAY_UNO') {
     if (state.calledUno.includes(action.playerId)) return state
     const hand = state.hands[action.playerId] ?? []
@@ -241,23 +265,99 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     return { ...state, calledUno: [...state.calledUno, action.playerId] }
   }
 
-  if (action.playerId !== currentPlayer.id) return state
+  // CATCH_UNO — any player can catch another who forgot to say UNO
+  if (action.type === 'CATCH_UNO') {
+    const target = state.players.find((p) => p.id === action.targetId)
+    if (!target) return state
+    if (action.playerId === action.targetId) return state
+    const targetHand = state.hands[action.targetId] ?? []
+    if (targetHand.length !== 1) return state
+    if (state.calledUno.includes(action.targetId)) return state
 
-  if (action.type === 'DRAW_CARD') {
+    // Penalty: target draws 2 cards
     const s = reshuffleIfNeeded(state)
-    const drawCount = s.pendingDrawCount > 0 ? s.pendingDrawCount : 1
-    const actualDraw = Math.min(drawCount, s.drawPile.length)
+    const actualDraw = Math.min(2, s.drawPile.length)
     const drawn = s.drawPile.slice(0, actualDraw)
     return {
       ...s,
       drawPile: s.drawPile.slice(actualDraw),
-      hands: { ...s.hands, [action.playerId]: [...(s.hands[action.playerId] ?? []), ...drawn] },
-      pendingDrawCount: 0,
-      currentPlayerIndex: advancePlayer(s.currentPlayerIndex, s.players.length, s.direction),
-      calledUno: s.calledUno.filter((id) => id !== action.playerId),
+      hands: { ...s.hands, [action.targetId]: [...targetHand, ...drawn] },
     }
   }
 
+  // Everything below requires it to be the player's turn
+  if (action.playerId !== currentPlayer.id) return state
+
+  // PASS_AFTER_DRAW — decline to play the drawn card
+  if (action.type === 'PASS_AFTER_DRAW') {
+    if (!state.drawnCardId) return state
+    return {
+      ...state,
+      drawnCardId: null,
+      currentPlayerIndex: advancePlayer(
+        state.currentPlayerIndex,
+        state.players.length,
+        state.direction
+      ),
+    }
+  }
+
+  // DRAW_CARD
+  if (action.type === 'DRAW_CARD') {
+    if (state.drawnCardId) return state // already drew, must play or pass
+
+    const s = reshuffleIfNeeded(state)
+
+    // Forced draw from Draw 2 / Wild Draw 4
+    if (s.pendingDrawCount > 0) {
+      const actualDraw = Math.min(s.pendingDrawCount, s.drawPile.length)
+      const drawn = s.drawPile.slice(0, actualDraw)
+      return {
+        ...s,
+        drawPile: s.drawPile.slice(actualDraw),
+        hands: { ...s.hands, [action.playerId]: [...(s.hands[action.playerId] ?? []), ...drawn] },
+        pendingDrawCount: 0,
+        drawnCardId: null,
+        currentPlayerIndex: advancePlayer(s.currentPlayerIndex, s.players.length, s.direction),
+        calledUno: s.calledUno.filter((id) => id !== action.playerId),
+      }
+    }
+
+    // Voluntary draw: 1 card
+    if (s.drawPile.length === 0) return s
+    const drawnCard = s.drawPile[0]
+    const newHand = [...(s.hands[action.playerId] ?? []), drawnCard]
+    const topCard = getTopCard(s)
+
+    // Check if drawn card is playable
+    let isPlayable = false
+    if (topCard) {
+      if (drawnCard.value === 'wild4') {
+        isPlayable = canPlayWild4(newHand, drawnCard.id, s.currentColor)
+      } else {
+        isPlayable = canPlayCard(drawnCard, topCard, s.currentColor)
+      }
+    }
+
+    const base = {
+      ...s,
+      drawPile: s.drawPile.slice(1),
+      hands: { ...s.hands, [action.playerId]: newHand },
+      calledUno: s.calledUno.filter((id) => id !== action.playerId),
+    }
+
+    if (isPlayable) {
+      return { ...base, drawnCardId: drawnCard.id }
+    }
+
+    return {
+      ...base,
+      drawnCardId: null,
+      currentPlayerIndex: advancePlayer(s.currentPlayerIndex, s.players.length, s.direction),
+    }
+  }
+
+  // PLAY_CARD
   if (action.type === 'PLAY_CARD') {
     const hand = state.hands[action.playerId] ?? []
     const cardIndex = hand.findIndex((c) => c.id === action.cardId)
@@ -266,10 +366,15 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     const card = hand[cardIndex]
     const topCard = state.discardPile[state.discardPile.length - 1]
 
-    // Stacking validation
-    if (state.pendingDrawCount > 0) {
-      if (card.value === 'draw2' && topCard.value !== 'draw2') return state
-      if (card.value !== 'draw2' && card.value !== 'wild4') return state
+    // If a card was just drawn, can only play that specific card
+    if (state.drawnCardId && card.id !== state.drawnCardId) return state
+
+    // Cannot play cards while forced draw is pending
+    if (state.pendingDrawCount > 0) return state
+
+    // Validate the play
+    if (card.value === 'wild4') {
+      if (!canPlayWild4(hand, card.id, state.currentColor)) return state
     } else if (!canPlayCard(card, topCard, state.currentColor)) {
       return state
     }
@@ -286,6 +391,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         currentColor: newColor,
         phase: 'finished',
         winnerId: action.playerId,
+        drawnCardId: null,
       }
     }
 
@@ -297,6 +403,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       hands: { ...state.hands, [action.playerId]: newHand },
       discardPile: newDiscardPile,
       currentColor: newColor,
+      drawnCardId: null,
       calledUno:
         newHand.length !== 1
           ? state.calledUno.filter((id) => id !== action.playerId)
@@ -317,11 +424,11 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         }
         break
       case 'draw2':
-        newState.pendingDrawCount = state.pendingDrawCount + 2
+        newState.pendingDrawCount = 2
         newState.currentPlayerIndex = advancePlayer(idx, n, state.direction)
         break
       case 'wild4':
-        newState.pendingDrawCount = state.pendingDrawCount + 4
+        newState.pendingDrawCount = 4
         newState.currentPlayerIndex = advancePlayer(idx, n, state.direction)
         break
       default:
