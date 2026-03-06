@@ -69,3 +69,36 @@ create policy "update rooms" on uno_rooms for update using (true);
 -- Optional: auto-delete rooms older than 24 hours
 -- (run manually or schedule via pg_cron if you have it)
 -- delete from uno_rooms where updated_at < now() - interval '24 hours';
+
+-- ─── Skribbl rooms table ──────────────────────────────────────────────────────
+
+create table if not exists skribbl_rooms (
+  id         uuid        default gen_random_uuid() primary key,
+  code       text        unique not null,
+  state      jsonb       not null,
+  updated_at timestamptz default now()
+);
+
+create or replace trigger skribbl_rooms_updated_at
+  before update on skribbl_rooms
+  for each row execute function update_updated_at();
+
+create or replace trigger skribbl_rooms_protect_immutable
+  before update on skribbl_rooms
+  for each row execute function protect_immutable_columns();
+
+alter publication supabase_realtime add table skribbl_rooms;
+
+alter table skribbl_rooms enable row level security;
+
+create policy "select skribbl rooms" on skribbl_rooms for select using (true);
+
+create policy "insert skribbl rooms" on skribbl_rooms
+  for insert with check (
+    code ~ '^[A-Z0-9]{4}$'
+    and state is not null
+  );
+
+create policy "update skribbl rooms" on skribbl_rooms for update using (true);
+
+-- delete from skribbl_rooms where updated_at < now() - interval '24 hours';

@@ -117,7 +117,7 @@ export const games: GameMeta[] = [
     title: 'Skribbl',
     description: 'Draw and guess with friends online. Pictionary-style fun for everyone.',
     tags: ['multiplayer', 'drawing'],
-    status: 'coming-soon',
+    status: 'live',
     category: 'online-multiplayer',
     emoji: '🎨',
   },
