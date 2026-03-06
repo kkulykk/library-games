@@ -1,1 +1,1 @@
-$HOME/Library/pnpm/pnpm exec lint-staged
+pnpm exec lint-staged
