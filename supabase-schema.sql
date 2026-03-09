@@ -102,3 +102,36 @@ create policy "insert skribbl rooms" on skribbl_rooms
 create policy "update skribbl rooms" on skribbl_rooms for update using (true);
 
 -- delete from skribbl_rooms where updated_at < now() - interval '24 hours';
+
+-- ─── Agar.io rooms table ────────────────────────────────────────────────────
+
+create table if not exists agario_rooms (
+  id         uuid        default gen_random_uuid() primary key,
+  code       text        unique not null,
+  state      jsonb       not null,
+  updated_at timestamptz default now()
+);
+
+create or replace trigger agario_rooms_updated_at
+  before update on agario_rooms
+  for each row execute function update_updated_at();
+
+create or replace trigger agario_rooms_protect_immutable
+  before update on agario_rooms
+  for each row execute function protect_immutable_columns();
+
+alter publication supabase_realtime add table agario_rooms;
+
+alter table agario_rooms enable row level security;
+
+create policy "select agario rooms" on agario_rooms for select using (true);
+
+create policy "insert agario rooms" on agario_rooms
+  for insert with check (
+    code ~ '^[A-Z0-9]{4}$'
+    and state is not null
+  );
+
+create policy "update agario rooms" on agario_rooms for update using (true);
+
+-- delete from agario_rooms where updated_at < now() - interval '24 hours';
