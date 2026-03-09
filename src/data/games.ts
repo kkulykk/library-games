@@ -131,6 +131,15 @@ export const games: GameMeta[] = [
     emoji: '🎴',
   },
   {
+    slug: 'agario',
+    title: 'Slither.io',
+    description: 'Slither around, eat food to grow longer, and make other snakes crash into you!',
+    tags: ['multiplayer', 'arcade'],
+    status: 'live',
+    category: 'online-multiplayer',
+    emoji: '🐍',
+  },
+  {
     slug: 'chess',
     title: 'Chess',
     description: 'The timeless strategy game. Play local or challenge friends online.',
