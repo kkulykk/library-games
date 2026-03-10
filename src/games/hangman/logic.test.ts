@@ -5,8 +5,10 @@ import {
   isWin,
   isLoss,
   getRandomWord,
+  getRandomWordByDifficulty,
   MAX_WRONG_GUESSES,
   WORD_LIST,
+  WORD_LISTS,
 } from './logic'
 
 describe('getMaskedWord', () => {
@@ -158,5 +160,56 @@ describe('getRandomWord', () => {
 
   it('returns the only element from a single-item list', () => {
     expect(getRandomWord(['ONLY'])).toBe('ONLY')
+  })
+})
+
+describe('WORD_LIST', () => {
+  it('contains at least 5000 words across all difficulties', () => {
+    expect(WORD_LIST.length).toBeGreaterThanOrEqual(5000)
+  })
+
+  it('all words are uppercase alpha only', () => {
+    for (const word of WORD_LIST) {
+      expect(word).toBe(word.toUpperCase())
+      expect(word).toMatch(/^[A-Z]+$/)
+    }
+  })
+})
+
+describe('WORD_LISTS (difficulty tiers)', () => {
+  it('has easy, medium, and hard tiers', () => {
+    expect(WORD_LISTS.easy.length).toBeGreaterThan(0)
+    expect(WORD_LISTS.medium.length).toBeGreaterThan(0)
+    expect(WORD_LISTS.hard.length).toBeGreaterThan(0)
+  })
+
+  it('easy words are shorter (4-6 letters)', () => {
+    for (const word of WORD_LISTS.easy) {
+      expect(word.length).toBeGreaterThanOrEqual(4)
+      expect(word.length).toBeLessThanOrEqual(6)
+    }
+  })
+
+  it('hard words are longer (7+ letters)', () => {
+    for (const word of WORD_LISTS.hard) {
+      expect(word.length).toBeGreaterThanOrEqual(7)
+    }
+  })
+})
+
+describe('getRandomWordByDifficulty', () => {
+  it('returns a word from the easy list', () => {
+    const word = getRandomWordByDifficulty('easy')
+    expect(WORD_LISTS.easy).toContain(word)
+  })
+
+  it('returns a word from the hard list', () => {
+    const word = getRandomWordByDifficulty('hard')
+    expect(WORD_LISTS.hard).toContain(word)
+  })
+
+  it('returns an uppercase word', () => {
+    const word = getRandomWordByDifficulty('medium')
+    expect(word).toBe(word.toUpperCase())
   })
 })

@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getRandomWord,
+  getRandomWordByDifficulty,
   getMaskedWord,
   getLetterState,
   countWrongGuesses,
   isWin,
   isLoss,
-  WORD_LIST,
   MAX_WRONG_GUESSES,
   type LetterState,
+  type Difficulty,
 } from './logic'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +24,12 @@ const KEY_COLORS: Record<LetterState, string> = {
   correct: 'bg-emerald-500 text-white',
   wrong: 'bg-zinc-500 text-white opacity-40',
   unguessed: 'bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100',
+}
+
+const DIFFICULTY_LABELS: Record<Difficulty, string> = {
+  easy: 'Easy',
+  medium: 'Medium',
+  hard: 'Hard',
 }
 
 const BODY_PARTS = [
@@ -62,7 +68,8 @@ function HangmanSvg({ wrongCount }: { wrongCount: number }) {
 }
 
 export function HangmanGame() {
-  const [word, setWord] = useState(() => getRandomWord(WORD_LIST))
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium')
+  const [word, setWord] = useState(() => getRandomWordByDifficulty('medium'))
   const [guessedLetters, setGuessedLetters] = useState<Set<string>>(new Set())
 
   const wrongCount = countWrongGuesses(word, guessedLetters)
@@ -90,13 +97,32 @@ export function HangmanGame() {
     return () => window.removeEventListener('keydown', listener)
   }, [handleGuess])
 
-  function startNewGame() {
-    setWord(getRandomWord(WORD_LIST))
+  function startNewGame(d: Difficulty = difficulty) {
+    setDifficulty(d)
+    setWord(getRandomWordByDifficulty(d))
     setGuessedLetters(new Set())
   }
 
   return (
     <div className="flex w-full max-w-lg flex-col items-center gap-6">
+      {/* Difficulty selector */}
+      <div className="flex gap-2">
+        {(['easy', 'medium', 'hard'] as const).map((d) => (
+          <button
+            key={d}
+            onClick={() => startNewGame(d)}
+            className={cn(
+              'rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors',
+              d === difficulty
+                ? 'bg-foreground text-background'
+                : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-600'
+            )}
+          >
+            {DIFFICULTY_LABELS[d]}
+          </button>
+        ))}
+      </div>
+
       {/* Hangman SVG */}
       <HangmanSvg wrongCount={wrongCount} />
 
@@ -157,7 +183,7 @@ export function HangmanGame() {
       {/* New Game button */}
       {gameOver && (
         <button
-          onClick={startNewGame}
+          onClick={() => startNewGame()}
           className="rounded-lg bg-foreground px-6 py-2 font-bold text-background transition-opacity hover:opacity-80"
         >
           New Game
