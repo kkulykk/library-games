@@ -5,8 +5,6 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
-  pull_request:
-    types: [opened, synchronize]
 
 permissions:
   contents: read
@@ -14,36 +12,11 @@ permissions:
   issues: write
 
 jobs:
-  # Respond to @claude mentions in PR/issue comments
   claude-respond:
     name: Claude (@claude mentions)
-    if: |
-      (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
-      contains(github.event.comment.body, '@claude')
+    if: contains(github.event.comment.body, '@claude')
     runs-on: ubuntu-latest
     steps:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-
-  # Automated review on every new or updated PR
-  claude-review:
-    name: Claude PR Review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            Review this pull request for the Library Games Next.js project.
-            Focus on:
-            - Correctness of game logic in `logic.ts` files (pure functions, no side effects)
-            - React component quality in `*Game.tsx` files (proper `'use client'` usage, hooks rules)
-            - TypeScript strict-mode compliance — no `any`, proper types
-            - Tailwind CSS class usage and theming consistency with `globals.css`
-            - Test coverage — every `logic.ts` change should have corresponding `logic.test.ts` updates
-            - Adherence to architecture rules in CLAUDE.md (no server-side features, no API routes)
-            - Security issues (XSS, injection, exposed secrets)
-            Post findings as inline review comments on the relevant lines where possible.
-          claude_args: '--max-turns 5'
