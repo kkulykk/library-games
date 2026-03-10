@@ -3,6 +3,7 @@ import {
   mergeKeyboardStates,
   isWin,
   getDailyWord,
+  isValidGuess,
   WORD_LIST,
   type TileState,
 } from './logic'
@@ -136,5 +137,46 @@ describe('getDailyWord', () => {
     const word1 = getDailyWord(WORD_LIST)
     const word2 = getDailyWord(WORD_LIST)
     expect(word1).toBe(word2)
+  })
+})
+
+describe('WORD_LIST', () => {
+  it('contains at least 2000 answer words', () => {
+    expect(WORD_LIST.length).toBeGreaterThanOrEqual(2000)
+  })
+
+  it('all words are 5 letters and uppercase', () => {
+    for (const word of WORD_LIST) {
+      expect(word).toHaveLength(5)
+      expect(word).toBe(word.toUpperCase())
+    }
+  })
+})
+
+describe('isValidGuess', () => {
+  it('accepts answer words', () => {
+    expect(isValidGuess('CRANE')).toBe(true)
+    expect(isValidGuess('ABOUT')).toBe(true)
+  })
+
+  it('accepts valid non-answer guesses', () => {
+    // Words like AAHED are valid guesses but not answers
+    expect(isValidGuess('AAHED')).toBe(true)
+  })
+
+  it('rejects non-words', () => {
+    expect(isValidGuess('ZZZZZ')).toBe(false)
+    expect(isValidGuess('XYZAB')).toBe(false)
+  })
+
+  it('is case insensitive', () => {
+    expect(isValidGuess('crane')).toBe(true)
+    expect(isValidGuess('Crane')).toBe(true)
+  })
+
+  it('validates all answer words are valid guesses', () => {
+    for (const word of WORD_LIST) {
+      expect(isValidGuess(word)).toBe(true)
+    }
   })
 })
