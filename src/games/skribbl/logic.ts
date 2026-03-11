@@ -79,9 +79,18 @@ export type GameAction =
 
 const WORDS: string[] = [...skribblWords.single, ...skribblWords.phrases]
 
+function fisherYatesShuffle<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 export function pickRandomWords(count: number, exclude: string[] = []): string[] {
   const available = WORDS.filter((w) => !exclude.includes(w))
-  const shuffled = [...available].sort(() => Math.random() - 0.5)
+  const shuffled = fisherYatesShuffle(available)
   return shuffled.slice(0, count)
 }
 
@@ -97,7 +106,7 @@ export function revealHintLetters(word: string, revealCount: number): string {
   for (let i = 0; i < word.length; i++) {
     if (word[i] !== ' ') indices.push(i)
   }
-  const shuffled = [...indices].sort(() => Math.random() - 0.5)
+  const shuffled = fisherYatesShuffle(indices)
   const toReveal = new Set(shuffled.slice(0, revealCount))
 
   return word

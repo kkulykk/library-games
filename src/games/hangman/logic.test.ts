@@ -190,6 +190,13 @@ describe('WORD_LISTS (difficulty tiers)', () => {
     }
   })
 
+  it('medium words are 5-8 letters', () => {
+    for (const word of WORD_LISTS.medium) {
+      expect(word.length).toBeGreaterThanOrEqual(5)
+      expect(word.length).toBeLessThanOrEqual(8)
+    }
+  })
+
   it('hard words are longer (7+ letters)', () => {
     for (const word of WORD_LISTS.hard) {
       expect(word.length).toBeGreaterThanOrEqual(7)
