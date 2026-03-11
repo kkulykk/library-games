@@ -6,6 +6,7 @@ import {
   mergeKeyboardStates,
   isWin,
   getDailyWord,
+  isValidGuess,
   WORD_LIST,
   WORD_LENGTH,
   MAX_GUESSES,
@@ -95,7 +96,7 @@ export function WordleGame() {
       showMessage('Not enough letters')
       return
     }
-    if (!WORD_LIST.includes(currentGuess)) {
+    if (!isValidGuess(currentGuess)) {
       setShake(true)
       setTimeout(() => setShake(false), 500)
       showMessage('Not in word list')
