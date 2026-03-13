@@ -526,10 +526,22 @@ function GameBoard({
     return 'Your turn — play a card or draw'
   }
 
-  // Check if any opponent can be caught (has 1 card, didn't call UNO)
+  // Track current time so we can hide the Catch button during the grace window
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const windows = Object.values(gameState.unoWindow)
+    const nextExpiry = windows.filter((w) => w > Date.now()).sort((a, b) => a - b)[0]
+    if (!nextExpiry) return
+    const delay = nextExpiry - Date.now()
+    const timer = setTimeout(() => setNow(Date.now()), delay + 50)
+    return () => clearTimeout(timer)
+  }, [gameState.unoWindow])
+
+  // Check if any opponent can be caught (has 1 card, didn't call UNO, grace window expired)
   const catchableTargets = otherPlayers.filter((p) => {
     const hand = gameState.hands[p.id] ?? []
-    return hand.length === 1 && !gameState.calledUno.includes(p.id)
+    const windowUntil = gameState.unoWindow[p.id] ?? 0
+    return hand.length === 1 && !gameState.calledUno.includes(p.id) && now >= windowUntil
   })
 
   return (
