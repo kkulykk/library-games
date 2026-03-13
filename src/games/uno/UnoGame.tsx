@@ -930,12 +930,14 @@ export function UnoGame() {
         gameState={gameState}
         playerId={playerId}
         onDispatch={(cardId, chosenColor) =>
-          dispatch({ type: 'PLAY_CARD', playerId, cardId, chosenColor })
+          dispatch({ type: 'PLAY_CARD', playerId, cardId, chosenColor, now: Date.now() })
         }
         onDraw={() => dispatch({ type: 'DRAW_CARD', playerId })}
         onPassAfterDraw={() => dispatch({ type: 'PASS_AFTER_DRAW', playerId })}
         onSayUno={() => dispatch({ type: 'SAY_UNO', playerId })}
-        onCatchUno={(targetId) => dispatch({ type: 'CATCH_UNO', playerId, targetId })}
+        onCatchUno={(targetId) =>
+          dispatch({ type: 'CATCH_UNO', playerId, targetId, now: Date.now() })
+        }
         onLeave={leaveRoom}
       />
     </>

@@ -542,18 +542,28 @@ describe('applyAction – CATCH_UNO', () => {
   it('is a no-op while the grace window has not expired', () => {
     let state = makePlayingState()
     state = injectHand(state, 'p2', [{ id: 'only', color: 'red', value: 1 }])
-    // Simulate a grace window ending 10 seconds in the future
-    state = { ...state, unoWindow: { p2: Date.now() + 10_000 } }
-    const next = applyAction(state, { type: 'CATCH_UNO', playerId: 'p1', targetId: 'p2' })
+    state = { ...state, unoWindow: { p2: 2000 } }
+    // now=1000 is before the window (2000), so catch is rejected
+    const next = applyAction(state, {
+      type: 'CATCH_UNO',
+      playerId: 'p1',
+      targetId: 'p2',
+      now: 1000,
+    })
     expect(next).toBe(state)
   })
 
   it('allows catch once the grace window has expired', () => {
     let state = makePlayingState()
     state = injectHand(state, 'p2', [{ id: 'only', color: 'red', value: 1 }])
-    // Simulate a grace window that already expired
-    state = { ...state, unoWindow: { p2: Date.now() - 1_000 } }
-    const next = applyAction(state, { type: 'CATCH_UNO', playerId: 'p1', targetId: 'p2' })
+    state = { ...state, unoWindow: { p2: 2000 } }
+    // now=3000 is after the window (2000), so catch succeeds
+    const next = applyAction(state, {
+      type: 'CATCH_UNO',
+      playerId: 'p1',
+      targetId: 'p2',
+      now: 3000,
+    })
     expect(next.hands['p2']).toHaveLength(3) // 1 + 2 penalty
   })
 })
@@ -566,23 +576,19 @@ describe('applyAction – unoWindow on PLAY_CARD', () => {
     const card2: Card = { id: 'c2', color: topCard.color as 'red', value: 2 }
     state = injectHand(state, 'p1', [card1, card2])
     state = { ...state, currentColor: topCard.color as 'red' }
-    const before = Date.now()
-    const next = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'c1' })
-    expect(next.unoWindow['p1']).toBeGreaterThanOrEqual(before + 1000)
+    // Pass a fixed now so the assertion is deterministic
+    const next = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'c1', now: 5000 })
+    expect(next.unoWindow['p1']).toBe(6000) // now + 1000
   })
 
-  it('clears unoWindow when a player plays down from 2 to more cards (not 1)', () => {
+  it('clears unoWindow when playing leaves more than 1 card', () => {
     let state = makePlayingState()
     const topCard = getTopCard(state)!
     const card1: Card = { id: 'c1', color: topCard.color as 'red', value: 1 }
     const card2: Card = { id: 'c2', color: topCard.color as 'red', value: 2 }
     const card3: Card = { id: 'c3', color: topCard.color as 'red', value: 3 }
     state = injectHand(state, 'p1', [card1, card2, card3])
-    state = {
-      ...state,
-      currentColor: topCard.color as 'red',
-      unoWindow: { p1: Date.now() + 99999 },
-    }
+    state = { ...state, currentColor: topCard.color as 'red', unoWindow: { p1: 99999 } }
     const next = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'c1' })
     // Playing leaves 2 cards — window should be cleared (set to 0)
     expect(next.unoWindow['p1'] ?? 0).toBe(0)
