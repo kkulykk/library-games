@@ -49,14 +49,20 @@ export interface GameState {
   winnerId: string | null
   /** After drawing a playable card, its id is stored so the player may play it or pass. */
   drawnCardId: string | null
+  /**
+   * Grace window: maps a player id to the earliest timestamp (ms) at which other players
+   * are allowed to catch them. Set to Date.now() + 1000 when they play down to 1 card,
+   * giving them 1 second to click "UNO!" before the "Catch!" button appears for others.
+   */
+  unoWindow: Record<string, number>
 }
 
 export type GameAction =
-  | { type: 'PLAY_CARD'; playerId: string; cardId: string; chosenColor?: CardColor }
+  | { type: 'PLAY_CARD'; playerId: string; cardId: string; chosenColor?: CardColor; now?: number }
   | { type: 'DRAW_CARD'; playerId: string }
   | { type: 'PASS_AFTER_DRAW'; playerId: string }
   | { type: 'SAY_UNO'; playerId: string }
-  | { type: 'CATCH_UNO'; playerId: string; targetId: string }
+  | { type: 'CATCH_UNO'; playerId: string; targetId: string; now?: number }
   | { type: 'START_GAME'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
 
@@ -186,6 +192,7 @@ export function createLobbyState(host: Player): GameState {
     calledUno: [],
     winnerId: null,
     drawnCardId: null,
+    unoWindow: {},
   }
 }
 
@@ -234,6 +241,7 @@ export function startGame(state: GameState): GameState {
     calledUno: [],
     winnerId: null,
     drawnCardId: null,
+    unoWindow: {},
   }
 }
 
@@ -273,6 +281,9 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     const targetHand = state.hands[action.targetId] ?? []
     if (targetHand.length !== 1) return state
     if (state.calledUno.includes(action.targetId)) return state
+    // Respect the grace window — give the player time to say UNO themselves
+    const catchTs = action.now ?? Date.now()
+    if (catchTs < (state.unoWindow[action.targetId] ?? 0)) return state
 
     // Penalty: target draws 2 cards
     const s = reshuffleIfNeeded(state)
@@ -408,6 +419,11 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         newHand.length !== 1
           ? state.calledUno.filter((id) => id !== action.playerId)
           : state.calledUno,
+      // Grant a 1-second grace window when a player plays down to 1 card
+      unoWindow:
+        newHand.length === 1
+          ? { ...state.unoWindow, [action.playerId]: (action.now ?? Date.now()) + 1000 }
+          : { ...state.unoWindow, [action.playerId]: 0 },
     }
 
     switch (card.value) {
