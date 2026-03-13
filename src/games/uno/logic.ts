@@ -51,8 +51,8 @@ export interface GameState {
   drawnCardId: string | null
   /**
    * Grace window: maps a player id to the earliest timestamp (ms) at which other players
-   * are allowed to catch them. Set to Date.now() + 2000 when they play down to 1 card,
-   * giving them 2 seconds to click "UNO!" before the "Catch!" button appears for others.
+   * are allowed to catch them. Set to Date.now() + 1000 when they play down to 1 card,
+   * giving them 1 second to click "UNO!" before the "Catch!" button appears for others.
    */
   unoWindow: Record<string, number>
 }
@@ -421,7 +421,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       // Grant a 2-second grace window when a player plays down to 1 card
       unoWindow:
         newHand.length === 1
-          ? { ...state.unoWindow, [action.playerId]: Date.now() + 2000 }
+          ? { ...state.unoWindow, [action.playerId]: Date.now() + 1000 }
           : { ...state.unoWindow, [action.playerId]: 0 },
     }
 

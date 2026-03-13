@@ -568,7 +568,7 @@ describe('applyAction – unoWindow on PLAY_CARD', () => {
     state = { ...state, currentColor: topCard.color as 'red' }
     const before = Date.now()
     const next = applyAction(state, { type: 'PLAY_CARD', playerId: 'p1', cardId: 'c1' })
-    expect(next.unoWindow['p1']).toBeGreaterThanOrEqual(before + 2000)
+    expect(next.unoWindow['p1']).toBeGreaterThanOrEqual(before + 1000)
   })
 
   it('clears unoWindow when a player plays down from 2 to more cards (not 1)', () => {
