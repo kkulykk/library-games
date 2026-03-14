@@ -1,4 +1,6 @@
 import skribblWords from '@/data/words/skribbl-words.json'
+import type { GameState } from './schema'
+export type { GameState }
 
 let msgCounter = 0
 function generateMsgId(): string {
@@ -36,32 +38,6 @@ export interface DrawPoint {
 
 export interface DrawStroke {
   points: DrawPoint[]
-}
-
-export interface GameState {
-  phase: GamePhase
-  players: Player[]
-  currentDrawerIndex: number
-  round: number
-  totalRounds: number
-  /** The word the drawer must draw (only visible to drawer client-side). */
-  word: string | null
-  /** Word choices offered to the drawer during picking phase. */
-  wordChoices: string[]
-  /** Hint shown to guessers: e.g. "_ _ _ _ _" */
-  hint: string
-  /** Strokes on the canvas — synced to all players. */
-  strokes: DrawStroke[]
-  /** Chat / guess messages. */
-  messages: ChatMessage[]
-  /** Player IDs who guessed correctly this turn. */
-  guessedPlayers: string[]
-  /** Timestamp (ms) when the drawing phase started. */
-  drawStartTime: number | null
-  /** Seconds allowed per turn. */
-  turnDuration: number
-  /** When the turn ended (null if still active). */
-  turnEndTime: number | null
 }
 
 export type GameAction =

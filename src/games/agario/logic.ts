@@ -86,11 +86,8 @@ export interface LobbyPlayer {
 
 export type GamePhase = 'lobby' | 'playing' | 'finished'
 
-export interface GameState {
-  phase: GamePhase
-  players: LobbyPlayer[]
-  hostId: string
-}
+import type { GameState } from './schema'
+export type { GameState }
 
 // ─── Broadcast message types ──────────────────────────────────────────────────
 

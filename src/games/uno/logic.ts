@@ -1,3 +1,6 @@
+import type { GameState } from './schema'
+export type { GameState }
+
 export type CardColor = 'red' | 'yellow' | 'green' | 'blue'
 export type CardValue =
   | 0
@@ -29,32 +32,6 @@ export interface Player {
   id: string
   name: string
   isHost: boolean
-}
-
-export interface GameState {
-  phase: GamePhase
-  players: Player[]
-  /** Full hands stored for all players — visible to all clients (casual game). */
-  hands: Record<string, Card[]>
-  drawPile: Card[]
-  discardPile: Card[]
-  currentPlayerIndex: number
-  direction: Direction
-  /** Active color — differs from top card's color when a wild is on top. */
-  currentColor: CardColor
-  /** Draw count from a Draw 2 or Wild Draw 4. No stacking — always 2 or 4. */
-  pendingDrawCount: number
-  /** Player ids who have declared "UNO!". */
-  calledUno: string[]
-  winnerId: string | null
-  /** After drawing a playable card, its id is stored so the player may play it or pass. */
-  drawnCardId: string | null
-  /**
-   * Grace window: maps a player id to the earliest timestamp (ms) at which other players
-   * are allowed to catch them. Set to Date.now() + 1000 when they play down to 1 card,
-   * giving them 1 second to click "UNO!" before the "Catch!" button appears for others.
-   */
-  unoWindow: Record<string, number>
 }
 
 export type GameAction =

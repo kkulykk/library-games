@@ -40,6 +40,8 @@ const FoodSchema = z.object({
   size: z.number(),
 })
 
+export type GameState = z.infer<typeof GameStateSchema>
+
 export const BroadcastMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('snake_update'), snake: SnakeStateSchema }),
   z.object({ type: z.literal('food_sync'), food: z.array(FoodSchema), nextFoodId: z.number() }),

@@ -1,4 +1,6 @@
-import { BLACK_CARDS, WHITE_CARDS, type BlackCard } from './cards'
+import { BLACK_CARDS, WHITE_CARDS } from './cards'
+import type { GameState } from './schema'
+export type { GameState }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -9,37 +11,6 @@ export interface Player {
 }
 
 export type GamePhase = 'lobby' | 'playing' | 'judging' | 'reveal' | 'finished'
-
-export interface GameState {
-  phase: GamePhase
-  players: Player[]
-  /** Index into players array for the current Card Czar */
-  czarIndex: number
-  /** Current black (prompt) card */
-  blackCard: BlackCard | null
-  /** Each player's hand of white card indices (into WHITE_CARDS) */
-  hands: Record<string, number[]>
-  /** Submissions: playerId -> array of white card indices (length = blackCard.pick) */
-  submissions: Record<string, number[]>
-  /** Order in which submissions are revealed (shuffled player ids) */
-  revealOrder: string[]
-  /** Index of the currently revealed submission during judging */
-  revealIndex: number
-  /** Player id who won the current round (set during reveal phase) */
-  roundWinnerId: string | null
-  /** Cumulative scores */
-  scores: Record<string, number>
-  /** Points needed to win */
-  pointsToWin: number
-  /** Winner of the game */
-  winnerId: string | null
-  /** Pool of remaining black card indices */
-  blackDeck: number[]
-  /** Pool of remaining white card indices */
-  whiteDeck: number[]
-  /** Number of cards per hand */
-  handSize: number
-}
 
 export type GameAction =
   | { type: 'START_GAME'; playerId: string }
