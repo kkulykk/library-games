@@ -73,10 +73,18 @@ export function useUnoRoom(): UseUnoRoomReturn {
   const [error, setError] = useState<string | null>(null)
   const [savedSession, setSavedSession] = useState<Session | null>(null)
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null)
+  const gameStateRef = useRef<GameState | null>(null)
+  const versionRef = useRef(0)
 
   useEffect(() => {
     setSavedSession(loadSession())
   }, [])
+
+  function setStateAndRef(state: GameState | null, version?: number) {
+    gameStateRef.current = state
+    if (version !== undefined) versionRef.current = version
+    setGameState(state)
+  }
 
   function subscribeToRoom(code: string) {
     if (!supabase) return
@@ -87,7 +95,7 @@ export function useUnoRoom(): UseUnoRoomReturn {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'uno_rooms', filter: `code=eq.${code}` },
         (payload) => {
-          setGameState(payload.new.state as GameState)
+          setStateAndRef(payload.new.state as GameState, payload.new.version as number)
         }
       )
       .subscribe()
@@ -113,7 +121,7 @@ export function useUnoRoom(): UseUnoRoomReturn {
 
     setPlayerId(id)
     setRoomCode(code)
-    setGameState(initialState)
+    setStateAndRef(initialState, 1)
     setStatus('connected')
     saveSession({ roomCode: code, playerId: id, playerName })
     subscribeToRoom(code)
@@ -127,7 +135,7 @@ export function useUnoRoom(): UseUnoRoomReturn {
     const normalizedCode = code.trim().toUpperCase()
     const { data, error: err } = await supabase
       .from('uno_rooms')
-      .select('state')
+      .select('state, version')
       .eq('code', normalizedCode)
       .single()
 
@@ -155,10 +163,12 @@ export function useUnoRoom(): UseUnoRoomReturn {
       return
     }
 
+    const currentVersion = data.version as number
     const { error: updateErr } = await supabase
       .from('uno_rooms')
-      .update({ state: newState })
+      .update({ state: newState, version: currentVersion + 1 })
       .eq('code', normalizedCode)
+      .eq('version', currentVersion)
 
     if (updateErr) {
       setError('Failed to join room. Try again.')
@@ -168,7 +178,7 @@ export function useUnoRoom(): UseUnoRoomReturn {
 
     setPlayerId(id)
     setRoomCode(normalizedCode)
-    setGameState(newState)
+    setStateAndRef(newState, currentVersion + 1)
     setStatus('connected')
     saveSession({ roomCode: normalizedCode, playerId: id, playerName })
     subscribeToRoom(normalizedCode)
@@ -181,7 +191,7 @@ export function useUnoRoom(): UseUnoRoomReturn {
 
     const { data } = await supabase
       .from('uno_rooms')
-      .select('state')
+      .select('state, version')
       .eq('code', session.roomCode)
       .single()
 
@@ -203,25 +213,53 @@ export function useUnoRoom(): UseUnoRoomReturn {
 
     setPlayerId(session.playerId)
     setRoomCode(session.roomCode)
-    setGameState(state)
+    setStateAndRef(state, data.version as number)
     setStatus('connected')
     subscribeToRoom(session.roomCode)
   }, [])
 
   const dispatch = useCallback(
     async (action: GameAction) => {
-      if (!gameState || !roomCode || !supabase) return
-      const newState = applyAction(gameState, action)
-      if (newState === gameState) return // no-op
-      await supabase.from('uno_rooms').update({ state: newState }).eq('code', roomCode)
+      if (!roomCode || !supabase) return
+
+      const MAX_RETRIES = 3
+      let currentState = gameStateRef.current
+      let currentVersion = versionRef.current
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (!currentState) return
+        const newState = applyAction(currentState, action)
+        if (newState === currentState) return
+
+        const { data } = await supabase
+          .from('uno_rooms')
+          .update({ state: newState, version: currentVersion + 1 })
+          .eq('code', roomCode)
+          .eq('version', currentVersion)
+          .select('version')
+
+        if (data && data.length > 0) return // success
+
+        if (attempt < MAX_RETRIES) {
+          const { data: fresh } = await supabase
+            .from('uno_rooms')
+            .select('state, version')
+            .eq('code', roomCode)
+            .single()
+          if (!fresh) return
+          currentState = fresh.state as GameState
+          currentVersion = fresh.version as number
+          setStateAndRef(currentState, currentVersion)
+        }
+      }
     },
-    [gameState, roomCode]
+    [roomCode]
   )
 
   const leaveRoom = useCallback(() => {
     channelRef.current?.unsubscribe()
     channelRef.current = null
-    setGameState(null)
+    setStateAndRef(null, 0)
     setPlayerId(null)
     setRoomCode(null)
     setStatus('idle')
