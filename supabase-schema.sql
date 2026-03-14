@@ -5,6 +5,7 @@ create table if not exists uno_rooms (
   id         uuid        default gen_random_uuid() primary key,
   code       text        unique not null,
   state      jsonb       not null,
+  version    integer     not null default 1,
   updated_at timestamptz default now()
 );
 
@@ -76,6 +77,7 @@ create table if not exists skribbl_rooms (
   id         uuid        default gen_random_uuid() primary key,
   code       text        unique not null,
   state      jsonb       not null,
+  version    integer     not null default 1,
   updated_at timestamptz default now()
 );
 
@@ -109,6 +111,7 @@ create table if not exists agario_rooms (
   id         uuid        default gen_random_uuid() primary key,
   code       text        unique not null,
   state      jsonb       not null,
+  version    integer     not null default 1,
   updated_at timestamptz default now()
 );
 
@@ -142,6 +145,7 @@ create table if not exists cah_rooms (
   id         uuid        default gen_random_uuid() primary key,
   code       text        unique not null,
   state      jsonb       not null,
+  version    integer     not null default 1,
   updated_at timestamptz default now()
 );
 
@@ -168,3 +172,12 @@ create policy "insert cah rooms" on cah_rooms
 create policy "update cah rooms" on cah_rooms for update using (true);
 
 -- delete from cah_rooms where updated_at < now() - interval '24 hours';
+
+-- ─── Migration: add version column to existing tables ───────────────────────
+-- Run this once if your tables already exist (the CREATE TABLE statements above
+-- include the column for fresh installs).
+
+-- alter table uno_rooms     add column if not exists version integer not null default 1;
+-- alter table skribbl_rooms add column if not exists version integer not null default 1;
+-- alter table agario_rooms  add column if not exists version integer not null default 1;
+-- alter table cah_rooms     add column if not exists version integer not null default 1;
