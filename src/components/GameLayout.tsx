@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 interface GameLayoutProps {
   title: string
@@ -27,7 +28,9 @@ export function GameLayout({ title, children, score }: GameLayoutProps) {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center px-4 py-8">{children}</main>
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </main>
     </div>
   )
 }
