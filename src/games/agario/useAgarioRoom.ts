@@ -95,7 +95,7 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
     setGameState(state)
   }
 
-  function subscribeToRoom(code: string) {
+  const subscribeToRoom = useCallback((code: string) => {
     if (!supabase) return
 
     // DB channel for lobby state changes
@@ -136,7 +136,7 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
         }
       })
       .subscribe()
-  }
+  }, [])
 
   const broadcast = useCallback((message: BroadcastMessage) => {
     broadcastChannelRef.current?.send({
@@ -146,101 +146,109 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
     })
   }, [])
 
-  const createRoom = useCallback(async (playerName: string) => {
-    if (!supabase) return
-    setStatus('creating')
-    setError(null)
+  const createRoom = useCallback(
+    async (playerName: string) => {
+      if (!supabase) return
+      setStatus('creating')
+      setError(null)
 
-    const id = crypto.randomUUID()
-    const code = generateRoomCode()
-    const host: LobbyPlayer = { id, name: playerName, isHost: true, color: assignColor(0) }
-    const initialState = createLobbyState(host)
+      const id = crypto.randomUUID()
+      const code = generateRoomCode()
+      const host: LobbyPlayer = { id, name: playerName, isHost: true, color: assignColor(0) }
+      const initialState = createLobbyState(host)
 
-    const { error: err } = await supabase.from('agario_rooms').insert({ code, state: initialState })
+      const { error: err } = await supabase
+        .from('agario_rooms')
+        .insert({ code, state: initialState })
 
-    if (err) {
-      setError('Failed to create room. Try again.')
-      setStatus('error')
-      return
-    }
+      if (err) {
+        setError('Failed to create room. Try again.')
+        setStatus('error')
+        return
+      }
 
-    setPlayerId(id)
-    setRoomCode(code)
-    setStateAndRef(initialState, 1)
-    setStatus('connected')
-    saveSession({ roomCode: code, playerId: id, playerName })
-    subscribeToRoom(code)
-  }, [])
+      setPlayerId(id)
+      setRoomCode(code)
+      setStateAndRef(initialState, 1)
+      setStatus('connected')
+      saveSession({ roomCode: code, playerId: id, playerName })
+      subscribeToRoom(code)
+    },
+    [subscribeToRoom]
+  )
 
-  const joinRoom = useCallback(async (code: string, playerName: string) => {
-    if (!supabase) return
-    setStatus('joining')
-    setError(null)
+  const joinRoom = useCallback(
+    async (code: string, playerName: string) => {
+      if (!supabase) return
+      setStatus('joining')
+      setError(null)
 
-    const normalizedCode = code.trim().toUpperCase()
-    const { data, error: err } = await supabase
-      .from('agario_rooms')
-      .select('state, version')
-      .eq('code', normalizedCode)
-      .single()
+      const normalizedCode = code.trim().toUpperCase()
+      const { data, error: err } = await supabase
+        .from('agario_rooms')
+        .select('state, version')
+        .eq('code', normalizedCode)
+        .single()
 
-    if (err || !data) {
-      setError('Room not found. Check the code and try again.')
-      setStatus('error')
-      return
-    }
+      if (err || !data) {
+        setError('Room not found. Check the code and try again.')
+        setStatus('error')
+        return
+      }
 
-    const parsedCurrent = GameStateSchema.safeParse(data.state)
-    if (!parsedCurrent.success) {
-      console.error('[agario] Invalid GameState in joinRoom:', parsedCurrent.error)
-      setError('Room data is invalid. Try again.')
-      setStatus('error')
-      return
-    }
-    const currentState = parsedCurrent.data
+      const parsedCurrent = GameStateSchema.safeParse(data.state)
+      if (!parsedCurrent.success) {
+        console.error('[agario] Invalid GameState in joinRoom:', parsedCurrent.error)
+        setError('Room data is invalid. Try again.')
+        setStatus('error')
+        return
+      }
+      const currentState = parsedCurrent.data
 
-    if (currentState.phase !== 'lobby') {
-      setError('This game has already started.')
-      setStatus('error')
-      return
-    }
+      if (currentState.phase !== 'lobby') {
+        setError('This game has already started.')
+        setStatus('error')
+        return
+      }
 
-    const id = crypto.randomUUID()
-    const player: LobbyPlayer = {
-      id,
-      name: playerName,
-      isHost: false,
-      color: assignColor(currentState.players.length),
-    }
-    const newState = addPlayer(currentState, player)
+      const id = crypto.randomUUID()
+      const player: LobbyPlayer = {
+        id,
+        name: playerName,
+        isHost: false,
+        color: assignColor(currentState.players.length),
+      }
+      const newState = addPlayer(currentState, player)
 
-    if (newState.players.length === currentState.players.length) {
-      setError('Room is full.')
-      setStatus('error')
-      return
-    }
+      if (newState.players.length === currentState.players.length) {
+        setError('Room is full.')
+        setStatus('error')
+        return
+      }
 
-    const currentVersion = data.version as number
-    const { data: updated, error: updateErr } = await supabase
-      .from('agario_rooms')
-      .update({ state: newState, version: currentVersion + 1 })
-      .eq('code', normalizedCode)
-      .eq('version', currentVersion)
-      .select('version')
+      const currentVersion = data.version as number
+      const { data: updated, error: updateErr } = await supabase
+        .from('agario_rooms')
+        .update({ state: newState, version: currentVersion + 1 })
+        .eq('code', normalizedCode)
+        .eq('version', currentVersion)
+        .select('version')
 
-    if (updateErr || !updated || updated.length === 0) {
-      setError('Failed to join room. Try again.')
-      setStatus('error')
-      return
-    }
+      if (updateErr || !updated || updated.length === 0) {
+        setError('Failed to join room. Try again.')
+        setStatus('error')
+        return
+      }
 
-    setPlayerId(id)
-    setRoomCode(normalizedCode)
-    setStateAndRef(newState, currentVersion + 1)
-    setStatus('connected')
-    saveSession({ roomCode: normalizedCode, playerId: id, playerName })
-    subscribeToRoom(normalizedCode)
-  }, [])
+      setPlayerId(id)
+      setRoomCode(normalizedCode)
+      setStateAndRef(newState, currentVersion + 1)
+      setStatus('connected')
+      saveSession({ roomCode: normalizedCode, playerId: id, playerName })
+      subscribeToRoom(normalizedCode)
+    },
+    [subscribeToRoom]
+  )
 
   const restoreSession = useCallback(async () => {
     const session = loadSession()
@@ -282,7 +290,7 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
     setStateAndRef(state, data.version as number)
     setStatus('connected')
     subscribeToRoom(session.roomCode)
-  }, [])
+  }, [subscribeToRoom])
 
   const dispatch = useCallback(
     async (action: GameAction) => {
