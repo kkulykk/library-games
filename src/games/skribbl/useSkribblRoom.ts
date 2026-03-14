@@ -87,7 +87,7 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
     setGameState(state)
   }
 
-  function subscribeToRoom(code: string) {
+  const subscribeToRoom = useCallback((code: string) => {
     if (!supabase) return
     channelRef.current?.unsubscribe()
     channelRef.current = supabase
@@ -110,100 +110,106 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
         }
       )
       .subscribe()
-  }
-
-  const createRoom = useCallback(async (playerName: string) => {
-    if (!supabase) return
-    setStatus('creating')
-    setError(null)
-
-    const id = crypto.randomUUID()
-    const code = generateRoomCode()
-    const host: Player = { id, name: playerName, isHost: true, score: 0 }
-    const initialState = createLobbyState(host)
-
-    const { error: err } = await supabase
-      .from('skribbl_rooms')
-      .insert({ code, state: initialState })
-
-    if (err) {
-      setError('Failed to create room. Try again.')
-      setStatus('error')
-      return
-    }
-
-    setPlayerId(id)
-    setRoomCode(code)
-    setStateAndRef(initialState, 1)
-    setStatus('connected')
-    saveSession({ roomCode: code, playerId: id, playerName })
-    subscribeToRoom(code)
   }, [])
 
-  const joinRoom = useCallback(async (code: string, playerName: string) => {
-    if (!supabase) return
-    setStatus('joining')
-    setError(null)
+  const createRoom = useCallback(
+    async (playerName: string) => {
+      if (!supabase) return
+      setStatus('creating')
+      setError(null)
 
-    const normalizedCode = code.trim().toUpperCase()
-    const { data, error: err } = await supabase
-      .from('skribbl_rooms')
-      .select('state, version')
-      .eq('code', normalizedCode)
-      .single()
+      const id = crypto.randomUUID()
+      const code = generateRoomCode()
+      const host: Player = { id, name: playerName, isHost: true, score: 0 }
+      const initialState = createLobbyState(host)
 
-    if (err || !data) {
-      setError('Room not found. Check the code and try again.')
-      setStatus('error')
-      return
-    }
+      const { error: err } = await supabase
+        .from('skribbl_rooms')
+        .insert({ code, state: initialState })
 
-    const parsedCurrent = GameStateSchema.safeParse(data.state)
-    if (!parsedCurrent.success) {
-      console.error('[skribbl] Invalid GameState in joinRoom:', parsedCurrent.error)
-      setError('Room data is invalid. Try again.')
-      setStatus('error')
-      return
-    }
-    const currentState = parsedCurrent.data
+      if (err) {
+        setError('Failed to create room. Try again.')
+        setStatus('error')
+        return
+      }
 
-    if (currentState.phase !== 'lobby') {
-      setError('This game has already started.')
-      setStatus('error')
-      return
-    }
+      setPlayerId(id)
+      setRoomCode(code)
+      setStateAndRef(initialState, 1)
+      setStatus('connected')
+      saveSession({ roomCode: code, playerId: id, playerName })
+      subscribeToRoom(code)
+    },
+    [subscribeToRoom]
+  )
 
-    const id = crypto.randomUUID()
-    const player: Player = { id, name: playerName, isHost: false, score: 0 }
-    const newState = addPlayer(currentState, player)
+  const joinRoom = useCallback(
+    async (code: string, playerName: string) => {
+      if (!supabase) return
+      setStatus('joining')
+      setError(null)
 
-    if (newState.players.length === currentState.players.length) {
-      setError('Room is full.')
-      setStatus('error')
-      return
-    }
+      const normalizedCode = code.trim().toUpperCase()
+      const { data, error: err } = await supabase
+        .from('skribbl_rooms')
+        .select('state, version')
+        .eq('code', normalizedCode)
+        .single()
 
-    const currentVersion = data.version as number
-    const { data: updated, error: updateErr } = await supabase
-      .from('skribbl_rooms')
-      .update({ state: newState, version: currentVersion + 1 })
-      .eq('code', normalizedCode)
-      .eq('version', currentVersion)
-      .select('version')
+      if (err || !data) {
+        setError('Room not found. Check the code and try again.')
+        setStatus('error')
+        return
+      }
 
-    if (updateErr || !updated || updated.length === 0) {
-      setError('Failed to join room. Try again.')
-      setStatus('error')
-      return
-    }
+      const parsedCurrent = GameStateSchema.safeParse(data.state)
+      if (!parsedCurrent.success) {
+        console.error('[skribbl] Invalid GameState in joinRoom:', parsedCurrent.error)
+        setError('Room data is invalid. Try again.')
+        setStatus('error')
+        return
+      }
+      const currentState = parsedCurrent.data
 
-    setPlayerId(id)
-    setRoomCode(normalizedCode)
-    setStateAndRef(newState, currentVersion + 1)
-    setStatus('connected')
-    saveSession({ roomCode: normalizedCode, playerId: id, playerName })
-    subscribeToRoom(normalizedCode)
-  }, [])
+      if (currentState.phase !== 'lobby') {
+        setError('This game has already started.')
+        setStatus('error')
+        return
+      }
+
+      const id = crypto.randomUUID()
+      const player: Player = { id, name: playerName, isHost: false, score: 0 }
+      const newState = addPlayer(currentState, player)
+
+      if (newState.players.length === currentState.players.length) {
+        setError('Room is full.')
+        setStatus('error')
+        return
+      }
+
+      const currentVersion = data.version as number
+      const { data: updated, error: updateErr } = await supabase
+        .from('skribbl_rooms')
+        .update({ state: newState, version: currentVersion + 1 })
+        .eq('code', normalizedCode)
+        .eq('version', currentVersion)
+        .select('version')
+
+      if (updateErr || !updated || updated.length === 0) {
+        setError('Failed to join room. Try again.')
+        setStatus('error')
+        return
+      }
+
+      setPlayerId(id)
+      setRoomCode(normalizedCode)
+      setStateAndRef(newState, currentVersion + 1)
+      setStatus('connected')
+      saveSession({ roomCode: normalizedCode, playerId: id, playerName })
+      subscribeToRoom(normalizedCode)
+    },
+    [subscribeToRoom]
+  )
 
   const restoreSession = useCallback(async () => {
     const session = loadSession()
@@ -245,7 +251,7 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
     setStateAndRef(state, data.version as number)
     setStatus('connected')
     subscribeToRoom(session.roomCode)
-  }, [])
+  }, [subscribeToRoom])
 
   const dispatch = useCallback(
     async (action: GameAction) => {
