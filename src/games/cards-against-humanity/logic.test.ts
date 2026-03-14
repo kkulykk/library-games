@@ -436,6 +436,56 @@ describe('NEXT_ROUND', () => {
   })
 })
 
+describe('REMOVE_PLAYER', () => {
+  it('removes a player from the lobby and reassigns host', () => {
+    const lobby = makeLobby(3)
+    const result = applyAction(lobby, { type: 'REMOVE_PLAYER', playerId: 'p1' })
+    expect(result.players).toHaveLength(2)
+    expect(result.players[0].isHost).toBe(true)
+  })
+
+  it('removes a non-czar player during playing phase', () => {
+    const game = startedGame()
+    const result = applyAction(game, { type: 'REMOVE_PLAYER', playerId: 'p3' })
+    expect(result.players).toHaveLength(2)
+    expect(result.phase).toBe('finished') // fewer than 3 players
+  })
+
+  it('removes the czar and starts a new round', () => {
+    const game = startedGame(4)
+    const result = applyAction(game, { type: 'REMOVE_PLAYER', playerId: 'p1' })
+    expect(result.players).toHaveLength(3)
+    expect(result.phase).toBe('playing')
+    expect(result.submissions).toEqual({})
+  })
+
+  it('triggers judging when removed player was the last non-submitter', () => {
+    let game = startedGame(4)
+    const pick = game.blackCard!.pick
+    // p2 and p3 submit (p1 is czar, p4 hasn't submitted)
+    game = applyAction(game, {
+      type: 'SUBMIT_CARDS',
+      playerId: 'p2',
+      cardIndices: game.hands['p2'].slice(0, pick),
+    })
+    game = applyAction(game, {
+      type: 'SUBMIT_CARDS',
+      playerId: 'p3',
+      cardIndices: game.hands['p3'].slice(0, pick),
+    })
+    expect(game.phase).toBe('playing')
+    // Remove p4 (the non-submitter)
+    const result = applyAction(game, { type: 'REMOVE_PLAYER', playerId: 'p4' })
+    expect(result.phase).toBe('judging')
+  })
+
+  it('returns state unchanged for unknown player', () => {
+    const game = startedGame()
+    const result = applyAction(game, { type: 'REMOVE_PLAYER', playerId: 'unknown' })
+    expect(result).toBe(game)
+  })
+})
+
 describe('START_GAME / PLAY_AGAIN', () => {
   it('only host can start', () => {
     const lobby = makeLobby(3)
@@ -504,12 +554,16 @@ describe('allSubmitted', () => {
       playerId: 'p2',
       cardIndices: game.hands['p2'].slice(0, pick),
     })
+    // After first submission, not all have submitted yet
+    expect(allSubmitted(game)).toBe(false)
+
     game = applyAction(game, {
       type: 'SUBMIT_CARDS',
       playerId: 'p3',
       cardIndices: game.hands['p3'].slice(0, pick),
     })
-    expect(game.phase).toBe('judging') // auto-transitioned
+    // After auto-transition to judging, allSubmitted should be true
+    expect(allSubmitted(game)).toBe(true)
   })
 })
 

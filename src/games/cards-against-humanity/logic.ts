@@ -48,6 +48,7 @@ export type GameAction =
   | { type: 'PICK_WINNER'; playerId: string; winnerId: string }
   | { type: 'NEXT_ROUND'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
+  | { type: 'REMOVE_PLAYER'; playerId: string }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -264,6 +265,77 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       scores: newScores,
       winnerId: isGameOver ? action.winnerId : null,
     }
+  }
+
+  if (action.type === 'REMOVE_PLAYER') {
+    const idx = state.players.findIndex((p) => p.id === action.playerId)
+    if (idx === -1) return state
+
+    // In lobby, just remove the player (reassign host if needed)
+    if (state.phase === 'lobby') {
+      const updated = removePlayer(state, action.playerId)
+      if (updated.players.length === 0) return updated
+      const needsHost = !updated.players.some((p) => p.isHost)
+      if (needsHost) {
+        const players = updated.players.map((p, i) => (i === 0 ? { ...p, isHost: true } : p))
+        return { ...updated, players }
+      }
+      return updated
+    }
+
+    // During active game: remove and clean up
+    let updated = removePlayer(state, action.playerId)
+    const hands = Object.fromEntries(
+      Object.entries(state.hands).filter(([id]) => id !== action.playerId)
+    )
+    const submissions = Object.fromEntries(
+      Object.entries(state.submissions).filter(([id]) => id !== action.playerId)
+    )
+    const scores = Object.fromEntries(
+      Object.entries(state.scores).filter(([id]) => id !== action.playerId)
+    )
+    updated = { ...updated, hands, submissions, scores }
+
+    // If fewer than 3 players remain, end the game
+    if (updated.players.length < 3) {
+      return { ...updated, phase: 'finished', winnerId: null }
+    }
+
+    // Reassign host if the removed player was the host
+    const needsHost = !updated.players.some((p) => p.isHost)
+    if (needsHost) {
+      const players = updated.players.map((p, i) => (i === 0 ? { ...p, isHost: true } : p))
+      updated = { ...updated, players }
+    }
+
+    // If the removed player was the czar, skip to a new round
+    if (isCzar(state, action.playerId)) {
+      const blackDeck = [...updated.blackDeck]
+      const blackCard = blackDeck.length > 0 ? BLACK_CARDS[blackDeck[0]] : updated.blackCard
+      const newBlackDeck = blackDeck.length > 0 ? blackDeck.slice(1) : blackDeck
+      return {
+        ...updated,
+        phase: 'playing',
+        blackCard,
+        blackDeck: newBlackDeck,
+        submissions: {},
+        revealOrder: [],
+        revealIndex: -1,
+        roundWinnerId: null,
+      }
+    }
+
+    // If the removed player hadn't submitted yet during playing phase, check if all remaining have
+    if (updated.phase === 'playing') {
+      const nonCzar = getNonCzarPlayers(updated)
+      const allDone = nonCzar.every((p) => p.id in updated.submissions)
+      if (allDone && nonCzar.length > 0) {
+        const revealOrder = shuffle(Object.keys(updated.submissions))
+        return { ...updated, phase: 'judging', revealOrder, revealIndex: -1 }
+      }
+    }
+
+    return updated
   }
 
   if (action.type === 'NEXT_ROUND') {

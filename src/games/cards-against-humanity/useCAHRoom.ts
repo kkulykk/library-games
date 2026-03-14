@@ -62,7 +62,7 @@ export interface UseCAHRoomReturn {
   joinRoom: (code: string, playerName: string) => Promise<void>
   restoreSession: () => Promise<void>
   dispatch: (action: GameAction) => Promise<void>
-  leaveRoom: () => void
+  leaveRoom: () => Promise<void>
 }
 
 export function useCAHRoom(): UseCAHRoomReturn {
@@ -218,7 +218,15 @@ export function useCAHRoom(): UseCAHRoomReturn {
     [gameState, roomCode]
   )
 
-  const leaveRoom = useCallback(() => {
+  const leaveRoom = useCallback(async () => {
+    // Remove this player from the Supabase game state
+    if (gameState && roomCode && playerId && supabase) {
+      const newState = applyAction(gameState, { type: 'REMOVE_PLAYER', playerId })
+      if (newState !== gameState) {
+        await supabase.from('cah_rooms').update({ state: newState }).eq('code', roomCode)
+      }
+    }
+
     channelRef.current?.unsubscribe()
     channelRef.current = null
     setGameState(null)
@@ -228,7 +236,7 @@ export function useCAHRoom(): UseCAHRoomReturn {
     setError(null)
     clearSession()
     setSavedSession(null)
-  }, [])
+  }, [gameState, roomCode, playerId])
 
   useEffect(() => {
     return () => {

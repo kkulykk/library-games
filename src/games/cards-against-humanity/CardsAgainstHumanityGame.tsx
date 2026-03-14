@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useCAHRoom } from './useCAHRoom'
@@ -701,14 +701,18 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
 }
 
 function ConfettiEffect() {
-  const particles = Array.from({ length: 30 }, (_, i) => ({
-    id: i,
-    left: Math.random() * 100,
-    delay: Math.random() * 0.5,
-    duration: 1.5 + Math.random() * 1.5,
-    color: ['#000', '#fff', '#6b7280', '#d1d5db'][i % 4],
-    size: 4 + Math.random() * 6,
-  }))
+  const particles = useMemo(
+    () =>
+      Array.from({ length: 30 }, (_, i) => ({
+        id: i,
+        left: Math.random() * 100,
+        delay: Math.random() * 0.5,
+        duration: 1.5 + Math.random() * 1.5,
+        color: ['#000', '#fff', '#6b7280', '#d1d5db'][i % 4],
+        size: 4 + Math.random() * 6,
+      })),
+    []
+  )
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
