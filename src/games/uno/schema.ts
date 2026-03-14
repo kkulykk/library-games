@@ -10,7 +10,16 @@ const CardSchema = z.object({
   id: z.string(),
   color: z.enum(['red', 'yellow', 'green', 'blue', 'wild']),
   value: z.union([
-    z.number().int().min(0).max(9),
+    z.literal(0),
+    z.literal(1),
+    z.literal(2),
+    z.literal(3),
+    z.literal(4),
+    z.literal(5),
+    z.literal(6),
+    z.literal(7),
+    z.literal(8),
+    z.literal(9),
     z.literal('skip'),
     z.literal('reverse'),
     z.literal('draw2'),
@@ -34,3 +43,5 @@ export const GameStateSchema = z.object({
   drawnCardId: z.string().nullable(),
   unoWindow: z.record(z.string(), z.number()),
 })
+
+export type GameState = z.infer<typeof GameStateSchema>

@@ -44,3 +44,5 @@ export const GameStateSchema = z.object({
   turnDuration: z.number(),
   turnEndTime: z.number().nullable(),
 })
+
+export type GameState = z.infer<typeof GameStateSchema>

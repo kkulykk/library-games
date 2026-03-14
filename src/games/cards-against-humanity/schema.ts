@@ -28,3 +28,5 @@ export const GameStateSchema = z.object({
   whiteDeck: z.array(z.number()),
   handSize: z.number(),
 })
+
+export type GameState = z.infer<typeof GameStateSchema>
