@@ -171,13 +171,14 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
     }
 
     const currentVersion = data.version as number
-    const { error: updateErr } = await supabase
+    const { data: updated, error: updateErr } = await supabase
       .from('skribbl_rooms')
       .update({ state: newState, version: currentVersion + 1 })
       .eq('code', normalizedCode)
       .eq('version', currentVersion)
+      .select('version')
 
-    if (updateErr) {
+    if (updateErr || !updated || updated.length === 0) {
       setError('Failed to join room. Try again.')
       setStatus('error')
       return
@@ -257,6 +258,8 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
           currentState = fresh.state as GameState
           currentVersion = fresh.version as number
           setStateAndRef(currentState, currentVersion)
+        } else {
+          setError('Action failed due to a conflict. Please try again.')
         }
       }
     },

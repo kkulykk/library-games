@@ -164,13 +164,14 @@ export function useCAHRoom(): UseCAHRoomReturn {
     }
 
     const currentVersion = data.version as number
-    const { error: updateErr } = await supabase
+    const { data: updated, error: updateErr } = await supabase
       .from('cah_rooms')
       .update({ state: newState, version: currentVersion + 1 })
       .eq('code', normalizedCode)
       .eq('version', currentVersion)
+      .select('version')
 
-    if (updateErr) {
+    if (updateErr || !updated || updated.length === 0) {
       setError('Failed to join room. Try again.')
       setStatus('error')
       return
@@ -250,6 +251,8 @@ export function useCAHRoom(): UseCAHRoomReturn {
           currentState = fresh.state as GameState
           currentVersion = fresh.version as number
           setStateAndRef(currentState, currentVersion)
+        } else {
+          setError('Action failed due to a conflict. Please try again.')
         }
       }
     },
@@ -257,17 +260,36 @@ export function useCAHRoom(): UseCAHRoomReturn {
   )
 
   const leaveRoom = useCallback(async () => {
-    // Remove this player from the Supabase game state using optimistic locking
+    // Remove this player from the Supabase game state using optimistic locking with retry
     if (gameStateRef.current && roomCode && playerId && supabase) {
-      const currentState = gameStateRef.current
-      const currentVersion = versionRef.current
-      const newState = applyAction(currentState, { type: 'REMOVE_PLAYER', playerId })
-      if (newState !== currentState) {
-        await supabase
+      const MAX_RETRIES = 3
+      let currentState: GameState | null = gameStateRef.current
+      let currentVersion = versionRef.current
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (!currentState) break
+        const newState = applyAction(currentState, { type: 'REMOVE_PLAYER', playerId })
+        if (newState === currentState) break
+
+        const { data } = await supabase
           .from('cah_rooms')
           .update({ state: newState, version: currentVersion + 1 })
           .eq('code', roomCode)
           .eq('version', currentVersion)
+          .select('version')
+
+        if (data && data.length > 0) break
+
+        if (attempt < MAX_RETRIES) {
+          const { data: fresh } = await supabase
+            .from('cah_rooms')
+            .select('state, version')
+            .eq('code', roomCode)
+            .single()
+          if (!fresh) break
+          currentState = fresh.state as GameState
+          currentVersion = fresh.version as number
+        }
       }
     }
 
@@ -280,7 +302,7 @@ export function useCAHRoom(): UseCAHRoomReturn {
     setError(null)
     clearSession()
     setSavedSession(null)
-  }, [gameState, roomCode, playerId])
+  }, [roomCode, playerId])
 
   useEffect(() => {
     return () => {
