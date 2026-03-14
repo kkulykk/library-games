@@ -10,6 +10,7 @@ import {
   type GameState,
   type Player,
 } from './logic'
+import { GameStateSchema } from './schema'
 
 const SESSION_KEY = 'cah_session'
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
@@ -95,7 +96,12 @@ export function useCAHRoom(): UseCAHRoomReturn {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'cah_rooms', filter: `code=eq.${code}` },
         (payload) => {
-          setStateAndRef(payload.new.state as GameState, payload.new.version as number)
+          const parsed = GameStateSchema.safeParse(payload.new.state)
+          if (!parsed.success) {
+            console.error('[cah] Invalid GameState payload:', parsed.error)
+            return
+          }
+          setStateAndRef(parsed.data, payload.new.version as number)
         }
       )
       .subscribe()
@@ -145,7 +151,14 @@ export function useCAHRoom(): UseCAHRoomReturn {
       return
     }
 
-    const currentState = data.state as GameState
+    const parsedCurrent = GameStateSchema.safeParse(data.state)
+    if (!parsedCurrent.success) {
+      console.error('[cah] Invalid GameState in joinRoom:', parsedCurrent.error)
+      setError('Room data is invalid. Try again.')
+      setStatus('error')
+      return
+    }
+    const currentState = parsedCurrent.data
 
     if (currentState.phase !== 'lobby') {
       setError('This game has already started.')
@@ -203,7 +216,15 @@ export function useCAHRoom(): UseCAHRoomReturn {
       return
     }
 
-    const state = data.state as GameState
+    const parsedState = GameStateSchema.safeParse(data.state)
+    if (!parsedState.success) {
+      console.error('[cah] Invalid GameState in restoreSession:', parsedState.error)
+      clearSession()
+      setSavedSession(null)
+      setStatus('idle')
+      return
+    }
+    const state = parsedState.data
     const stillInGame = state.players.some((p) => p.id === session.playerId)
     if (!stillInGame) {
       clearSession()
@@ -248,7 +269,12 @@ export function useCAHRoom(): UseCAHRoomReturn {
             .eq('code', roomCode)
             .single()
           if (!fresh) return
-          currentState = fresh.state as GameState
+          const parsedFresh = GameStateSchema.safeParse(fresh.state)
+          if (!parsedFresh.success) {
+            console.error('[cah] Invalid GameState in dispatch retry:', parsedFresh.error)
+            return
+          }
+          currentState = parsedFresh.data
           currentVersion = fresh.version as number
           setStateAndRef(currentState, currentVersion)
         } else {
@@ -287,7 +313,12 @@ export function useCAHRoom(): UseCAHRoomReturn {
             .eq('code', roomCode)
             .single()
           if (!fresh) break
-          currentState = fresh.state as GameState
+          const parsedFresh = GameStateSchema.safeParse(fresh.state)
+          if (!parsedFresh.success) {
+            console.error('[cah] Invalid GameState in leaveRoom retry:', parsedFresh.error)
+            break
+          }
+          currentState = parsedFresh.data
           currentVersion = fresh.version as number
         }
       }

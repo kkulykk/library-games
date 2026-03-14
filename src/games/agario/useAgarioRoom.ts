@@ -12,6 +12,7 @@ import {
   type GameState,
   type LobbyPlayer,
 } from './logic'
+import { BroadcastMessageSchema, GameStateSchema } from './schema'
 
 const SESSION_KEY = 'agario_session'
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
@@ -110,7 +111,12 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
           filter: `code=eq.${code}`,
         },
         (payload) => {
-          setStateAndRef(payload.new.state as GameState, payload.new.version as number)
+          const parsed = GameStateSchema.safeParse(payload.new.state)
+          if (!parsed.success) {
+            console.error('[agario] Invalid GameState payload:', parsed.error)
+            return
+          }
+          setStateAndRef(parsed.data, payload.new.version as number)
         }
       )
       .subscribe()
@@ -121,7 +127,12 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
       .channel(`agario-game:${code}`)
       .on('broadcast', { event: 'game' }, (payload) => {
         if (onBroadcast.current) {
-          onBroadcast.current(payload.payload as BroadcastMessage)
+          const parsed = BroadcastMessageSchema.safeParse(payload.payload)
+          if (!parsed.success) {
+            console.error('[agario] Invalid BroadcastMessage payload:', parsed.error)
+            return
+          }
+          onBroadcast.current(parsed.data)
         }
       })
       .subscribe()
@@ -179,7 +190,14 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
       return
     }
 
-    const currentState = data.state as GameState
+    const parsedCurrent = GameStateSchema.safeParse(data.state)
+    if (!parsedCurrent.success) {
+      console.error('[agario] Invalid GameState in joinRoom:', parsedCurrent.error)
+      setError('Room data is invalid. Try again.')
+      setStatus('error')
+      return
+    }
+    const currentState = parsedCurrent.data
 
     if (currentState.phase !== 'lobby') {
       setError('This game has already started.')
@@ -242,7 +260,15 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
       return
     }
 
-    const state = data.state as GameState
+    const parsedState = GameStateSchema.safeParse(data.state)
+    if (!parsedState.success) {
+      console.error('[agario] Invalid GameState in restoreSession:', parsedState.error)
+      clearSession()
+      setSavedSession(null)
+      setStatus('idle')
+      return
+    }
+    const state = parsedState.data
     const stillInGame = state.players.some((p) => p.id === session.playerId)
     if (!stillInGame) {
       clearSession()
@@ -287,7 +313,12 @@ export function useAgarioRoom(): UseAgarioRoomReturn {
             .eq('code', roomCode)
             .single()
           if (!fresh) return
-          currentState = fresh.state as GameState
+          const parsedFresh = GameStateSchema.safeParse(fresh.state)
+          if (!parsedFresh.success) {
+            console.error('[agario] Invalid GameState in dispatch retry:', parsedFresh.error)
+            return
+          }
+          currentState = parsedFresh.data
           currentVersion = fresh.version as number
           setStateAndRef(currentState, currentVersion)
         } else {
