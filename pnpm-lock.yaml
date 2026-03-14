@@ -10,6 +10,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.98.0
         version: 2.98.0
+      cah-cards:
+        specifier: ^1.0.0
+        version: 1.0.0
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1896,6 +1899,12 @@ packages:
     resolution:
       {
         integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==,
+      }
+
+  cah-cards@1.0.0:
+    resolution:
+      {
+        integrity: sha512-/X9DOYY3Hq8I2yywkBEKHKzYKWNoVJj5gElGbIsYI4mWaUNamPVAxjD4QEy1YsgoXD/cX+lb8m6+9J9iiv0DoQ==,
       }
 
   call-bind-apply-helpers@1.0.2:
@@ -6721,6 +6730,8 @@ snapshots:
       node-int64: 0.4.0
 
   buffer-from@1.1.2: {}
+
+  cah-cards@1.0.0: {}
 
   call-bind-apply-helpers@1.0.2:
     dependencies:

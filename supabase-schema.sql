@@ -135,3 +135,36 @@ create policy "insert agario rooms" on agario_rooms
 create policy "update agario rooms" on agario_rooms for update using (true);
 
 -- delete from agario_rooms where updated_at < now() - interval '24 hours';
+
+-- ─── Cards Against Humanity rooms table ─────────────────────────────────────
+
+create table if not exists cah_rooms (
+  id         uuid        default gen_random_uuid() primary key,
+  code       text        unique not null,
+  state      jsonb       not null,
+  updated_at timestamptz default now()
+);
+
+create or replace trigger cah_rooms_updated_at
+  before update on cah_rooms
+  for each row execute function update_updated_at();
+
+create or replace trigger cah_rooms_protect_immutable
+  before update on cah_rooms
+  for each row execute function protect_immutable_columns();
+
+alter publication supabase_realtime add table cah_rooms;
+
+alter table cah_rooms enable row level security;
+
+create policy "select cah rooms" on cah_rooms for select using (true);
+
+create policy "insert cah rooms" on cah_rooms
+  for insert with check (
+    code ~ '^[A-Z0-9]{4}$'
+    and state is not null
+  );
+
+create policy "update cah rooms" on cah_rooms for update using (true);
+
+-- delete from cah_rooms where updated_at < now() - interval '24 hours';

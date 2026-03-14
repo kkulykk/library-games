@@ -148,4 +148,14 @@ export const games: GameMeta[] = [
     category: 'online-multiplayer',
     emoji: '♟️',
   },
+  {
+    slug: 'cards-against-humanity',
+    title: 'Cards Against Humanity',
+    description:
+      'A party game for horrible people. Fill in the blanks with the most outrageous answers.',
+    tags: ['multiplayer', 'party', 'cards'],
+    status: 'live',
+    category: 'online-multiplayer',
+    emoji: '🃏',
+  },
 ]
