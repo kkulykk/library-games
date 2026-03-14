@@ -10,6 +10,7 @@ import {
   type GameState,
   type Player,
 } from './logic'
+import { GameStateSchema } from './schema'
 
 const SESSION_KEY = 'skribbl_session'
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
@@ -100,7 +101,12 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
           filter: `code=eq.${code}`,
         },
         (payload) => {
-          setStateAndRef(payload.new.state as GameState, payload.new.version as number)
+          const parsed = GameStateSchema.safeParse(payload.new.state)
+          if (!parsed.success) {
+            console.error('[skribbl] Invalid GameState payload:', parsed.error)
+            return
+          }
+          setStateAndRef(parsed.data as GameState, payload.new.version as number)
         }
       )
       .subscribe()
@@ -152,7 +158,14 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
       return
     }
 
-    const currentState = data.state as GameState
+    const parsedCurrent = GameStateSchema.safeParse(data.state)
+    if (!parsedCurrent.success) {
+      console.error('[skribbl] Invalid GameState in joinRoom:', parsedCurrent.error)
+      setError('Room data is invalid. Try again.')
+      setStatus('error')
+      return
+    }
+    const currentState = parsedCurrent.data as GameState
 
     if (currentState.phase !== 'lobby') {
       setError('This game has already started.')
@@ -210,7 +223,15 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
       return
     }
 
-    const state = data.state as GameState
+    const parsedState = GameStateSchema.safeParse(data.state)
+    if (!parsedState.success) {
+      console.error('[skribbl] Invalid GameState in restoreSession:', parsedState.error)
+      clearSession()
+      setSavedSession(null)
+      setStatus('idle')
+      return
+    }
+    const state = parsedState.data as GameState
     const stillInGame = state.players.some((p) => p.id === session.playerId)
     if (!stillInGame) {
       clearSession()
@@ -255,7 +276,12 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
             .eq('code', roomCode)
             .single()
           if (!fresh) return
-          currentState = fresh.state as GameState
+          const parsedFresh = GameStateSchema.safeParse(fresh.state)
+          if (!parsedFresh.success) {
+            console.error('[skribbl] Invalid GameState in dispatch retry:', parsedFresh.error)
+            return
+          }
+          currentState = parsedFresh.data as GameState
           currentVersion = fresh.version as number
           setStateAndRef(currentState, currentVersion)
         } else {
