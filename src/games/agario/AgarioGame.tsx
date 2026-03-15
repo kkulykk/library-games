@@ -672,7 +672,8 @@ export function AgarioGame() {
             msg.killedId === playerId
               ? mySnakeRef.current
               : otherSnakesRef.current.get(msg.killedId)
-          if (killer && victim && killer.alive && victim.segments.length > 0) {
+          if (!killer || !victim) break // Unknown snake — reject forged kill
+          if (killer.alive && victim.segments.length > 0) {
             const maxDist = (HEAD_RADIUS + BODY_RADIUS) * 4
             const headPos = killer.segments[0]
             const isPlausible = victim.segments.some(
