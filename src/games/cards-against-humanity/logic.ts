@@ -196,8 +196,10 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     const allDone = nonCzar.every((p) => newSubmittedIds.includes(p.id))
 
     if (allDone) {
-      // Move to judging phase — anonymize submissions so clients can't see
-      // which player submitted which cards
+      // Move to judging phase — anonymize submissions so clients can't
+      // trivially see which player submitted which cards.
+      // NOTE: _rm is obfuscation (base64), not encryption — a determined
+      // cheater can still decode it, but it prevents casual devtools exposure.
       const playerOrder = shuffle(Object.keys(newSubmissions))
       const shuffledSubmissions = playerOrder.map((pid) => newSubmissions[pid])
       const revealOrder = playerOrder.map((_, i) => String(i))
