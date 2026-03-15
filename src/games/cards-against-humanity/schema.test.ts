@@ -7,15 +7,19 @@ const validGameState = {
   blackCard: null,
   hands: {},
   submissions: {},
+  submittedPlayerIds: [],
+  shuffledSubmissions: [],
   revealOrder: [],
   revealIndex: -1,
   roundWinnerId: null,
+  roundWinnerCards: [],
   scores: {},
   pointsToWin: 7,
   winnerId: null,
   blackDeck: [],
   whiteDeck: [],
   handSize: 10,
+  _rm: '',
 }
 
 describe('CAH GameStateSchema', () => {
