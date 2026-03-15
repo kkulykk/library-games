@@ -128,15 +128,21 @@ describe('PICK_WORD', () => {
   it('transitions to drawing phase with encoded word', () => {
     const state = startedGame()
     const drawer = getCurrentDrawer(state)!
-    const word = state.wordChoices[0]
+    const word = state.wordChoices[0] // already encoded
     const next = applyAction(state, { type: 'PICK_WORD', playerId: drawer.id, word })
     expect(next.phase).toBe('drawing')
-    // Word should be encoded (not plaintext) in state
-    expect(next.word).toBe(encodeWord(word))
-    expect(next.word).not.toBe(word)
-    // But decoding should recover the original
-    expect(decodeWord(next.word!)).toBe(word)
-    expect(next.hint).toBeTruthy()
+    // Word should remain encoded (same as in wordChoices, no double-encoding)
+    expect(next.word).toBe(word)
+    // Decoding should recover the plaintext
+    const plainWord = decodeWord(word)
+    expect(decodeWord(next.word!)).toBe(plainWord)
+    // Hint should match the plaintext word length, not the encoded form
+    expect(next.hint).toBe(
+      plainWord
+        .split('')
+        .map((ch) => (ch === ' ' ? '  ' : '_'))
+        .join(' ')
+    )
     expect(next.drawStartTime).toBeTruthy()
   })
 

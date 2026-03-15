@@ -179,7 +179,7 @@ function startPickingPhase(state: GameState): GameState {
   return {
     ...state,
     phase: 'picking',
-    wordChoices: choices,
+    wordChoices: choices.map(encodeWord),
     word: null,
     hint: '',
     strokes: [],
@@ -243,12 +243,14 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     const drawer = getCurrentDrawer(state)
     if (drawer?.id !== action.playerId) return state
     if (!state.wordChoices.includes(action.word)) return state
+    // action.word is already encoded (from wordChoices); decode for hint
+    const plainWord = decodeWord(action.word)
     return {
       ...state,
       phase: 'drawing',
-      word: encodeWord(action.word),
+      word: action.word,
       wordChoices: [],
-      hint: generateHint(action.word),
+      hint: generateHint(plainWord),
       drawStartTime: Date.now(),
     }
   }

@@ -675,7 +675,7 @@ function WordPicker({ words, onPick }: WordPickerProps) {
             onClick={() => onPick(word)}
             className="rounded-xl bg-secondary px-6 py-4 text-sm font-bold transition-all hover:bg-primary hover:text-primary-foreground hover:shadow-lg active:scale-95"
           >
-            {word}
+            {decodeWord(word)}
           </button>
         ))}
       </div>
