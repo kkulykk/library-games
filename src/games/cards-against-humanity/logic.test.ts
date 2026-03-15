@@ -255,6 +255,33 @@ describe('SUBMIT_CARDS', () => {
     expect(after2.revealOrder).toHaveLength(2)
     expect(after2.revealIndex).toBe(-1)
   })
+
+  it('anonymizes submissions during judging phase', () => {
+    const game = startedGame()
+    const pick = game.blackCard!.pick
+
+    let state = applyAction(game, {
+      type: 'SUBMIT_CARDS',
+      playerId: 'p2',
+      cardIndices: game.hands['p2'].slice(0, pick),
+    })
+    state = applyAction(state, {
+      type: 'SUBMIT_CARDS',
+      playerId: 'p3',
+      cardIndices: state.hands['p3'].slice(0, pick),
+    })
+    expect(state.phase).toBe('judging')
+    // Player-ID-keyed submissions should be cleared
+    expect(Object.keys(state.submissions)).toHaveLength(0)
+    // Anonymous shuffled submissions should exist
+    expect(state.shuffledSubmissions).toHaveLength(2)
+    // RevealOrder should use string indices, not player IDs
+    expect(state.revealOrder).toEqual(expect.arrayContaining(['0', '1']))
+    expect(state.revealOrder).not.toContain('p2')
+    expect(state.revealOrder).not.toContain('p3')
+    // Encoded reveal map should exist
+    expect(state._rm).toBeTruthy()
+  })
 })
 
 describe('REVEAL_NEXT', () => {
@@ -322,14 +349,19 @@ describe('PICK_WINNER', () => {
 
   it('allows czar to pick a winner', () => {
     const game = setupAllRevealed()
+    // Use the first anonymous index from revealOrder
+    const winnerId = game.revealOrder[0]
     const result = applyAction(game, {
       type: 'PICK_WINNER',
       playerId: 'p1',
-      winnerId: 'p2',
+      winnerId,
     })
     expect(result.phase).toBe('reveal')
-    expect(result.roundWinnerId).toBe('p2')
-    expect(result.scores['p2']).toBe(1)
+    // roundWinnerId should be an actual player ID (p2 or p3)
+    expect(['p2', 'p3']).toContain(result.roundWinnerId)
+    expect(result.scores[result.roundWinnerId!]).toBe(1)
+    // roundWinnerCards should be populated
+    expect(result.roundWinnerCards.length).toBeGreaterThan(0)
   })
 
   it('rejects pick from non-czar', () => {
@@ -337,17 +369,17 @@ describe('PICK_WINNER', () => {
     const result = applyAction(game, {
       type: 'PICK_WINNER',
       playerId: 'p2',
-      winnerId: 'p3',
+      winnerId: game.revealOrder[0],
     })
     expect(result).toBe(game)
   })
 
-  it('rejects winner who did not submit', () => {
+  it('rejects invalid winner index', () => {
     const game = setupAllRevealed()
     const result = applyAction(game, {
       type: 'PICK_WINNER',
       playerId: 'p1',
-      winnerId: 'p1', // czar can't win
+      winnerId: '99', // not in revealOrder
     })
     expect(result).toBe(game)
   })
@@ -370,18 +402,21 @@ describe('PICK_WINNER', () => {
     const result = applyAction(game, {
       type: 'PICK_WINNER',
       playerId: 'p1',
-      winnerId: 'p2',
+      winnerId: game.revealOrder[0],
     })
     expect(result).toBe(game)
   })
 
   it('ends game when player reaches pointsToWin', () => {
     let game = setupAllRevealed()
+    // Decode the reveal map to find which index maps to which player
+    const playerOrder: string[] = JSON.parse(atob(game._rm))
+    const p2Index = playerOrder.indexOf('p2')
     game = { ...game, scores: { ...game.scores, p2: 6 }, pointsToWin: 7 }
     const result = applyAction(game, {
       type: 'PICK_WINNER',
       playerId: 'p1',
-      winnerId: 'p2',
+      winnerId: String(p2Index),
     })
     expect(result.phase).toBe('finished')
     expect(result.winnerId).toBe('p2')
@@ -405,7 +440,11 @@ describe('NEXT_ROUND', () => {
     })
     game = applyAction(game, { type: 'REVEAL_NEXT', playerId: 'p1' })
     game = applyAction(game, { type: 'REVEAL_NEXT', playerId: 'p1' })
-    game = applyAction(game, { type: 'PICK_WINNER', playerId: 'p1', winnerId: 'p2' })
+    game = applyAction(game, {
+      type: 'PICK_WINNER',
+      playerId: 'p1',
+      winnerId: game.revealOrder[0],
+    })
     return game
   }
 

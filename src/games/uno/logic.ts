@@ -222,6 +222,29 @@ export function startGame(state: GameState): GameState {
   }
 }
 
+// ─── Client-side redaction ───────────────────────────────────────────────────
+// Strip opponent hand details and draw pile from client state to prevent
+// casual inspection via devtools. Only the current player's hand is kept.
+
+const HIDDEN_CARD: Card = { id: 'hidden', color: 'wild', value: 'wild' }
+
+export function redactForPlayer(state: GameState, currentPlayerId: string): GameState {
+  if (state.phase !== 'playing') return state
+
+  const hands: Record<string, Card[]> = {}
+  for (const [pid, hand] of Object.entries(state.hands)) {
+    if (pid === currentPlayerId) {
+      hands[pid] = hand
+    } else {
+      hands[pid] = hand.map((_, i) => ({ ...HIDDEN_CARD, id: `hidden-${i}` }))
+    }
+  }
+
+  const drawPile = state.drawPile.map((_, i) => ({ ...HIDDEN_CARD, id: `hidden-draw-${i}` }))
+
+  return { ...state, hands, drawPile }
+}
+
 // ─── Action dispatcher ───────────────────────────────────────────────────────
 
 export function applyAction(state: GameState, action: GameAction): GameState {

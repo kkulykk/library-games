@@ -475,17 +475,17 @@ function GameBoard({
         </div>
       )}
 
-      {/* Judging phase: revealed submissions */}
+      {/* Judging phase: revealed submissions (anonymized) */}
       {gameState.phase === 'judging' && (
         <div className="flex w-full flex-col gap-3">
-          {gameState.revealOrder.map((submitterId, idx) => {
+          {gameState.revealOrder.map((anonId, idx) => {
             const isRevealed = idx <= gameState.revealIndex
-            const cards = gameState.submissions[submitterId] ?? []
+            const cards = gameState.shuffledSubmissions[idx] ?? []
 
             if (!isRevealed) {
               return (
                 <div
-                  key={submitterId}
+                  key={anonId}
                   className="flex min-h-[80px] items-center justify-center rounded-2xl border-2 border-dashed border-border bg-secondary/30"
                 >
                   <span className="text-sm text-muted-foreground">?</span>
@@ -495,10 +495,10 @@ function GameBoard({
 
             return (
               <button
-                key={submitterId}
+                key={anonId}
                 onClick={() => {
                   if (amCzar && gameState.revealIndex >= gameState.revealOrder.length - 1) {
-                    onPickWinner(submitterId)
+                    onPickWinner(anonId)
                   }
                 }}
                 disabled={!amCzar || gameState.revealIndex < gameState.revealOrder.length - 1}
@@ -533,7 +533,7 @@ function GameBoard({
       {gameState.phase === 'reveal' && (
         <div className="animate-cah-fade-in flex w-full flex-col items-center gap-4">
           <div className="flex w-full gap-2 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-500/50 dark:bg-amber-500/10">
-            {(gameState.submissions[gameState.roundWinnerId!] ?? []).map((cardIdx) => (
+            {(gameState.roundWinnerCards ?? []).map((cardIdx) => (
               <div key={cardIdx} className="flex-1 text-sm font-bold sm:text-base">
                 {getWhiteCardText(cardIdx)}
               </div>

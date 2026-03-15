@@ -70,6 +70,24 @@ export function pickRandomWords(count: number, exclude: string[] = []): string[]
   return shuffled.slice(0, count)
 }
 
+// ─── Word encoding ───────────────────────────────────────────────────────────
+// Encode the word before storing in shared state to prevent casual devtools
+// inspection by non-drawing players. This is obfuscation, not encryption —
+// determined cheaters can still decode, but it prevents accidental exposure.
+
+export function encodeWord(word: string): string {
+  return btoa(unescape(encodeURIComponent(word)))
+}
+
+export function decodeWord(encoded: string): string {
+  if (!encoded) return ''
+  try {
+    return decodeURIComponent(escape(atob(encoded)))
+  } catch {
+    return encoded
+  }
+}
+
 export function generateHint(word: string): string {
   return word
     .split('')
@@ -228,7 +246,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     return {
       ...state,
       phase: 'drawing',
-      word: action.word,
+      word: encodeWord(action.word),
       wordChoices: [],
       hint: generateHint(action.word),
       drawStartTime: Date.now(),
@@ -267,7 +285,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     if (!player) return state
 
     const guess = action.text.trim().toLowerCase()
-    const answer = (state.word ?? '').toLowerCase()
+    const answer = decodeWord(state.word ?? '').toLowerCase()
 
     // Check if correct
     if (guess === answer) {

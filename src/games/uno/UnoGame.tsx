@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useUnoRoom } from './useUnoRoom'
@@ -9,6 +9,7 @@ import {
   getPlayableCards,
   getCurrentPlayer,
   getTopCard,
+  redactForPlayer,
   type Card,
   type CardColor,
   type GameState,
@@ -874,6 +875,13 @@ export function UnoGame() {
     leaveRoom,
   } = useUnoRoom()
 
+  // Redact opponent hands from client state to prevent devtools inspection.
+  // Must be called unconditionally (React hooks rules).
+  const redactedState = useMemo(
+    () => (gameState && playerId ? redactForPlayer(gameState, playerId) : gameState),
+    [gameState, playerId]
+  )
+
   if (!isSupabaseConfigured) return <SetupRequired />
 
   const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
@@ -927,7 +935,7 @@ export function UnoGame() {
     <>
       <UnoStyles />
       <GameBoard
-        gameState={gameState}
+        gameState={redactedState!}
         playerId={playerId}
         onDispatch={(cardId, chosenColor) =>
           dispatch({ type: 'PLAY_CARD', playerId, cardId, chosenColor, now: Date.now() })
