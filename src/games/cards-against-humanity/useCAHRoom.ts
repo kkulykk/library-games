@@ -29,16 +29,22 @@ export function useCAHRoom(): UseCAHRoomReturn {
     createLobbyState: (host) => createLobbyState(host as Player),
     createPlayer: ({ id, name, isHost }) => ({ id, name, isHost }) as Player,
     addPlayer,
-    onBeforeLeave: async ({ gameState, roomCode, playerId, applyAction: apply, stateSchema }) => {
+    onBeforeLeave: async ({
+      gameState,
+      roomCode,
+      playerId,
+      tableName,
+      applyAction: apply,
+      stateSchema,
+    }) => {
       if (!gameState || !roomCode || !playerId || !supabase) return
 
       const MAX_RETRIES = 3
       let currentState: GameState | null = gameState
       let currentVersion = 0
 
-      // Fetch current version
       const { data: initial } = await supabase
-        .from('cah_rooms')
+        .from(tableName)
         .select('version')
         .eq('code', roomCode)
         .single()
@@ -51,7 +57,7 @@ export function useCAHRoom(): UseCAHRoomReturn {
         if (newState === currentState) break
 
         const { data } = await supabase
-          .from('cah_rooms')
+          .from(tableName)
           .update({ state: newState, version: currentVersion + 1 })
           .eq('code', roomCode)
           .eq('version', currentVersion)
@@ -61,7 +67,7 @@ export function useCAHRoom(): UseCAHRoomReturn {
 
         if (attempt < MAX_RETRIES) {
           const { data: fresh } = await supabase
-            .from('cah_rooms')
+            .from(tableName)
             .select('state, version')
             .eq('code', roomCode)
             .single()

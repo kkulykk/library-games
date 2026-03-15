@@ -73,6 +73,7 @@ export interface GameRoomConfig<TState extends BaseGameState, TAction, TBroadcas
     gameState: TState | null
     roomCode: string | null
     playerId: string | null
+    tableName: string
     applyAction: (state: TState, action: TAction) => TState
     stateSchema: ZodType<TState>
   }) => Promise<void>
@@ -191,14 +192,14 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
 
       const id = crypto.randomUUID()
       const code = generateRoomCode()
-      const host = cfg.createPlayer({ id, name: playerName, isHost: true, playerIndex: 0 })
-      const initialState = cfg.createLobbyState(host as { id: string; name: string; isHost: true })
+      const initialState = cfg.createLobbyState({ id, name: playerName, isHost: true as const })
 
-      const { error: err } = await supabase
+      const { data: inserted, error: err } = await supabase
         .from(cfg.tableName)
         .insert({ code, state: initialState })
+        .select('version')
 
-      if (err) {
+      if (err || !inserted || inserted.length === 0) {
         setError('Failed to create room. Try again.')
         setStatus('error')
         return
@@ -206,7 +207,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
 
       setPlayerId(id)
       setRoomCode(code)
-      setStateAndRef(initialState, 1)
+      setStateAndRef(initialState, inserted[0].version as number)
       setStatus('connected')
       saveSession(cfg.sessionKey, { roomCode: code, playerId: id, playerName })
       subscribeToRoom(code)
@@ -385,27 +386,30 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
 
   const leaveRoom = useCallback(async () => {
     const cfg = configRef.current
-    if (cfg.onBeforeLeave) {
-      await cfg.onBeforeLeave({
-        gameState: gameStateRef.current,
-        roomCode,
-        playerId,
-        applyAction: cfg.applyAction,
-        stateSchema: cfg.stateSchema,
-      })
+    try {
+      if (cfg.onBeforeLeave) {
+        await cfg.onBeforeLeave({
+          gameState: gameStateRef.current,
+          roomCode,
+          playerId,
+          tableName: cfg.tableName,
+          applyAction: cfg.applyAction,
+          stateSchema: cfg.stateSchema,
+        })
+      }
+    } finally {
+      dbChannelRef.current?.unsubscribe()
+      dbChannelRef.current = null
+      broadcastChannelRef.current?.unsubscribe()
+      broadcastChannelRef.current = null
+      setStateAndRef(null, 0)
+      setPlayerId(null)
+      setRoomCode(null)
+      setStatus('idle')
+      setError(null)
+      clearSession(cfg.sessionKey)
+      setSavedSession(null)
     }
-
-    dbChannelRef.current?.unsubscribe()
-    dbChannelRef.current = null
-    broadcastChannelRef.current?.unsubscribe()
-    broadcastChannelRef.current = null
-    setStateAndRef(null, 0)
-    setPlayerId(null)
-    setRoomCode(null)
-    setStatus('idle')
-    setError(null)
-    clearSession(cfg.sessionKey)
-    setSavedSession(null)
   }, [roomCode, playerId, setStateAndRef])
 
   useEffect(() => {
