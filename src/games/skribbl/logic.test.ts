@@ -9,6 +9,8 @@ import {
   calculateDrawerScore,
   pickRandomWords,
   getCurrentDrawer,
+  encodeWord,
+  decodeWord,
   type Player,
   type GameState,
 } from './logic'
@@ -123,13 +125,17 @@ describe('START_GAME', () => {
 })
 
 describe('PICK_WORD', () => {
-  it('transitions to drawing phase', () => {
+  it('transitions to drawing phase with encoded word', () => {
     const state = startedGame()
     const drawer = getCurrentDrawer(state)!
     const word = state.wordChoices[0]
     const next = applyAction(state, { type: 'PICK_WORD', playerId: drawer.id, word })
     expect(next.phase).toBe('drawing')
-    expect(next.word).toBe(word)
+    // Word should be encoded (not plaintext) in state
+    expect(next.word).toBe(encodeWord(word))
+    expect(next.word).not.toBe(word)
+    // But decoding should recover the original
+    expect(decodeWord(next.word!)).toBe(word)
     expect(next.hint).toBeTruthy()
     expect(next.drawStartTime).toBeTruthy()
   })
@@ -209,7 +215,7 @@ describe('GUESS', () => {
 
   it('correct guess awards score and adds system message', () => {
     const state = drawingState()
-    const word = state.word!
+    const word = decodeWord(state.word!)
     const next = applyAction(state, { type: 'GUESS', playerId: 'p2', text: word })
     expect(next.guessedPlayers).toContain('p2')
     expect(next.players.find((p) => p.id === 'p2')!.score).toBeGreaterThan(0)
@@ -227,13 +233,14 @@ describe('GUESS', () => {
   it('drawer cannot guess', () => {
     const state = drawingState()
     const drawer = getCurrentDrawer(state)!
-    const next = applyAction(state, { type: 'GUESS', playerId: drawer.id, text: state.word! })
+    const word = decodeWord(state.word!)
+    const next = applyAction(state, { type: 'GUESS', playerId: drawer.id, text: word })
     expect(next.guessedPlayers).toHaveLength(0)
   })
 
   it('player cannot guess twice', () => {
     const state = drawingState()
-    const word = state.word!
+    const word = decodeWord(state.word!)
     let next = applyAction(state, { type: 'GUESS', playerId: 'p2', text: word })
     const score = next.players.find((p) => p.id === 'p2')!.score
     next = applyAction(next, { type: 'GUESS', playerId: 'p2', text: word })
@@ -242,7 +249,7 @@ describe('GUESS', () => {
 
   it('ends turn when all players guess correctly', () => {
     const state = drawingState()
-    const word = state.word!
+    const word = decodeWord(state.word!)
     let next = applyAction(state, { type: 'GUESS', playerId: 'p2', text: word })
     next = applyAction(next, { type: 'GUESS', playerId: 'p3', text: word })
     expect(next.phase).toBe('round-end')
@@ -250,7 +257,7 @@ describe('GUESS', () => {
 
   it('case insensitive matching', () => {
     const state = drawingState()
-    const word = state.word!
+    const word = decodeWord(state.word!)
     const next = applyAction(state, { type: 'GUESS', playerId: 'p2', text: word.toUpperCase() })
     expect(next.guessedPlayers).toContain('p2')
   })
@@ -391,6 +398,24 @@ describe('calculateDrawerScore', () => {
     const score = calculateDrawerScore(1, 3)
     expect(score).toBeGreaterThan(0)
     expect(score).toBeLessThan(100)
+  })
+})
+
+describe('encodeWord / decodeWord', () => {
+  it('round-trips a simple word', () => {
+    expect(decodeWord(encodeWord('apple'))).toBe('apple')
+  })
+
+  it('round-trips a phrase with spaces', () => {
+    expect(decodeWord(encodeWord('ice cream'))).toBe('ice cream')
+  })
+
+  it('encoded form differs from original', () => {
+    expect(encodeWord('apple')).not.toBe('apple')
+  })
+
+  it('decodeWord returns empty string for empty input', () => {
+    expect(decodeWord('')).toBe('')
   })
 })
 

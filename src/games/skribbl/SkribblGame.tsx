@@ -4,7 +4,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useSkribblRoom } from './useSkribblRoom'
-import { getCurrentDrawer, type DrawStroke, type DrawPoint, type GameState } from './logic'
+import {
+  getCurrentDrawer,
+  decodeWord,
+  type DrawStroke,
+  type DrawPoint,
+  type GameState,
+} from './logic'
 
 // ─── Drawing Canvas ───────────────────────────────────────────────────────────
 
@@ -720,7 +726,8 @@ function RoundEndScreen({ gameState, playerId, onNext, onLeave }: RoundEndProps)
           {allGuessed ? 'Everyone guessed it!' : 'Time\u2019s up!'}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          The word was: <span className="font-bold text-foreground">{gameState.word}</span>
+          The word was:{' '}
+          <span className="font-bold text-foreground">{decodeWord(gameState.word ?? '')}</span>
         </p>
         <p className="text-xs text-muted-foreground">
           {drawer?.name} was drawing &middot; Round {gameState.round}/{gameState.totalRounds}
@@ -847,7 +854,7 @@ function GameBoardScreen({ gameState, playerId, dispatch, onLeave }: GameBoardPr
         <div className="flex-1 text-center">
           {isDrawer ? (
             <span className="text-sm font-bold">
-              Draw: <span className="text-primary">{gameState.word}</span>
+              Draw: <span className="text-primary">{decodeWord(gameState.word ?? '')}</span>
             </span>
           ) : (
             <span className="text-lg font-bold tracking-[0.3em]">{gameState.hint}</span>
