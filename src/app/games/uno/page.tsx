@@ -3,7 +3,7 @@ import { UnoGame } from '@/games/uno/UnoGame'
 
 export default function UnoPage() {
   return (
-    <GameLayout title="UNO">
+    <GameLayout title="UNO" slug="uno">
       <UnoGame />
     </GameLayout>
   )

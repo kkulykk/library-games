@@ -3,7 +3,7 @@ import { SnakeGame } from '@/games/snake/SnakeGame'
 
 export default function SnakePage() {
   return (
-    <GameLayout title="Snake">
+    <GameLayout title="Snake" slug="snake">
       <SnakeGame />
     </GameLayout>
   )
