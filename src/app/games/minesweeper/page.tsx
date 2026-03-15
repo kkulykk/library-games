@@ -3,7 +3,7 @@ import { MinesweeperGame } from '@/games/minesweeper/MinesweeperGame'
 
 export default function MinesweeperPage() {
   return (
-    <GameLayout title="Minesweeper">
+    <GameLayout title="Minesweeper" slug="minesweeper">
       <MinesweeperGame />
     </GameLayout>
   )

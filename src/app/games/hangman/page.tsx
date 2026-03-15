@@ -3,7 +3,7 @@ import { HangmanGame } from '@/games/hangman/HangmanGame'
 
 export default function HangmanPage() {
   return (
-    <GameLayout title="Hangman">
+    <GameLayout title="Hangman" slug="hangman">
       <HangmanGame />
     </GameLayout>
   )
