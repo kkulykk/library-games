@@ -3,7 +3,7 @@ import { SudokuGame } from '@/games/sudoku/SudokuGame'
 
 export default function SudokuPage() {
   return (
-    <GameLayout title="Sudoku">
+    <GameLayout title="Sudoku" slug="sudoku">
       <SudokuGame />
     </GameLayout>
   )

@@ -9,6 +9,7 @@ export interface GameMeta {
   status: GameStatus
   category: GameCategory
   emoji: string
+  rules: string[]
 }
 
 export const games: GameMeta[] = [
@@ -21,6 +22,14 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🟩',
+    rules: [
+      'Guess the hidden 5-letter word in 6 attempts',
+      'Type a valid word and press Enter to submit',
+      'Green = correct letter in the correct position',
+      'Yellow = correct letter in the wrong position',
+      'Gray = letter is not in the word',
+      'Use the color hints to narrow down your next guess',
+    ],
   },
   {
     slug: 'minesweeper',
@@ -30,6 +39,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '💣',
+    rules: [
+      'Click a cell to reveal it — numbers show how many adjacent mines there are',
+      'Right-click (or long-press) to flag a cell you think contains a mine',
+      'Clear all non-mine cells to win the game',
+      'If you click on a mine, the game is over',
+      'Use number clues to deduce which cells are safe',
+    ],
   },
   {
     slug: '2048',
@@ -39,6 +55,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🔢',
+    rules: [
+      'Use arrow keys to slide all tiles in one direction',
+      'When two tiles with the same number collide, they merge into one',
+      'A new tile (2 or 4) appears after each move',
+      'Reach the 2048 tile to win — or keep going for a higher score',
+      'The game ends when no more moves are possible',
+    ],
   },
   {
     slug: 'sudoku',
@@ -48,6 +71,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🔲',
+    rules: [
+      'Fill every empty cell with a digit from 1 to 9',
+      'Each row must contain all digits 1–9 without repeats',
+      'Each column must contain all digits 1–9 without repeats',
+      'Each 3×3 box must contain all digits 1–9 without repeats',
+      'Pre-filled numbers cannot be changed',
+    ],
   },
   {
     slug: 'memory',
@@ -57,6 +87,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🃏',
+    rules: [
+      'Click a card to flip it and reveal its symbol',
+      'Flip two cards per turn — if they match, they stay face up',
+      "If the two cards don't match, they flip back face down",
+      'Remember card positions to find all matching pairs',
+      'Match all pairs to win — try to do it in as few moves as possible',
+    ],
   },
   {
     slug: 'snake',
@@ -66,6 +103,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🐍',
+    rules: [
+      'Use arrow keys to steer the snake around the board',
+      'Eat food to grow longer and earn points',
+      "Don't crash into the walls or your own tail",
+      'The snake moves faster as you score more points',
+      'Survive as long as possible and aim for a high score',
+    ],
   },
   {
     slug: 'tetris',
@@ -75,6 +119,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🧱',
+    rules: [
+      'Use arrow keys to move and rotate falling pieces',
+      'Down arrow speeds up the drop, Up arrow rotates',
+      'Complete a full horizontal line to clear it and score points',
+      'Clearing multiple lines at once earns bonus points',
+      'The game ends when pieces stack to the top of the board',
+    ],
   },
   {
     slug: 'breakout',
@@ -84,6 +135,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🏓',
+    rules: [
+      'Move your paddle left and right to bounce the ball',
+      'Break all the bricks by hitting them with the ball',
+      "Don't let the ball fall below the paddle",
+      'Some bricks take multiple hits to break',
+      'Clear all bricks to advance to the next level',
+    ],
   },
   {
     slug: 'hangman',
@@ -93,6 +151,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🪢',
+    rules: [
+      'A secret word is chosen — you see only blank spaces',
+      "Click or type a letter to guess if it's in the word",
+      'Correct letters are revealed in their positions',
+      'Wrong guesses add a body part to the hangman drawing',
+      'Guess the full word before the drawing is complete (6 wrong guesses)',
+    ],
   },
   {
     slug: 'bounce',
@@ -102,6 +167,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '🟢',
+    rules: [
+      'Your character bounces automatically — use arrow keys to move left and right',
+      'Land on platforms to keep climbing higher',
+      'Collect stars for bonus points',
+      'Avoid falling off the bottom of the screen',
+      'Some platforms break or move — watch out!',
+    ],
   },
   {
     slug: 'tic-tac-toe',
@@ -111,6 +183,12 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'single-player',
     emoji: '⭕',
+    rules: [
+      'Players take turns placing X or O on a 3×3 grid',
+      'Get three of your marks in a row (horizontal, vertical, or diagonal) to win',
+      'If all 9 squares are filled with no winner, the game is a draw',
+      'Play against a friend locally or challenge the AI',
+    ],
   },
   {
     slug: 'skribbl',
@@ -120,6 +198,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'online-multiplayer',
     emoji: '🎨',
+    rules: [
+      'One player draws a word while others try to guess it',
+      'The drawer picks from three word options each round',
+      'Type your guesses in the chat — correct guesses earn points',
+      'Faster guesses score more points',
+      'Everyone takes turns drawing — highest total score wins',
+    ],
   },
   {
     slug: 'uno',
@@ -129,6 +214,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'online-multiplayer',
     emoji: '🎴',
+    rules: [
+      'Match the top card on the discard pile by color or number',
+      'Special cards: Skip, Reverse, Draw Two, Wild, and Wild Draw Four',
+      "If you can't play, draw a card from the deck",
+      'Say "UNO" when you have one card left',
+      'The first player to empty their hand wins the round',
+    ],
   },
   {
     slug: 'agario',
@@ -138,6 +230,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'online-multiplayer',
     emoji: '🐍',
+    rules: [
+      'Move your snake around the map to eat glowing food pellets',
+      'Eating food makes your snake grow longer',
+      'If another snake crashes into your body, they are eliminated',
+      'Boost your speed to cut off opponents — but you lose length',
+      'Be the longest snake on the server to top the leaderboard',
+    ],
   },
   {
     slug: 'cards-against-humanity',
@@ -147,6 +246,13 @@ export const games: GameMeta[] = [
     status: 'live',
     category: 'online-multiplayer',
     emoji: '🃏',
+    rules: [
+      'Each round, one player is the Card Czar and reads a black card prompt',
+      'Other players submit their funniest white card to fill in the blank',
+      'The Card Czar picks the best (or funniest) answer — that player earns a point',
+      'Everyone takes turns being the Card Czar',
+      'The player with the most points at the end wins',
+    ],
   },
   {
     slug: 'chess',
@@ -156,5 +262,12 @@ export const games: GameMeta[] = [
     status: 'coming-soon',
     category: 'online-multiplayer',
     emoji: '♟️',
+    rules: [
+      'Two players take turns moving pieces on an 8×8 board',
+      'Each piece type moves differently: pawns, rooks, knights, bishops, queen, king',
+      'Capture opponent pieces by moving to their square',
+      "Put the opponent's king in checkmate (no escape from attack) to win",
+      'Special moves include castling, en passant, and pawn promotion',
+    ],
   },
 ]
