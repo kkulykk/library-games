@@ -18,6 +18,7 @@ import {
   angleTo,
   checkSnakeHeadVsBody,
   checkSnakeVsBorder,
+  distanceBetween,
   checkFoodCollisions,
   snakeToFood,
   generateFood,
@@ -661,6 +662,26 @@ export function AgarioGame() {
           break
         }
         case 'snake_killed': {
+          // Validate proximity — reject fake kill messages from cheaters.
+          // Use generous tolerance (4x normal collision distance) for network latency.
+          const killer =
+            msg.killerId === playerId
+              ? mySnakeRef.current
+              : otherSnakesRef.current.get(msg.killerId)
+          const victim =
+            msg.killedId === playerId
+              ? mySnakeRef.current
+              : otherSnakesRef.current.get(msg.killedId)
+          if (!killer || !victim) break // Unknown snake — reject forged kill
+          if (killer.alive && victim.segments.length > 0) {
+            const maxDist = (HEAD_RADIUS + BODY_RADIUS) * 4
+            const headPos = killer.segments[0]
+            const isPlausible = victim.segments.some(
+              (seg) => distanceBetween(headPos, seg) < maxDist
+            )
+            if (!isPlausible) break // Reject suspicious kill
+          }
+
           if (msg.killedId === playerId && mySnakeRef.current) {
             mySnakeRef.current = {
               ...mySnakeRef.current,

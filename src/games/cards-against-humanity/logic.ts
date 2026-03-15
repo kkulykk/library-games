@@ -48,15 +48,19 @@ export function createLobbyState(host: Player): GameState {
     blackCard: null,
     hands: {},
     submissions: {},
+    submittedPlayerIds: [],
+    shuffledSubmissions: [],
     revealOrder: [],
     revealIndex: -1,
     roundWinnerId: null,
+    roundWinnerCards: [],
     scores: {},
     pointsToWin: 7,
     winnerId: null,
     blackDeck: [],
     whiteDeck: [],
     handSize: 10,
+    _rm: '',
   }
 }
 
@@ -109,13 +113,17 @@ export function startGame(state: GameState): GameState {
     blackCard,
     hands,
     submissions: {},
+    submittedPlayerIds: [],
+    shuffledSubmissions: [],
     revealOrder: [],
     revealIndex: -1,
     roundWinnerId: null,
+    roundWinnerCards: [],
     scores,
     winnerId: null,
     blackDeck: blackDeck.slice(1),
     whiteDeck: remaining,
+    _rm: '',
   }
 }
 
@@ -134,12 +142,12 @@ export function getNonCzarPlayers(state: GameState): Player[] {
 }
 
 export function hasSubmitted(state: GameState, playerId: string): boolean {
-  return playerId in state.submissions
+  return state.submittedPlayerIds.includes(playerId)
 }
 
 export function allSubmitted(state: GameState): boolean {
   const nonCzar = getNonCzarPlayers(state)
-  return nonCzar.every((p) => hasSubmitted(state, p.id))
+  return nonCzar.every((p) => state.submittedPlayerIds.includes(p.id))
 }
 
 export function getWhiteCardText(index: number): string {
@@ -181,21 +189,31 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     const newHand = hand.filter((idx) => !action.cardIndices.includes(idx))
     const newSubmissions = { ...state.submissions, [action.playerId]: action.cardIndices }
     const newHands = { ...state.hands, [action.playerId]: newHand }
+    const newSubmittedIds = [...state.submittedPlayerIds, action.playerId]
 
     // Check if all non-czar players have submitted
     const nonCzar = getNonCzarPlayers(state)
-    const allDone = nonCzar.every((p) => p.id in newSubmissions)
+    const allDone = nonCzar.every((p) => newSubmittedIds.includes(p.id))
 
     if (allDone) {
-      // Move to judging phase - shuffle submission order for anonymity
-      const revealOrder = shuffle(Object.keys(newSubmissions))
+      // Move to judging phase — anonymize submissions so clients can't
+      // trivially see which player submitted which cards.
+      // NOTE: _rm is obfuscation (base64), not encryption — a determined
+      // cheater can still decode it, but it prevents casual devtools exposure.
+      const playerOrder = shuffle(Object.keys(newSubmissions))
+      const shuffledSubmissions = playerOrder.map((pid) => newSubmissions[pid])
+      const revealOrder = playerOrder.map((_, i) => String(i))
+      const _rm = btoa(JSON.stringify(playerOrder))
       return {
         ...state,
         hands: newHands,
-        submissions: newSubmissions,
+        submissions: {},
+        submittedPlayerIds: newSubmittedIds,
+        shuffledSubmissions,
         phase: 'judging',
         revealOrder,
         revealIndex: -1,
+        _rm,
       }
     }
 
@@ -203,6 +221,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       ...state,
       hands: newHands,
       submissions: newSubmissions,
+      submittedPlayerIds: newSubmittedIds,
     }
   }
 
@@ -222,19 +241,28 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     if (!isCzar(state, action.playerId)) return state
     // Must have revealed all submissions
     if (state.revealIndex < state.revealOrder.length - 1) return state
-    if (!(action.winnerId in state.submissions)) return state
+    if (!state.revealOrder.includes(action.winnerId)) return state
+
+    // Decode anonymous mapping to find the actual player ID
+    const winnerIdx = parseInt(action.winnerId, 10)
+    const playerOrder: string[] = state._rm ? JSON.parse(atob(state._rm)) : []
+    const actualWinnerId = playerOrder[winnerIdx]
+    if (!actualWinnerId) return state
+
+    const winnerCards = state.shuffledSubmissions[winnerIdx] ?? []
 
     const newScores = { ...state.scores }
-    newScores[action.winnerId] = (newScores[action.winnerId] ?? 0) + 1
+    newScores[actualWinnerId] = (newScores[actualWinnerId] ?? 0) + 1
 
-    const isGameOver = newScores[action.winnerId] >= state.pointsToWin
+    const isGameOver = newScores[actualWinnerId] >= state.pointsToWin
 
     return {
       ...state,
       phase: isGameOver ? 'finished' : 'reveal',
-      roundWinnerId: action.winnerId,
+      roundWinnerId: actualWinnerId,
+      roundWinnerCards: winnerCards,
       scores: newScores,
-      winnerId: isGameOver ? action.winnerId : null,
+      winnerId: isGameOver ? actualWinnerId : null,
     }
   }
 
@@ -265,7 +293,29 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     const scores = Object.fromEntries(
       Object.entries(state.scores).filter(([id]) => id !== action.playerId)
     )
-    updated = { ...updated, hands, submissions, scores }
+    const submittedPlayerIds = state.submittedPlayerIds.filter((id) => id !== action.playerId)
+
+    // If in judging phase, update anonymized submissions
+    let { shuffledSubmissions, _rm } = state
+    if (state.phase === 'judging' && state._rm) {
+      const playerOrder: string[] = JSON.parse(atob(state._rm))
+      const removeIdx = playerOrder.indexOf(action.playerId)
+      if (removeIdx !== -1) {
+        const newPlayerOrder = playerOrder.filter((_, i) => i !== removeIdx)
+        shuffledSubmissions = state.shuffledSubmissions.filter((_, i) => i !== removeIdx)
+        _rm = btoa(JSON.stringify(newPlayerOrder))
+      }
+    }
+
+    updated = {
+      ...updated,
+      hands,
+      submissions,
+      scores,
+      submittedPlayerIds,
+      shuffledSubmissions,
+      _rm,
+    }
 
     // If fewer than 3 players remain, end the game
     if (updated.players.length < 3) {
@@ -290,19 +340,34 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         blackCard,
         blackDeck: newBlackDeck,
         submissions: {},
+        submittedPlayerIds: [],
+        shuffledSubmissions: [],
         revealOrder: [],
         revealIndex: -1,
         roundWinnerId: null,
+        roundWinnerCards: [],
+        _rm: '',
       }
     }
 
     // If the removed player hadn't submitted yet during playing phase, check if all remaining have
     if (updated.phase === 'playing') {
       const nonCzar = getNonCzarPlayers(updated)
-      const allDone = nonCzar.every((p) => p.id in updated.submissions)
+      const allDone = nonCzar.every((p) => updated.submittedPlayerIds.includes(p.id))
       if (allDone && nonCzar.length > 0) {
-        const revealOrder = shuffle(Object.keys(updated.submissions))
-        return { ...updated, phase: 'judging', revealOrder, revealIndex: -1 }
+        const playerOrder = shuffle(Object.keys(updated.submissions))
+        const anonSubmissions = playerOrder.map((pid) => updated.submissions[pid])
+        const revealOrder = playerOrder.map((_, i) => String(i))
+        const encodedMap = btoa(JSON.stringify(playerOrder))
+        return {
+          ...updated,
+          phase: 'judging',
+          submissions: {},
+          shuffledSubmissions: anonSubmissions,
+          revealOrder,
+          revealIndex: -1,
+          _rm: encodedMap,
+        }
       }
     }
 
@@ -353,9 +418,13 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       whiteDeck,
       hands,
       submissions: {},
+      submittedPlayerIds: [],
+      shuffledSubmissions: [],
       revealOrder: [],
       revealIndex: -1,
       roundWinnerId: null,
+      roundWinnerCards: [],
+      _rm: '',
     }
   }
 

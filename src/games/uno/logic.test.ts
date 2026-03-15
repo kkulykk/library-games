@@ -11,6 +11,7 @@ import {
   applyAction,
   getCurrentPlayer,
   getTopCard,
+  redactForPlayer,
   type Player,
   type GameState,
   type Card,
@@ -682,5 +683,40 @@ describe('getCurrentPlayer / getTopCard', () => {
   it('getTopCard returns the last discard pile card', () => {
     const state = makePlayingState()
     expect(getTopCard(state)).toBeDefined()
+  })
+})
+
+// ─── redactForPlayer ──────────────────────────────────────────────────────────
+
+describe('redactForPlayer', () => {
+  it('preserves current player hand', () => {
+    const state = makePlayingState()
+    const redacted = redactForPlayer(state, 'p1')
+    expect(redacted.hands['p1']).toEqual(state.hands['p1'])
+  })
+
+  it('hides opponent hand card details', () => {
+    const state = makePlayingState()
+    const redacted = redactForPlayer(state, 'p1')
+    const opponentHand = redacted.hands['p2']
+    expect(opponentHand).toHaveLength(state.hands['p2'].length)
+    // All cards should be hidden placeholders
+    for (const card of opponentHand) {
+      expect(card.id).toMatch(/^hidden-/)
+    }
+  })
+
+  it('hides draw pile card details', () => {
+    const state = makePlayingState()
+    const redacted = redactForPlayer(state, 'p1')
+    expect(redacted.drawPile).toHaveLength(state.drawPile.length)
+    for (const card of redacted.drawPile) {
+      expect(card.id).toMatch(/^hidden-draw-/)
+    }
+  })
+
+  it('returns state unchanged for non-playing phases', () => {
+    const state = createLobbyState(p1)
+    expect(redactForPlayer(state, 'p1')).toBe(state)
   })
 })

@@ -70,6 +70,24 @@ export function pickRandomWords(count: number, exclude: string[] = []): string[]
   return shuffled.slice(0, count)
 }
 
+// ─── Word encoding ───────────────────────────────────────────────────────────
+// Encode the word before storing in shared state to prevent casual devtools
+// inspection by non-drawing players. This is obfuscation, not encryption —
+// determined cheaters can still decode, but it prevents accidental exposure.
+
+export function encodeWord(word: string): string {
+  return btoa(unescape(encodeURIComponent(word)))
+}
+
+export function decodeWord(encoded: string): string {
+  if (!encoded) return ''
+  try {
+    return decodeURIComponent(escape(atob(encoded)))
+  } catch {
+    return encoded
+  }
+}
+
 export function generateHint(word: string): string {
   return word
     .split('')
@@ -161,7 +179,7 @@ function startPickingPhase(state: GameState): GameState {
   return {
     ...state,
     phase: 'picking',
-    wordChoices: choices,
+    wordChoices: choices.map(encodeWord),
     word: null,
     hint: '',
     strokes: [],
@@ -225,12 +243,14 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     const drawer = getCurrentDrawer(state)
     if (drawer?.id !== action.playerId) return state
     if (!state.wordChoices.includes(action.word)) return state
+    // action.word is already encoded (from wordChoices); decode for hint
+    const plainWord = decodeWord(action.word)
     return {
       ...state,
       phase: 'drawing',
       word: action.word,
       wordChoices: [],
-      hint: generateHint(action.word),
+      hint: generateHint(plainWord),
       drawStartTime: Date.now(),
     }
   }
@@ -267,7 +287,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     if (!player) return state
 
     const guess = action.text.trim().toLowerCase()
-    const answer = (state.word ?? '').toLowerCase()
+    const answer = decodeWord(state.word ?? '').toLowerCase()
 
     // Check if correct
     if (guess === answer) {
