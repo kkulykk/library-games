@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useGameRoom, type UseGameRoomReturn } from '@/hooks/useGameRoom'
 import {
   addPlayer,
   applyAction,
@@ -12,299 +12,52 @@ import {
 } from './logic'
 import { GameStateSchema } from './schema'
 
-const SESSION_KEY = 'cah_session'
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000
+export type { RoomStatus } from '@/hooks/useGameRoom'
 
-interface Session {
-  roomCode: string
-  playerId: string
-  playerName: string
-  ts: number
-}
-
-function saveSession(session: Omit<Session, 'ts'>) {
-  try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, ts: Date.now() }))
-  } catch {}
-}
-
-function loadSession(): Session | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (!raw) return null
-    const data: Session = JSON.parse(raw)
-    if (Date.now() - data.ts > SESSION_TTL_MS) return null
-    return data
-  } catch {
-    return null
-  }
-}
-
-function clearSession() {
-  try {
-    localStorage.removeItem(SESSION_KEY)
-  } catch {}
-}
-
-function generateRoomCode(): string {
-  return Math.random().toString(36).substring(2, 6).toUpperCase()
-}
-
-export type RoomStatus = 'idle' | 'restoring' | 'creating' | 'joining' | 'connected' | 'error'
-
-export interface UseCAHRoomReturn {
-  gameState: GameState | null
-  playerId: string | null
-  roomCode: string | null
-  status: RoomStatus
-  error: string | null
-  savedSession: Session | null
-  createRoom: (playerName: string) => Promise<void>
-  joinRoom: (code: string, playerName: string) => Promise<void>
-  restoreSession: () => Promise<void>
-  dispatch: (action: GameAction) => Promise<void>
-  leaveRoom: () => Promise<void>
-}
+export type UseCAHRoomReturn = Omit<
+  UseGameRoomReturn<GameState, GameAction>,
+  'broadcast' | 'onBroadcast'
+>
 
 export function useCAHRoom(): UseCAHRoomReturn {
-  const [gameState, setGameState] = useState<GameState | null>(null)
-  const [playerId, setPlayerId] = useState<string | null>(null)
-  const [roomCode, setRoomCode] = useState<string | null>(null)
-  const [status, setStatus] = useState<RoomStatus>('idle')
-  const [error, setError] = useState<string | null>(null)
-  const [savedSession, setSavedSession] = useState<Session | null>(null)
-  const channelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null)
-  const gameStateRef = useRef<GameState | null>(null)
-  const versionRef = useRef(0)
+  return useGameRoom<GameState, GameAction>({
+    tableName: 'cah_rooms',
+    channelPrefix: 'cah',
+    sessionKey: 'cah_session',
+    stateSchema: GameStateSchema,
+    applyAction,
+    createLobbyState: (host) => createLobbyState(host as Player),
+    createPlayer: ({ id, name, isHost }) => ({ id, name, isHost }) as Player,
+    addPlayer,
+    onBeforeLeave: async ({
+      gameState,
+      roomCode,
+      playerId,
+      tableName,
+      applyAction: apply,
+      stateSchema,
+    }) => {
+      if (!gameState || !roomCode || !playerId || !supabase) return
 
-  useEffect(() => {
-    setSavedSession(loadSession())
-  }, [])
+      const MAX_RETRIES = 3
+      let currentState: GameState | null = gameState
+      let currentVersion = 0
 
-  function setStateAndRef(state: GameState | null, version?: number) {
-    gameStateRef.current = state
-    if (version !== undefined) versionRef.current = version
-    setGameState(state)
-  }
-
-  const subscribeToRoom = useCallback((code: string) => {
-    if (!supabase) return
-    channelRef.current?.unsubscribe()
-    channelRef.current = supabase
-      .channel(`cah:${code}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'cah_rooms', filter: `code=eq.${code}` },
-        (payload) => {
-          const parsed = GameStateSchema.safeParse(payload.new.state)
-          if (!parsed.success) {
-            console.error('[cah] Invalid GameState payload:', parsed.error)
-            return
-          }
-          setStateAndRef(parsed.data, payload.new.version as number)
-        }
-      )
-      .subscribe()
-  }, [])
-
-  const createRoom = useCallback(
-    async (playerName: string) => {
-      if (!supabase) return
-      setStatus('creating')
-      setError(null)
-
-      const id = crypto.randomUUID()
-      const code = generateRoomCode()
-      const host: Player = { id, name: playerName, isHost: true }
-      const initialState = createLobbyState(host)
-
-      const { error: err } = await supabase.from('cah_rooms').insert({ code, state: initialState })
-
-      if (err) {
-        setError('Failed to create room. Try again.')
-        setStatus('error')
-        return
-      }
-
-      setPlayerId(id)
-      setRoomCode(code)
-      setStateAndRef(initialState, 1)
-      setStatus('connected')
-      saveSession({ roomCode: code, playerId: id, playerName })
-      subscribeToRoom(code)
-    },
-    [subscribeToRoom]
-  )
-
-  const joinRoom = useCallback(
-    async (code: string, playerName: string) => {
-      if (!supabase) return
-      setStatus('joining')
-      setError(null)
-
-      const normalizedCode = code.trim().toUpperCase()
-      const { data, error: err } = await supabase
-        .from('cah_rooms')
-        .select('state, version')
-        .eq('code', normalizedCode)
-        .single()
-
-      if (err || !data) {
-        setError('Room not found. Check the code and try again.')
-        setStatus('error')
-        return
-      }
-
-      const parsedCurrent = GameStateSchema.safeParse(data.state)
-      if (!parsedCurrent.success) {
-        console.error('[cah] Invalid GameState in joinRoom:', parsedCurrent.error)
-        setError('Room data is invalid. Try again.')
-        setStatus('error')
-        return
-      }
-      const currentState = parsedCurrent.data
-
-      if (currentState.phase !== 'lobby') {
-        setError('This game has already started.')
-        setStatus('error')
-        return
-      }
-
-      const id = crypto.randomUUID()
-      const player: Player = { id, name: playerName, isHost: false }
-      const newState = addPlayer(currentState, player)
-
-      if (newState.players.length === currentState.players.length) {
-        setError('Room is full.')
-        setStatus('error')
-        return
-      }
-
-      const currentVersion = data.version as number
-      const { data: updated, error: updateErr } = await supabase
-        .from('cah_rooms')
-        .update({ state: newState, version: currentVersion + 1 })
-        .eq('code', normalizedCode)
-        .eq('version', currentVersion)
+      const { data: initial } = await supabase
+        .from(tableName)
         .select('version')
-
-      if (updateErr || !updated || updated.length === 0) {
-        setError('Failed to join room. Try again.')
-        setStatus('error')
-        return
-      }
-
-      setPlayerId(id)
-      setRoomCode(normalizedCode)
-      setStateAndRef(newState, currentVersion + 1)
-      setStatus('connected')
-      saveSession({ roomCode: normalizedCode, playerId: id, playerName })
-      subscribeToRoom(normalizedCode)
-    },
-    [subscribeToRoom]
-  )
-
-  const restoreSession = useCallback(async () => {
-    const session = loadSession()
-    if (!session || !supabase) return
-    setStatus('restoring')
-
-    const { data } = await supabase
-      .from('cah_rooms')
-      .select('state, version')
-      .eq('code', session.roomCode)
-      .single()
-
-    if (!data) {
-      clearSession()
-      setSavedSession(null)
-      setStatus('idle')
-      return
-    }
-
-    const parsedState = GameStateSchema.safeParse(data.state)
-    if (!parsedState.success) {
-      console.error('[cah] Invalid GameState in restoreSession:', parsedState.error)
-      clearSession()
-      setSavedSession(null)
-      setStatus('idle')
-      return
-    }
-    const state = parsedState.data
-    const stillInGame = state.players.some((p) => p.id === session.playerId)
-    if (!stillInGame) {
-      clearSession()
-      setSavedSession(null)
-      setStatus('idle')
-      return
-    }
-
-    setPlayerId(session.playerId)
-    setRoomCode(session.roomCode)
-    setStateAndRef(state, data.version as number)
-    setStatus('connected')
-    subscribeToRoom(session.roomCode)
-  }, [subscribeToRoom])
-
-  const dispatch = useCallback(
-    async (action: GameAction) => {
-      if (!roomCode || !supabase) return
-
-      const MAX_RETRIES = 3
-      let currentState = gameStateRef.current
-      let currentVersion = versionRef.current
-
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (!currentState) return
-        const newState = applyAction(currentState, action)
-        if (newState === currentState) return
-
-        const { data } = await supabase
-          .from('cah_rooms')
-          .update({ state: newState, version: currentVersion + 1 })
-          .eq('code', roomCode)
-          .eq('version', currentVersion)
-          .select('version')
-
-        if (data && data.length > 0) return
-
-        if (attempt < MAX_RETRIES) {
-          const { data: fresh } = await supabase
-            .from('cah_rooms')
-            .select('state, version')
-            .eq('code', roomCode)
-            .single()
-          if (!fresh) return
-          const parsedFresh = GameStateSchema.safeParse(fresh.state)
-          if (!parsedFresh.success) {
-            console.error('[cah] Invalid GameState in dispatch retry:', parsedFresh.error)
-            return
-          }
-          currentState = parsedFresh.data
-          currentVersion = fresh.version as number
-          setStateAndRef(currentState, currentVersion)
-        } else {
-          setError('Action failed due to a conflict. Please try again.')
-        }
-      }
-    },
-    [roomCode]
-  )
-
-  const leaveRoom = useCallback(async () => {
-    // Remove this player from the Supabase game state using optimistic locking with retry
-    if (gameStateRef.current && roomCode && playerId && supabase) {
-      const MAX_RETRIES = 3
-      let currentState: GameState | null = gameStateRef.current
-      let currentVersion = versionRef.current
+        .eq('code', roomCode)
+        .single()
+      if (!initial) return
+      currentVersion = initial.version as number
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (!currentState) break
-        const newState = applyAction(currentState, { type: 'REMOVE_PLAYER', playerId })
+        const newState = apply(currentState, { type: 'REMOVE_PLAYER', playerId } as GameAction)
         if (newState === currentState) break
 
         const { data } = await supabase
-          .from('cah_rooms')
+          .from(tableName)
           .update({ state: newState, version: currentVersion + 1 })
           .eq('code', roomCode)
           .eq('version', currentVersion)
@@ -314,12 +67,12 @@ export function useCAHRoom(): UseCAHRoomReturn {
 
         if (attempt < MAX_RETRIES) {
           const { data: fresh } = await supabase
-            .from('cah_rooms')
+            .from(tableName)
             .select('state, version')
             .eq('code', roomCode)
             .single()
           if (!fresh) break
-          const parsedFresh = GameStateSchema.safeParse(fresh.state)
+          const parsedFresh = stateSchema.safeParse(fresh.state)
           if (!parsedFresh.success) {
             console.error('[cah] Invalid GameState in leaveRoom retry:', parsedFresh.error)
             break
@@ -328,36 +81,6 @@ export function useCAHRoom(): UseCAHRoomReturn {
           currentVersion = fresh.version as number
         }
       }
-    }
-
-    channelRef.current?.unsubscribe()
-    channelRef.current = null
-    setStateAndRef(null, 0)
-    setPlayerId(null)
-    setRoomCode(null)
-    setStatus('idle')
-    setError(null)
-    clearSession()
-    setSavedSession(null)
-  }, [roomCode, playerId])
-
-  useEffect(() => {
-    return () => {
-      channelRef.current?.unsubscribe()
-    }
-  }, [])
-
-  return {
-    gameState,
-    playerId,
-    roomCode,
-    status,
-    error,
-    savedSession,
-    createRoom,
-    joinRoom,
-    restoreSession,
-    dispatch,
-    leaveRoom,
-  }
+    },
+  })
 }
