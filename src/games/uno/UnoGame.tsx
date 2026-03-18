@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { cn } from '@/lib/utils'
+import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useUnoRoom } from './useUnoRoom'
 import {
@@ -251,7 +252,7 @@ function EntryScreen({
   loading,
   error,
 }: EntryScreenProps) {
-  const [name, setName] = useState('')
+  const [name, setName] = useState(getSavedPlayerName)
   const [joinCode, setJoinCode] = useState('')
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose')
 
@@ -350,6 +351,7 @@ function EntryScreen({
       <button
         disabled={loading || !name.trim() || (!isCreate && joinCode.length < 4)}
         onClick={() => {
+          savePlayerName(name.trim())
           if (isCreate) onCreate(name.trim())
           else onJoin(joinCode, name.trim())
         }}
