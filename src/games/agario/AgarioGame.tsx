@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { cn } from '@/lib/utils'
+import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAgarioRoom } from './useAgarioRoom'
 import {
@@ -600,7 +601,7 @@ export function AgarioGame() {
     leaveRoom,
   } = useAgarioRoom()
 
-  const [nameInput, setNameInput] = useState('')
+  const [nameInput, setNameInput] = useState(getSavedPlayerName)
   const [codeInput, setCodeInput] = useState('')
   const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu')
 
@@ -1057,7 +1058,10 @@ export function AgarioGame() {
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            if (nameInput.trim()) createRoom(nameInput.trim())
+            if (nameInput.trim()) {
+              savePlayerName(nameInput.trim())
+              createRoom(nameInput.trim())
+            }
           }}
           className="flex w-full max-w-xs flex-col gap-3"
         >
@@ -1093,7 +1097,10 @@ export function AgarioGame() {
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            if (nameInput.trim() && codeInput.trim()) joinRoom(codeInput.trim(), nameInput.trim())
+            if (nameInput.trim() && codeInput.trim()) {
+              savePlayerName(nameInput.trim())
+              joinRoom(codeInput.trim(), nameInput.trim())
+            }
           }}
           className="flex w-full max-w-xs flex-col gap-3"
         >
