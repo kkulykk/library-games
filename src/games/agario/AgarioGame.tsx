@@ -471,17 +471,23 @@ function Lobby({
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function copyCode() {
-    navigator.clipboard.writeText(roomCode).then(() => {
-      setCopied('code')
-      setTimeout(() => setCopied(null), 2000)
-    })
+    navigator.clipboard.writeText(roomCode).then(
+      () => {
+        setCopied('code')
+        setTimeout(() => setCopied(null), 2000)
+      },
+      () => {}
+    )
   }
 
   function copyInviteLink() {
-    navigator.clipboard.writeText(getInviteLink('agario', roomCode)).then(() => {
-      setCopied('link')
-      setTimeout(() => setCopied(null), 2000)
-    })
+    navigator.clipboard.writeText(getInviteLink('agario', roomCode)).then(
+      () => {
+        setCopied('link')
+        setTimeout(() => setCopied(null), 2000)
+      },
+      () => {}
+    )
   }
 
   return (

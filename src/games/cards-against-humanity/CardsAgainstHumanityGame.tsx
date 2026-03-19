@@ -269,17 +269,23 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function copyCode() {
-    navigator.clipboard.writeText(roomCode).then(() => {
-      setCopied('code')
-      setTimeout(() => setCopied(null), 2000)
-    })
+    navigator.clipboard.writeText(roomCode).then(
+      () => {
+        setCopied('code')
+        setTimeout(() => setCopied(null), 2000)
+      },
+      () => {}
+    )
   }
 
   function copyInviteLink() {
-    navigator.clipboard.writeText(getInviteLink('cards-against-humanity', roomCode)).then(() => {
-      setCopied('link')
-      setTimeout(() => setCopied(null), 2000)
-    })
+    navigator.clipboard.writeText(getInviteLink('cards-against-humanity', roomCode)).then(
+      () => {
+        setCopied('link')
+        setTimeout(() => setCopied(null), 2000)
+      },
+      () => {}
+    )
   }
 
   return (
