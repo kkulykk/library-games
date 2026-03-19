@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { useAgarioRoom } from './useAgarioRoom'
 import {
   MAP_WIDTH,
@@ -467,6 +468,21 @@ function Lobby({
   onStart: () => void
 }) {
   const isHost = gameState.hostId === playerId
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
+
+  function copyCode() {
+    navigator.clipboard.writeText(roomCode).then(() => {
+      setCopied('code')
+      setTimeout(() => setCopied(null), 2000)
+    })
+  }
+
+  function copyInviteLink() {
+    navigator.clipboard.writeText(getInviteLink('agario', roomCode)).then(() => {
+      setCopied('link')
+      setTimeout(() => setCopied(null), 2000)
+    })
+  }
 
   return (
     <div className="flex flex-col items-center gap-6">
@@ -474,6 +490,20 @@ function Lobby({
         <p className="mb-1 text-sm text-muted-foreground">Room Code</p>
         <p className="font-mono text-4xl font-bold tracking-widest">{roomCode}</p>
         <p className="mt-1 text-sm text-muted-foreground">Share this code with friends</p>
+        <div className="mt-2 flex justify-center gap-2">
+          <button
+            onClick={copyCode}
+            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+          >
+            {copied === 'code' ? 'Copied!' : 'Copy code'}
+          </button>
+          <button
+            onClick={copyInviteLink}
+            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+          >
+            {copied === 'link' ? 'Copied!' : 'Copy invite link'}
+          </button>
+        </div>
       </div>
 
       <div className="w-full max-w-xs">
@@ -601,9 +631,10 @@ export function AgarioGame() {
     leaveRoom,
   } = useAgarioRoom()
 
+  const inviteCode = useInviteCode()
   const [nameInput, setNameInput] = useState(getSavedPlayerName)
-  const [codeInput, setCodeInput] = useState('')
-  const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu')
+  const [codeInput, setCodeInput] = useState(inviteCode ?? '')
+  const [mode, setMode] = useState<'menu' | 'create' | 'join'>(inviteCode ? 'join' : 'menu')
 
   // Game state refs
   const mySnakeRef = useRef<SnakeState | null>(null)
