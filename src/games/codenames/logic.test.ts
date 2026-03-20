@@ -235,6 +235,11 @@ describe('canStartGame', () => {
     expect(canStartGame(state)).toBe(false)
   })
 
+  it('returns false when players have no team assignments', () => {
+    const state = makeLobby(host, p2, p3, p4)
+    expect(canStartGame(state)).toBe(false)
+  })
+
   it('returns true when properly configured', () => {
     expect(canStartGame(makeReadyLobby())).toBe(true)
   })
@@ -273,6 +278,30 @@ describe('lobby management', () => {
     }
     expect(state.players).toHaveLength(10)
   })
+
+  it('does not add player when phase is not lobby', () => {
+    const state = makePlayingState()
+    const before = state.players.length
+    const result = addPlayer(state, makePlayer('p99', 'NewPlayer'))
+    expect(result.players).toHaveLength(before)
+  })
+
+  it('removing spymaster during playing phase ends game by forfeit', () => {
+    const state = makePlayingState()
+    const redSpymaster = state.players.find((p) => p.team === 'red' && p.role === 'spymaster')!
+    const result = removePlayer(state, redSpymaster.id)
+    expect(result.phase).toBe('finished')
+    expect(result.winningTeam).toBe('blue')
+    expect(result.log[result.log.length - 1]).toContain('forfeit')
+  })
+
+  it('removing operative during playing phase does not end game', () => {
+    const state = makePlayingState()
+    const operative = state.players.find((p) => p.role === 'operative')!
+    const result = removePlayer(state, operative.id)
+    expect(result.phase).toBe('playing')
+    expect(result.players).toHaveLength(state.players.length - 1)
+  })
 })
 
 // ─── JOIN_TEAM ──────────────────────────────────────────────────────────────
@@ -306,6 +335,20 @@ describe('JOIN_TEAM', () => {
       role: 'spymaster',
     })
     expect(state.players.find((p) => p.id === 'p2')?.role).toBeNull()
+  })
+
+  it('is a no-op when phase is not lobby', () => {
+    const state = makePlayingState()
+    const result = applyAction(state, {
+      type: 'JOIN_TEAM',
+      playerId: 'p1',
+      team: 'blue',
+      role: 'operative',
+    })
+    // Player should remain on their original team
+    expect(result.players.find((p) => p.id === 'p1')?.team).toBe(
+      state.players.find((p) => p.id === 'p1')?.team
+    )
   })
 
   it('allows switching teams', () => {
@@ -398,6 +441,19 @@ describe('GIVE_CLUE', () => {
     const spymasterId = state.currentTeam === 'red' ? 'p1' : 'p3'
     state = applyAction(state, { type: 'GIVE_CLUE', playerId: spymasterId, word: '  ', count: 2 })
     expect(state.turnPhase).toBe('giving_clue')
+  })
+
+  it('rejects negative count', () => {
+    let state = makePlayingState()
+    const spymasterId = state.currentTeam === 'red' ? 'p1' : 'p3'
+    state = applyAction(state, {
+      type: 'GIVE_CLUE',
+      playerId: spymasterId,
+      word: 'test',
+      count: -1,
+    })
+    expect(state.turnPhase).toBe('giving_clue')
+    expect(state.currentClue).toBeNull()
   })
 })
 
