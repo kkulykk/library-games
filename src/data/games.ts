@@ -255,6 +255,23 @@ export const games: GameMeta[] = [
     ],
   },
   {
+    slug: 'codenames',
+    title: 'Codenames',
+    description: 'Two teams compete to find their secret agents using one-word clues.',
+    tags: ['multiplayer', 'word', 'strategy'],
+    status: 'live',
+    category: 'online-multiplayer',
+    emoji: '🕵️',
+    rules: [
+      'Players split into two teams (Red and Blue), each with a Spymaster and Operatives',
+      'The board has 25 word cards — some belong to Red, some to Blue, some are neutral, and one is the Assassin',
+      'Spymasters take turns giving a one-word clue and a number (how many cards match the clue)',
+      'Operatives guess which cards their Spymaster is hinting at — correct guesses stay revealed',
+      'Guessing the Assassin card loses the game instantly! Guessing wrong ends your turn',
+      'The first team to reveal all their cards wins',
+    ],
+  },
+  {
     slug: 'chess',
     title: 'Chess',
     description: 'The timeless strategy game. Play local or challenge friends online.',
