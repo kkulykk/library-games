@@ -16,9 +16,9 @@ const BoardCardSchema = z.object({
 
 const ClueSchema = z.object({
   word: z.string(),
-  count: z.number(),
+  count: z.number().int().min(0),
   team: z.enum(['red', 'blue']),
-  guessesUsed: z.number(),
+  guessesUsed: z.number().int().min(0),
 })
 
 export const GameStateSchema = z.object({
@@ -28,8 +28,8 @@ export const GameStateSchema = z.object({
   currentTeam: z.enum(['red', 'blue']),
   turnPhase: z.enum(['giving_clue', 'guessing']),
   currentClue: ClueSchema.nullable(),
-  redRemaining: z.number(),
-  blueRemaining: z.number(),
+  redRemaining: z.number().int().min(0),
+  blueRemaining: z.number().int().min(0),
   winningTeam: z.enum(['red', 'blue']).nullable(),
   log: z.array(z.string()),
 })

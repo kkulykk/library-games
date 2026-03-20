@@ -10,7 +10,6 @@ import {
   canStartGame,
   getSpymaster,
   getOperatives,
-  isSpymaster as checkIsSpymaster,
   getPlayerTeam,
   redactForPlayer,
   type GameState,
@@ -181,6 +180,87 @@ function EntryScreen({
 
 // ─── Lobby ──────────────────────────────────────────────────────────────────
 
+interface TeamPanelProps {
+  team: Team
+  gameState: GameState
+  playerId: string
+  onJoinTeam: (team: Team, role: PlayerRole) => void
+}
+
+function TeamPanel({ team, gameState, playerId, onJoinTeam }: TeamPanelProps) {
+  const spymaster = getSpymaster(gameState.players, team)
+  const operatives = getOperatives(gameState.players, team)
+  const myTeam = getPlayerTeam(gameState.players, playerId)
+  const myRole = gameState.players.find((p) => p.id === playerId)?.role
+  const isOnThisTeam = myTeam === team
+
+  const teamColor = team === 'red' ? 'border-red-500/50' : 'border-blue-500/50'
+  const teamBg = team === 'red' ? 'bg-red-500/10' : 'bg-blue-500/10'
+  const teamText = team === 'red' ? 'text-red-500' : 'text-blue-500'
+  const btnBg =
+    team === 'red'
+      ? 'bg-red-500 hover:bg-red-400 text-white'
+      : 'bg-blue-500 hover:bg-blue-400 text-white'
+
+  return (
+    <div className={cn('flex-1 rounded-xl border-2 p-3', teamColor, teamBg)}>
+      <h3 className={cn('mb-2 text-center text-sm font-bold uppercase', teamText)}>{team} team</h3>
+
+      {/* Spymaster slot */}
+      <div className="mb-2">
+        <p className="mb-1 text-xs font-medium text-muted-foreground">Spymaster</p>
+        {spymaster ? (
+          <div className="flex items-center gap-1.5 rounded-lg bg-secondary px-2 py-1.5 text-xs">
+            <span className={cn('h-2 w-2 rounded-full', teamText, 'bg-current')} />
+            <span className="font-medium">{spymaster.name}</span>
+            {spymaster.id === playerId && (
+              <span className="ml-auto text-muted-foreground">you</span>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={() => onJoinTeam(team, 'spymaster')}
+            disabled={isOnThisTeam && myRole === 'spymaster'}
+            className={cn(
+              'w-full rounded-lg px-2 py-1.5 text-xs font-semibold transition-all active:scale-95',
+              btnBg
+            )}
+          >
+            Join as Spymaster
+          </button>
+        )}
+      </div>
+
+      {/* Operatives */}
+      <div>
+        <p className="mb-1 text-xs font-medium text-muted-foreground">Operatives</p>
+        <div className="flex flex-col gap-1">
+          {operatives.map((op) => (
+            <div
+              key={op.id}
+              className="flex items-center gap-1.5 rounded-lg bg-secondary px-2 py-1.5 text-xs"
+            >
+              <span className={cn('h-2 w-2 rounded-full', teamText, 'bg-current')} />
+              <span className="font-medium">{op.name}</span>
+              {op.id === playerId && <span className="ml-auto text-muted-foreground">you</span>}
+            </div>
+          ))}
+          <button
+            onClick={() => onJoinTeam(team, 'operative')}
+            disabled={isOnThisTeam && myRole === 'operative'}
+            className={cn(
+              'w-full rounded-lg px-2 py-1.5 text-xs font-semibold transition-all active:scale-95',
+              btnBg
+            )}
+          >
+            Join as Operative
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface LobbyScreenProps {
   gameState: GameState
   playerId: string
@@ -222,82 +302,6 @@ function LobbyScreen({
     )
   }
 
-  function TeamPanel({ team }: { team: Team }) {
-    const spymaster = getSpymaster(gameState.players, team)
-    const operatives = getOperatives(gameState.players, team)
-    const myTeam = getPlayerTeam(gameState.players, playerId)
-    const myRole = gameState.players.find((p) => p.id === playerId)?.role
-    const isOnThisTeam = myTeam === team
-
-    const teamColor = team === 'red' ? 'border-red-500/50' : 'border-blue-500/50'
-    const teamBg = team === 'red' ? 'bg-red-500/10' : 'bg-blue-500/10'
-    const teamText = team === 'red' ? 'text-red-500' : 'text-blue-500'
-    const btnBg =
-      team === 'red'
-        ? 'bg-red-500 hover:bg-red-400 text-white'
-        : 'bg-blue-500 hover:bg-blue-400 text-white'
-
-    return (
-      <div className={cn('flex-1 rounded-xl border-2 p-3', teamColor, teamBg)}>
-        <h3 className={cn('mb-2 text-center text-sm font-bold uppercase', teamText)}>
-          {team} team
-        </h3>
-
-        {/* Spymaster slot */}
-        <div className="mb-2">
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Spymaster</p>
-          {spymaster ? (
-            <div className="flex items-center gap-1.5 rounded-lg bg-secondary px-2 py-1.5 text-xs">
-              <span className={cn('h-2 w-2 rounded-full', teamText, 'bg-current')} />
-              <span className="font-medium">{spymaster.name}</span>
-              {spymaster.id === playerId && (
-                <span className="ml-auto text-muted-foreground">you</span>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={() => onJoinTeam(team, 'spymaster')}
-              disabled={isOnThisTeam && myRole === 'spymaster'}
-              className={cn(
-                'w-full rounded-lg px-2 py-1.5 text-xs font-semibold transition-all active:scale-95',
-                btnBg
-              )}
-            >
-              Join as Spymaster
-            </button>
-          )}
-        </div>
-
-        {/* Operatives */}
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Operatives</p>
-          <div className="flex flex-col gap-1">
-            {operatives.map((op) => (
-              <div
-                key={op.id}
-                className="flex items-center gap-1.5 rounded-lg bg-secondary px-2 py-1.5 text-xs"
-              >
-                <span className={cn('h-2 w-2 rounded-full', teamText, 'bg-current')} />
-                <span className="font-medium">{op.name}</span>
-                {op.id === playerId && <span className="ml-auto text-muted-foreground">you</span>}
-              </div>
-            ))}
-            <button
-              onClick={() => onJoinTeam(team, 'operative')}
-              disabled={isOnThisTeam && myRole === 'operative'}
-              className={cn(
-                'w-full rounded-lg px-2 py-1.5 text-xs font-semibold transition-all active:scale-95',
-                btnBg
-              )}
-            >
-              Join as Operative
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="animate-cn-fade-in flex w-full max-w-md flex-col gap-4">
       <div className="rounded-2xl bg-secondary p-4 text-center">
@@ -327,8 +331,8 @@ function LobbyScreen({
       </p>
 
       <div className="flex gap-3">
-        <TeamPanel team="red" />
-        <TeamPanel team="blue" />
+        <TeamPanel team="red" gameState={gameState} playerId={playerId} onJoinTeam={onJoinTeam} />
+        <TeamPanel team="blue" gameState={gameState} playerId={playerId} onJoinTeam={onJoinTeam} />
       </div>
 
       {!ready && (
@@ -656,6 +660,10 @@ export function CodenamesGame() {
     leaveRoom,
   } = useCodenamesRoom()
 
+  // NOTE: Redaction is client-side only. The full game state (including all card types) is
+  // visible to all Supabase Realtime subscribers via DevTools. This is a known limitation of
+  // the single-jsonb-column architecture — suitable for casual/trusted-group play, not
+  // competitive environments.
   const redactedState = useMemo(
     () => (gameState && playerId ? redactForPlayer(gameState, playerId) : gameState),
     [gameState, playerId]
@@ -726,6 +734,3 @@ export function CodenamesGame() {
     </>
   )
 }
-
-// Re-export to avoid unused import warnings
-export { checkIsSpymaster }

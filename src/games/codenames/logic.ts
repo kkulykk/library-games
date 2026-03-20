@@ -167,10 +167,27 @@ export function addPlayer(state: GameState, player: Player): GameState {
 }
 
 export function removePlayer(state: GameState, playerId: string): GameState {
-  return {
-    ...state,
-    players: state.players.filter((p) => p.id !== playerId),
+  const player = state.players.find((p) => p.id === playerId)
+  const newPlayers = state.players.filter((p) => p.id !== playerId)
+
+  // If a spymaster leaves during an active game, their team forfeits
+  if (state.phase === 'playing' && player?.role === 'spymaster' && player.team) {
+    const winningTeam: Team = player.team === 'red' ? 'blue' : 'red'
+    return {
+      ...state,
+      players: newPlayers,
+      phase: 'finished',
+      winningTeam,
+      turnPhase: 'giving_clue',
+      currentClue: null,
+      log: [
+        ...state.log,
+        `${player.name} (${player.team} spymaster) left the game. ${winningTeam.toUpperCase()} team wins by forfeit!`,
+      ],
+    }
   }
+
+  return { ...state, players: newPlayers }
 }
 
 function joinTeam(state: GameState, playerId: string, team: Team, role: PlayerRole): GameState {
@@ -188,14 +205,14 @@ function joinTeam(state: GameState, playerId: string, team: Team, role: PlayerRo
   }
 }
 
-function startGame(state: GameState, playerId: string): GameState {
+function startGame(state: GameState, playerId: string, rng: () => number = Math.random): GameState {
   if (state.phase !== 'lobby') return state
   const host = state.players.find((p) => p.id === playerId)
   if (!host?.isHost) return state
   if (!canStartGame(state)) return state
 
-  const startingTeam: Team = Math.random() < 0.5 ? 'red' : 'blue'
-  const board = generateBoard(startingTeam)
+  const startingTeam: Team = rng() < 0.5 ? 'red' : 'blue'
+  const board = generateBoard(startingTeam, rng)
 
   return {
     ...state,
