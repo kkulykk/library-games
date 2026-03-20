@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { useCAHRoom } from './useCAHRoom'
 import {
   getCzar,
@@ -141,6 +142,7 @@ interface EntryScreenProps {
   savedSession: { roomCode: string; playerName: string } | null
   loading: boolean
   error: string | null
+  initialCode?: string | null
 }
 
 function EntryScreen({
@@ -150,10 +152,11 @@ function EntryScreen({
   savedSession,
   loading,
   error,
+  initialCode,
 }: EntryScreenProps) {
   const [name, setName] = useState(getSavedPlayerName)
-  const [joinCode, setJoinCode] = useState('')
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose')
+  const [joinCode, setJoinCode] = useState(initialCode ?? '')
+  const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
 
   if (mode === 'choose') {
     return (
@@ -263,13 +266,26 @@ interface LobbyScreenProps {
 
 function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyScreenProps) {
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function copyCode() {
-    navigator.clipboard.writeText(roomCode).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    navigator.clipboard.writeText(roomCode).then(
+      () => {
+        setCopied('code')
+        setTimeout(() => setCopied(null), 2000)
+      },
+      () => {}
+    )
+  }
+
+  function copyInviteLink() {
+    navigator.clipboard.writeText(getInviteLink('cards-against-humanity', roomCode)).then(
+      () => {
+        setCopied('link')
+        setTimeout(() => setCopied(null), 2000)
+      },
+      () => {}
+    )
   }
 
   return (
@@ -279,12 +295,20 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
           Room code &mdash; share with friends
         </p>
         <p className="mb-3 text-4xl font-black tracking-widest">{roomCode}</p>
-        <button
-          onClick={copyCode}
-          className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
-        >
-          {copied ? 'Copied!' : 'Copy code'}
-        </button>
+        <div className="flex justify-center gap-2">
+          <button
+            onClick={copyCode}
+            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+          >
+            {copied === 'code' ? 'Copied!' : 'Copy code'}
+          </button>
+          <button
+            onClick={copyInviteLink}
+            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+          >
+            {copied === 'link' ? 'Copied!' : 'Copy invite link'}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -744,6 +768,7 @@ function ConfettiEffect() {
 // ─── Main component ─────────────────────────────────────────────────────────
 
 export function CardsAgainstHumanityGame() {
+  const inviteCode = useInviteCode()
   const {
     gameState,
     playerId,
@@ -773,6 +798,7 @@ export function CardsAgainstHumanityGame() {
           savedSession={savedSession}
           loading={isLoading}
           error={error}
+          initialCode={inviteCode}
         />
       </>
     )
