@@ -35,14 +35,15 @@ export function collidesWithSelf(snake: Point[], head: Point): boolean {
 }
 
 export function randomFood(snake: Point[]): Point {
-  let food: Point
-  do {
-    food = {
-      x: Math.floor(Math.random() * GRID_SIZE),
-      y: Math.floor(Math.random() * GRID_SIZE),
+  const occupied = new Set(snake.map((p) => `${p.x},${p.y}`))
+  const empty: Point[] = []
+  for (let x = 0; x < GRID_SIZE; x++) {
+    for (let y = 0; y < GRID_SIZE; y++) {
+      if (!occupied.has(`${x},${y}`)) empty.push({ x, y })
     }
-  } while (snake.some((p) => p.x === food.x && p.y === food.y))
-  return food
+  }
+  if (empty.length === 0) return { x: 0, y: 0 }
+  return empty[Math.floor(Math.random() * empty.length)]
 }
 
 export function isOppositeDirection(current: Direction, next: Direction): boolean {
