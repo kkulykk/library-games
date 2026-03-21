@@ -8,7 +8,6 @@ export function MemoryGame() {
   const [cards, setCards] = useState<MemoryCard[]>(() => createDeck(8))
   const [flipped, setFlipped] = useState<number[]>([])
   const [moves, setMoves] = useState(0)
-  const [locked, setLocked] = useState(false)
   const lockedRef = useRef(false)
   const [won, setWon] = useState(false)
 
@@ -16,7 +15,6 @@ export function MemoryGame() {
     setCards(createDeck(8))
     setFlipped([])
     setMoves(0)
-    setLocked(false)
     lockedRef.current = false
     setWon(false)
   }
@@ -35,7 +33,6 @@ export function MemoryGame() {
 
       if (newFlipped.length === 2) {
         setMoves((m) => m + 1)
-        setLocked(true)
         lockedRef.current = true
         setTimeout(() => {
           setCards((prev) => {
@@ -44,7 +41,6 @@ export function MemoryGame() {
             return result
           })
           setFlipped([])
-          setLocked(false)
           lockedRef.current = false
         }, 800)
       }
