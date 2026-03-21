@@ -78,6 +78,8 @@ export function Game2048() {
       if (dir) {
         e.preventDefault()
         handleMove(dir)
+      } else if (e.key === ' ') {
+        e.preventDefault()
       }
     }
     window.addEventListener('keydown', listener)

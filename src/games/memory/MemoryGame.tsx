@@ -49,7 +49,7 @@ export function MemoryGame() {
         }, 800)
       }
     },
-    [cards, flipped, locked, won]
+    [cards, flipped, won]
   )
 
   return (
