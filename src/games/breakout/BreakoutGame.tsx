@@ -103,7 +103,8 @@ export function BreakoutGame() {
     if (isLevelComplete(s.bricks)) {
       s.level += 1
       s.bricks = createBricks()
-      s.ball = { ...createBall(), vx: (4 + s.level) * (s.ball.vx > 0 ? 1 : -1), vy: -(4 + s.level) }
+      const speed = Math.min(4 + s.level, 10)
+      s.ball = { ...createBall(), vx: speed * (s.ball.vx > 0 ? 1 : -1), vy: -speed }
       setDisplayState((prev) => ({ ...prev, score: s.score, level: s.level }))
     }
 
