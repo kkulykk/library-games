@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { createDeck, flipCard, checkMatch, isGameComplete, type MemoryCard } from './logic'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +9,7 @@ export function MemoryGame() {
   const [flipped, setFlipped] = useState<number[]>([])
   const [moves, setMoves] = useState(0)
   const [locked, setLocked] = useState(false)
+  const lockedRef = useRef(false)
   const [won, setWon] = useState(false)
 
   const restart = () => {
@@ -16,12 +17,13 @@ export function MemoryGame() {
     setFlipped([])
     setMoves(0)
     setLocked(false)
+    lockedRef.current = false
     setWon(false)
   }
 
   const handleCardClick = useCallback(
     (id: number) => {
-      if (locked || won) return
+      if (lockedRef.current || won) return
       const card = cards.find((c) => c.id === id)
       if (!card || card.flipped || card.matched) return
       if (flipped.includes(id)) return
@@ -34,6 +36,7 @@ export function MemoryGame() {
       if (newFlipped.length === 2) {
         setMoves((m) => m + 1)
         setLocked(true)
+        lockedRef.current = true
         setTimeout(() => {
           setCards((prev) => {
             const result = checkMatch(prev, newFlipped[0], newFlipped[1])
@@ -42,6 +45,7 @@ export function MemoryGame() {
           })
           setFlipped([])
           setLocked(false)
+          lockedRef.current = false
         }, 800)
       }
     },

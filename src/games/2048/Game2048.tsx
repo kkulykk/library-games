@@ -25,6 +25,11 @@ const TILE_COLORS: Record<number, string> = {
   512: 'bg-yellow-600 text-white',
   1024: 'bg-yellow-700 text-white',
   2048: 'bg-yellow-800 text-white',
+  4096: 'bg-purple-500 text-white',
+  8192: 'bg-purple-600 text-white',
+  16384: 'bg-purple-700 text-white',
+  32768: 'bg-pink-600 text-white',
+  65536: 'bg-pink-700 text-white',
 }
 
 function getTileColor(value: number): string {
