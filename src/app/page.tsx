@@ -52,6 +52,8 @@ export default function HomePage() {
           Open source on{' '}
           <a
             href="https://github.com/kkulykk/library-games"
+            target="_blank"
+            rel="noopener noreferrer"
             className="underline underline-offset-2 hover:text-foreground"
           >
             GitHub
