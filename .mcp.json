@@ -3,6 +3,18 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=unqatjxykdmndeavquhs"
+    },
+    "telegram": {
+      "type": "stdio",
+      "command": "bun",
+      "args": [
+        "run",
+        "--cwd",
+        "${HOME}/.claude/plugins/telegram@claude-plugins-official",
+        "--shell=bun",
+        "--silent",
+        "start"
+      ]
     }
   }
 }
