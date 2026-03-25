@@ -2,7 +2,10 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Library Games',
+  title: {
+    default: 'Library Games',
+    template: '%s — Library Games',
+  },
   description: 'A collection of classic and modern games playable in your browser.',
   metadataBase: new URL('https://kkulykk.github.io/library-games'),
 }
