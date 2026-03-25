@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useReducer, useEffect, useCallback, useRef } from 'react'
 import {
   createInitialSnake,
   getNextHead,
@@ -16,45 +16,73 @@ import {
 
 const CELL_PX = 20
 
+type State = {
+  snake: Point[]
+  food: Point
+  direction: Direction
+  score: number
+  gameOver: boolean
+  started: boolean
+}
+
+type Action =
+  | { type: 'tick' }
+  | { type: 'restart' }
+  | { type: 'start' }
+  | { type: 'turn'; dir: Direction }
+
+function createInitialState(): State {
+  const snake = createInitialSnake()
+  return {
+    snake,
+    food: randomFood(snake),
+    direction: 'RIGHT',
+    score: 0,
+    gameOver: false,
+    started: false,
+  }
+}
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'restart':
+      return createInitialState()
+
+    case 'start':
+      return state.started ? state : { ...state, started: true }
+
+    case 'turn': {
+      if (isOppositeDirection(state.direction, action.dir)) return state
+      return { ...state, direction: action.dir }
+    }
+
+    case 'tick': {
+      const head = getNextHead(state.snake[0], state.direction)
+      if (isOutOfBounds(head) || collidesWithSelf(state.snake, head)) {
+        return { ...state, gameOver: true }
+      }
+      const newSnake = [head, ...state.snake]
+      const ate = head.x === state.food.x && head.y === state.food.y
+      if (ate) {
+        return {
+          ...state,
+          snake: newSnake,
+          food: randomFood(newSnake),
+          score: state.score + 1,
+        }
+      }
+      newSnake.pop()
+      return { ...state, snake: newSnake }
+    }
+  }
+}
+
 export function SnakeGame() {
-  const [snake, setSnake] = useState<Point[]>(createInitialSnake)
-  const [food, setFood] = useState<Point>(() => randomFood(createInitialSnake()))
-  const [score, setScore] = useState(0)
-  const [gameOver, setGameOver] = useState(false)
-  const [started, setStarted] = useState(false)
-  const dirRef = useRef<Direction>('RIGHT')
+  const [state, dispatch] = useReducer(reducer, undefined, createInitialState)
+  const { snake, food, score, gameOver, started } = state
   const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const restart = () => {
-    const initial = createInitialSnake()
-    setSnake(initial)
-    setFood(randomFood(initial))
-    dirRef.current = 'RIGHT'
-    setScore(0)
-    setGameOver(false)
-    setStarted(false)
-    if (intervalRef.current) clearInterval(intervalRef.current)
-  }
-
-  const tick = useCallback(() => {
-    setSnake((prev) => {
-      const head = getNextHead(prev[0], dirRef.current)
-      if (isOutOfBounds(head) || collidesWithSelf(prev, head)) {
-        setGameOver(true)
-        return prev
-      }
-      const newSnake = [head, ...prev]
-      setFood((prevFood) => {
-        if (head.x === prevFood.x && head.y === prevFood.y) {
-          setScore((s) => s + 1)
-          return randomFood(newSnake)
-        }
-        newSnake.pop()
-        return prevFood
-      })
-      return newSnake
-    })
-  }, [])
+  const tick = useCallback(() => dispatch({ type: 'tick' }), [])
 
   useEffect(() => {
     if (!started || gameOver) return
@@ -84,21 +112,24 @@ export function SnakeGame() {
       const dir = map[e.key]
       if (!dir) return
       e.preventDefault()
-      if (!started) setStarted(true)
-      if (!isOppositeDirection(dirRef.current, dir)) {
-        dirRef.current = dir
-      }
+      if (!started) dispatch({ type: 'start' })
+      dispatch({ type: 'turn', dir })
     }
     window.addEventListener('keydown', listener)
     return () => window.removeEventListener('keydown', listener)
   }, [started])
+
+  const handleDirection = (dir: Direction) => {
+    if (!started) dispatch({ type: 'start' })
+    dispatch({ type: 'turn', dir })
+  }
 
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex w-full max-w-xs items-center justify-between">
         <span className="font-semibold">Score: {score}</span>
         <button
-          onClick={restart}
+          onClick={() => dispatch({ type: 'restart' })}
           className="rounded-lg bg-secondary px-4 py-1.5 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
         >
           Restart
@@ -109,7 +140,7 @@ export function SnakeGame() {
       <div
         className="relative overflow-hidden rounded border-2 border-border bg-zinc-100 dark:bg-zinc-900"
         style={{ width: GRID_SIZE * CELL_PX, height: GRID_SIZE * CELL_PX }}
-        onClick={() => !started && setStarted(true)}
+        onClick={() => !started && dispatch({ type: 'start' })}
       >
         {/* Food */}
         <div
@@ -148,7 +179,7 @@ export function SnakeGame() {
             <p className="text-2xl font-extrabold text-white">Game Over</p>
             <p className="text-sm text-white">Score: {score}</p>
             <button
-              onClick={restart}
+              onClick={() => dispatch({ type: 'restart' })}
               className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-zinc-900"
             >
               Play Again
@@ -161,38 +192,26 @@ export function SnakeGame() {
       <div className="grid grid-cols-3 gap-2 text-center">
         <div />
         <button
-          onClick={() => {
-            if (!started) setStarted(true)
-            if (!isOppositeDirection(dirRef.current, 'UP')) dirRef.current = 'UP'
-          }}
+          onClick={() => handleDirection('UP')}
           className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
         >
           ↑
         </button>
         <div />
         <button
-          onClick={() => {
-            if (!started) setStarted(true)
-            if (!isOppositeDirection(dirRef.current, 'LEFT')) dirRef.current = 'LEFT'
-          }}
+          onClick={() => handleDirection('LEFT')}
           className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
         >
           ←
         </button>
         <button
-          onClick={() => {
-            if (!started) setStarted(true)
-            if (!isOppositeDirection(dirRef.current, 'DOWN')) dirRef.current = 'DOWN'
-          }}
+          onClick={() => handleDirection('DOWN')}
           className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
         >
           ↓
         </button>
         <button
-          onClick={() => {
-            if (!started) setStarted(true)
-            if (!isOppositeDirection(dirRef.current, 'RIGHT')) dirRef.current = 'RIGHT'
-          }}
+          onClick={() => handleDirection('RIGHT')}
           className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
         >
           →
