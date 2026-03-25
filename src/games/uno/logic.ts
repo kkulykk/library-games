@@ -94,9 +94,13 @@ export function canPlayCard(card: Card, topCard: Card, currentColor: CardColor):
   return false
 }
 
-/** Wild Draw 4 may only be played when the player has no cards matching the current color. */
+/**
+ * Wild Draw 4 may only be played when the player has no cards matching the current color.
+ * Cards with color 'wild' are correctly excluded because 'wild' !== any CardColor value,
+ * so they never prevent a Wild Draw 4 from being played.
+ */
 export function canPlayWild4(hand: Card[], cardId: string, currentColor: CardColor): boolean {
-  return !hand.some((c) => c.id !== cardId && c.color === currentColor)
+  return !hand.some((c) => c.id !== cardId && c.color !== 'wild' && c.color === currentColor)
 }
 
 export function getPlayableCards(
