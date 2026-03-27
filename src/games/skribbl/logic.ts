@@ -7,7 +7,8 @@ function generateMsgId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
-  return `msg-${Date.now()}-${Math.random().toString(36).slice(2)}-${++msgCounter}`
+  // Fallback for older environments (e.g. test runners without crypto.randomUUID)
+  return `msg-${Date.now()}-${++msgCounter}-${Math.floor(Math.random() * 1e9).toString(36)}`
 }
 
 export type GamePhase = 'lobby' | 'picking' | 'drawing' | 'round-end' | 'finished'
@@ -47,6 +48,7 @@ export type GameAction =
   | { type: 'CLEAR_CANVAS'; playerId: string }
   | { type: 'UNDO_STROKE'; playerId: string }
   | { type: 'GUESS'; playerId: string; text: string }
+  | { type: 'REVEAL_HINT'; playerId: string; ratio: number }
   | { type: 'END_TURN'; playerId: string }
   | { type: 'NEXT_TURN'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
@@ -100,8 +102,15 @@ export function revealHintLetters(word: string, revealCount: number): string {
   for (let i = 0; i < word.length; i++) {
     if (word[i] !== ' ') indices.push(i)
   }
-  const shuffled = fisherYatesShuffle(indices)
-  const toReveal = new Set(shuffled.slice(0, revealCount))
+  // Deterministic: pick evenly-spaced indices so all clients compute the same hint
+  const toReveal = new Set<number>()
+  const count = Math.min(revealCount, indices.length)
+  if (count > 0) {
+    const step = indices.length / count
+    for (let i = 0; i < count; i++) {
+      toReveal.add(indices[Math.floor(i * step)])
+    }
+  }
 
   return word
     .split('')
@@ -349,6 +358,22 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       text: action.text.trim(),
     }
     return { ...state, messages: [...state.messages, msg] }
+  }
+
+  if (action.type === 'REVEAL_HINT') {
+    if (state.phase !== 'drawing') return state
+    if (!state.word) return state
+    const drawer = getCurrentDrawer(state)
+    if (drawer?.id !== action.playerId) return state
+    const plainWord = decodeWord(state.word)
+    const letterCount = plainWord.replace(/ /g, '').length
+    let revealCount = 0
+    if (action.ratio >= 0.75) revealCount = Math.ceil(letterCount * 0.6)
+    else if (action.ratio >= 0.5) revealCount = Math.ceil(letterCount * 0.3)
+    if (revealCount === 0) return state
+    const newHint = revealHintLetters(plainWord, revealCount)
+    if (newHint === state.hint) return state
+    return { ...state, hint: newHint }
   }
 
   if (action.type === 'END_TURN') {

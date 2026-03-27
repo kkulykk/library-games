@@ -870,6 +870,34 @@ function GameBoardScreen({ gameState, playerId, dispatch, onLeave }: GameBoardPr
     dispatch({ type: 'END_TURN', playerId })
   }, [dispatch, playerId])
 
+  // Drawer dispatches hint reveals at 50% and 75% of turn time
+  useEffect(() => {
+    if (!isDrawer || gameState.phase !== 'drawing' || !gameState.drawStartTime) return
+    const turnMs = gameState.turnDuration * 1000
+    const elapsed = Date.now() - gameState.drawStartTime
+    const halfTime = turnMs * 0.5 - elapsed
+    const threeQuarterTime = turnMs * 0.75 - elapsed
+    const timers: ReturnType<typeof setTimeout>[] = []
+    if (halfTime > 0) {
+      timers.push(
+        setTimeout(() => dispatch({ type: 'REVEAL_HINT', playerId, ratio: 0.5 }), halfTime)
+      )
+    }
+    if (threeQuarterTime > 0) {
+      timers.push(
+        setTimeout(() => dispatch({ type: 'REVEAL_HINT', playerId, ratio: 0.75 }), threeQuarterTime)
+      )
+    }
+    return () => timers.forEach(clearTimeout)
+  }, [
+    isDrawer,
+    gameState.phase,
+    gameState.drawStartTime,
+    gameState.turnDuration,
+    dispatch,
+    playerId,
+  ])
+
   return (
     <div className="flex w-full max-w-5xl flex-col gap-3 px-2">
       {/* Top bar: round, hint/word, timer */}
