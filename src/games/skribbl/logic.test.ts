@@ -377,6 +377,58 @@ describe('revealHintLetters', () => {
   })
 })
 
+describe('REVEAL_HINT', () => {
+  function drawingState(): GameState {
+    const state = startedGame()
+    const drawer = getCurrentDrawer(state)!
+    const next = applyAction(state, {
+      type: 'PICK_WORD',
+      playerId: drawer.id,
+      word: state.wordChoices[0],
+    })
+    return { ...next, drawStartTime: Date.now() - 40000 }
+  }
+
+  it('non-drawer cannot reveal hints', () => {
+    const state = drawingState()
+    const next = applyAction(state, { type: 'REVEAL_HINT', playerId: 'p2', ratio: 0.5 })
+    expect(next).toBe(state)
+  })
+
+  it('does nothing in wrong phase', () => {
+    const state = { ...drawingState(), phase: 'lobby' as const }
+    const drawer = getCurrentDrawer(state)!
+    const next = applyAction(state, { type: 'REVEAL_HINT', playerId: drawer.id, ratio: 0.5 })
+    expect(next).toBe(state)
+  })
+
+  it('does nothing when ratio is below 0.5', () => {
+    const state = drawingState()
+    const drawer = getCurrentDrawer(state)!
+    const next = applyAction(state, { type: 'REVEAL_HINT', playerId: drawer.id, ratio: 0.3 })
+    expect(next).toBe(state)
+  })
+
+  it('reveals ~30% of letters at ratio 0.5', () => {
+    const state = drawingState()
+    const drawer = getCurrentDrawer(state)!
+    const next = applyAction(state, { type: 'REVEAL_HINT', playerId: drawer.id, ratio: 0.5 })
+    expect(next.hint).not.toBe(state.hint)
+    const revealed = next.hint.split(' ').filter((ch) => ch !== '_' && ch !== '')
+    expect(revealed.length).toBeGreaterThan(0)
+  })
+
+  it('reveals ~60% of letters at ratio 0.75', () => {
+    const state = drawingState()
+    const drawer = getCurrentDrawer(state)!
+    const at50 = applyAction(state, { type: 'REVEAL_HINT', playerId: drawer.id, ratio: 0.5 })
+    const at75 = applyAction(state, { type: 'REVEAL_HINT', playerId: drawer.id, ratio: 0.75 })
+    const revealed50 = at50.hint.split(' ').filter((ch) => ch !== '_' && ch !== '').length
+    const revealed75 = at75.hint.split(' ').filter((ch) => ch !== '_' && ch !== '').length
+    expect(revealed75).toBeGreaterThan(revealed50)
+  })
+})
+
 describe('calculateGuessScore', () => {
   it('gives higher score for faster guesses', () => {
     const fast = calculateGuessScore(1000, 80000, 3, 0)

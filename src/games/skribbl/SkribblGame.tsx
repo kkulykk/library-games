@@ -879,10 +879,14 @@ function GameBoardScreen({ gameState, playerId, dispatch, onLeave }: GameBoardPr
     const threeQuarterTime = turnMs * 0.75 - elapsed
     const timers: ReturnType<typeof setTimeout>[] = []
     if (halfTime > 0) {
-      timers.push(setTimeout(() => dispatch({ type: 'REVEAL_HINT', playerId }), halfTime))
+      timers.push(
+        setTimeout(() => dispatch({ type: 'REVEAL_HINT', playerId, ratio: 0.5 }), halfTime)
+      )
     }
     if (threeQuarterTime > 0) {
-      timers.push(setTimeout(() => dispatch({ type: 'REVEAL_HINT', playerId }), threeQuarterTime))
+      timers.push(
+        setTimeout(() => dispatch({ type: 'REVEAL_HINT', playerId, ratio: 0.75 }), threeQuarterTime)
+      )
     }
     return () => timers.forEach(clearTimeout)
   }, [

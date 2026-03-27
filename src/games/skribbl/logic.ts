@@ -48,7 +48,7 @@ export type GameAction =
   | { type: 'CLEAR_CANVAS'; playerId: string }
   | { type: 'UNDO_STROKE'; playerId: string }
   | { type: 'GUESS'; playerId: string; text: string }
-  | { type: 'REVEAL_HINT'; playerId: string }
+  | { type: 'REVEAL_HINT'; playerId: string; ratio: number }
   | { type: 'END_TURN'; playerId: string }
   | { type: 'NEXT_TURN'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
@@ -362,16 +362,14 @@ export function applyAction(state: GameState, action: GameAction): GameState {
 
   if (action.type === 'REVEAL_HINT') {
     if (state.phase !== 'drawing') return state
-    if (!state.word || !state.drawStartTime) return state
+    if (!state.word) return state
     const drawer = getCurrentDrawer(state)
     if (drawer?.id !== action.playerId) return state
     const plainWord = decodeWord(state.word)
     const letterCount = plainWord.replace(/ /g, '').length
-    const elapsed = Date.now() - state.drawStartTime
-    const ratio = elapsed / (state.turnDuration * 1000)
     let revealCount = 0
-    if (ratio >= 0.75) revealCount = Math.ceil(letterCount * 0.6)
-    else if (ratio >= 0.5) revealCount = Math.ceil(letterCount * 0.3)
+    if (action.ratio >= 0.75) revealCount = Math.ceil(letterCount * 0.6)
+    else if (action.ratio >= 0.5) revealCount = Math.ceil(letterCount * 0.3)
     if (revealCount === 0) return state
     const newHint = revealHintLetters(plainWord, revealCount)
     if (newHint === state.hint) return state
