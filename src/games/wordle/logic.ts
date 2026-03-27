@@ -74,12 +74,12 @@ export function isWin(results: GuessResult[]): boolean {
   return results.every((r) => r.state === 'correct')
 }
 
-/** Pick a deterministic daily word from a word list */
+/** Pick a deterministic daily word from a word list (UTC-based so all timezones match) */
 export function getDailyWord(wordList: string[]): string {
-  const epoch = new Date('2024-01-01').getTime()
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const dayIndex = Math.floor((today.getTime() - epoch) / 86_400_000)
+  const epoch = Date.UTC(2024, 0, 1)
+  const now = new Date()
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  const dayIndex = Math.floor((todayUTC - epoch) / 86_400_000)
   return wordList[dayIndex % wordList.length].toUpperCase()
 }
 
