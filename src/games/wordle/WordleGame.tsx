@@ -15,6 +15,9 @@ import {
 } from './logic'
 import { cn } from '@/lib/utils'
 
+const TOAST_DURATION_MS = 2000
+const SHAKE_DURATION_MS = 500
+
 const KEYBOARD_ROWS = [
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
   ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
@@ -86,19 +89,19 @@ export function WordleGame() {
 
   const showMessage = (msg: string) => {
     setMessage(msg)
-    setTimeout(() => setMessage(''), 2000)
+    setTimeout(() => setMessage(''), TOAST_DURATION_MS)
   }
 
   const submitGuess = useCallback(() => {
     if (currentGuess.length !== WORD_LENGTH) {
       setShake(true)
-      setTimeout(() => setShake(false), 500)
+      setTimeout(() => setShake(false), SHAKE_DURATION_MS)
       showMessage('Not enough letters')
       return
     }
     if (!isValidGuess(currentGuess)) {
       setShake(true)
-      setTimeout(() => setShake(false), 500)
+      setTimeout(() => setShake(false), SHAKE_DURATION_MS)
       showMessage('Not in word list')
       return
     }
