@@ -370,11 +370,19 @@ interface LobbyScreenProps {
   gameState: GameState
   playerId: string
   roomCode: string
+  onlinePlayerIds: string[]
   onStart: () => void
   onLeave: () => void
 }
 
-function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyScreenProps) {
+function LobbyScreen({
+  gameState,
+  playerId,
+  roomCode,
+  onlinePlayerIds,
+  onStart,
+  onLeave,
+}: LobbyScreenProps) {
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
@@ -425,22 +433,29 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
         <p className="text-xs font-medium text-muted-foreground">
           Players ({gameState.players.length}/10)
         </p>
-        {gameState.players.map((p, i) => (
-          <div
-            key={p.id}
-            className="animate-uno-slide-up flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm"
-            style={{ animationDelay: `${i * 50}ms` }}
-          >
-            <span
-              className={cn('h-2 w-2 rounded-full', p.isHost ? 'bg-amber-400' : 'bg-green-400')}
-            />
-            <span className="font-medium">{p.name}</span>
-            {p.isHost && <span className="ml-auto text-xs text-muted-foreground">host</span>}
-            {p.id === playerId && !p.isHost && (
-              <span className="ml-auto text-xs text-muted-foreground">you</span>
-            )}
-          </div>
-        ))}
+        {gameState.players.map((p, i) => {
+          const isOnline = onlinePlayerIds.includes(p.id)
+          return (
+            <div
+              key={p.id}
+              className="animate-uno-slide-up flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm"
+              style={{ animationDelay: `${i * 50}ms` }}
+            >
+              <span
+                className={cn(
+                  'h-2 w-2 rounded-full',
+                  isOnline ? 'bg-green-400' : 'bg-gray-400 opacity-50'
+                )}
+                title={isOnline ? 'Online' : 'Offline'}
+              />
+              <span className={cn('font-medium', !isOnline && 'opacity-60')}>{p.name}</span>
+              {p.isHost && <span className="ml-auto text-xs text-muted-foreground">host</span>}
+              {p.id === playerId && !p.isHost && (
+                <span className="ml-auto text-xs text-muted-foreground">you</span>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {isHost && gameState.players.length < 2 && (
@@ -480,6 +495,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
 interface GameBoardProps {
   gameState: GameState
   playerId: string
+  onlinePlayerIds: string[]
   onDispatch: (cardId: string, chosenColor?: CardColor) => void
   onDraw: () => void
   onPassAfterDraw: () => void
@@ -491,6 +507,7 @@ interface GameBoardProps {
 function GameBoard({
   gameState,
   playerId,
+  onlinePlayerIds,
   onDispatch,
   onDraw,
   onPassAfterDraw,
@@ -602,6 +619,7 @@ function GameBoard({
           const calledUno = gameState.calledUno.includes(p.id)
           const isCatchable = catchableTargets.includes(p)
 
+          const isOnline = onlinePlayerIds.includes(p.id)
           return (
             <div
               key={p.id}
@@ -615,7 +633,18 @@ function GameBoard({
               {isTurn && (
                 <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
               )}
-              <span className="max-w-[5rem] truncate">{p.name}</span>
+              {!isTurn && (
+                <span
+                  className={cn(
+                    'inline-block h-1.5 w-1.5 rounded-full',
+                    isOnline ? 'bg-green-400' : 'bg-gray-400 opacity-50'
+                  )}
+                  title={isOnline ? 'Online' : 'Offline'}
+                />
+              )}
+              <span className={cn('max-w-[5rem] truncate', !isOnline && 'opacity-60')}>
+                {p.name}
+              </span>
               {/* Mini card count */}
               <span className="rounded-md bg-black/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
                 {hand.length}
@@ -895,6 +924,7 @@ export function UnoGame() {
     status,
     error,
     savedSession,
+    onlinePlayerIds,
     createRoom,
     joinRoom,
     restoreSession,
@@ -952,6 +982,7 @@ export function UnoGame() {
           gameState={gameState}
           playerId={playerId}
           roomCode={roomCode}
+          onlinePlayerIds={onlinePlayerIds}
           onStart={() => dispatch({ type: 'START_GAME', playerId })}
           onLeave={leaveRoom}
         />
@@ -965,6 +996,7 @@ export function UnoGame() {
       <GameBoard
         gameState={redactedState!}
         playerId={playerId}
+        onlinePlayerIds={onlinePlayerIds}
         onDispatch={(cardId, chosenColor) =>
           dispatch({ type: 'PLAY_CARD', playerId, cardId, chosenColor, now: Date.now() })
         }
