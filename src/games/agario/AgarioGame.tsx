@@ -651,6 +651,8 @@ export function AgarioGame() {
   const boostingRef = useRef(false)
   const gameStartTimeRef = useRef(0)
   const lastBroadcastRef = useRef(0)
+  const lastBroadcastHeadRef = useRef<{ x: number; y: number } | null>(null)
+  const lastBroadcastBoostRef = useRef(false)
   const lastFoodSyncRef = useRef(0)
   const lastFoodReplenishRef = useRef(0)
   const gameLoopRef = useRef<number | null>(null)
@@ -911,16 +913,28 @@ export function AgarioGame() {
         }
       }
 
-      // Broadcast snake state
-      if (now - lastBroadcastRef.current > BROADCAST_RATE) {
-        broadcast({
-          type: 'snake_update',
-          snake: {
-            ...me,
-            segments: compressSegments(me.segments),
-          },
-        })
-        lastBroadcastRef.current = now
+      // Broadcast snake state — only when alive and moved significantly or boost changed
+      const MIN_MOVE_PX = 3
+      if (me.alive && now - lastBroadcastRef.current > BROADCAST_RATE) {
+        const head = me.segments[0]
+        const lastHead = lastBroadcastHeadRef.current
+        const boostChanged = me.boosting !== lastBroadcastBoostRef.current
+        const movedEnough =
+          !lastHead ||
+          Math.abs(head.x - lastHead.x) > MIN_MOVE_PX ||
+          Math.abs(head.y - lastHead.y) > MIN_MOVE_PX
+        if (movedEnough || boostChanged) {
+          broadcast({
+            type: 'snake_update',
+            snake: {
+              ...me,
+              segments: compressSegments(me.segments),
+            },
+          })
+          lastBroadcastRef.current = now
+          lastBroadcastHeadRef.current = { x: head.x, y: head.y }
+          lastBroadcastBoostRef.current = me.boosting
+        }
       }
 
       // Host: replenish food
