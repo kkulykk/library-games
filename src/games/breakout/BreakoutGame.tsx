@@ -78,38 +78,48 @@ export function BreakoutGame() {
     const s = stateRef.current
     if (!s.running) return
 
-    s.ball = moveBall(s.ball)
-    s.ball = bounceWalls(s.ball)
-    s.ball = checkPaddleCollision(s.ball, s.paddle)
+    let ball = moveBall(s.ball)
+    ball = bounceWalls(ball)
+    ball = checkPaddleCollision(ball, s.paddle)
 
-    const { ball: newBall, bricks: newBricks, points } = checkBrickCollisions(s.ball, s.bricks)
-    s.ball = newBall
-    s.bricks = newBricks
-    s.score += points
+    const { ball: collidedBall, bricks, points } = checkBrickCollisions(ball, s.bricks)
+    ball = collidedBall
+    const score = s.score + points
+    let { lives, level } = s
+    let newBricks = bricks
 
-    if (isBallLost(s.ball)) {
-      s.lives -= 1
-      if (s.lives <= 0) {
-        s.running = false
-        s.gameOver = true
+    if (isBallLost(ball)) {
+      lives -= 1
+      if (lives <= 0) {
+        stateRef.current = {
+          ...s,
+          ball,
+          bricks: newBricks,
+          score,
+          lives: 0,
+          running: false,
+          gameOver: true,
+        }
         setDisplayState((prev) => ({ ...prev, lives: 0, running: false, gameOver: true }))
         draw()
         return
       }
-      s.ball = createBall()
-      setDisplayState((prev) => ({ ...prev, lives: s.lives, score: s.score }))
+      ball = createBall()
+      setDisplayState((prev) => ({ ...prev, lives, score }))
     }
 
-    if (isLevelComplete(s.bricks)) {
-      s.level += 1
-      s.bricks = createBricks()
-      const speed = Math.min(4 + s.level, 10)
-      s.ball = { ...createBall(), vx: speed * (s.ball.vx > 0 ? 1 : -1), vy: -speed }
-      setDisplayState((prev) => ({ ...prev, score: s.score, level: s.level }))
+    if (isLevelComplete(newBricks)) {
+      level += 1
+      newBricks = createBricks()
+      const speed = Math.min(4 + level, 10)
+      ball = { ...createBall(), vx: speed * (ball.vx > 0 ? 1 : -1), vy: -speed }
+      setDisplayState((prev) => ({ ...prev, score, level }))
     }
+
+    stateRef.current = { ...s, ball, bricks: newBricks, score, lives, level }
 
     if (points > 0) {
-      setDisplayState((prev) => ({ ...prev, score: s.score }))
+      setDisplayState((prev) => ({ ...prev, score }))
     }
 
     draw()
@@ -124,20 +134,16 @@ export function BreakoutGame() {
       const rect = canvas.getBoundingClientRect()
       const scale = CANVAS_WIDTH / rect.width
       const mouseX = (e.clientX - rect.left) * scale
-      stateRef.current.paddle.x = Math.max(
-        0,
-        Math.min(CANVAS_WIDTH - PADDLE_WIDTH, mouseX - PADDLE_WIDTH / 2)
-      )
+      const x = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, mouseX - PADDLE_WIDTH / 2))
+      stateRef.current = { ...stateRef.current, paddle: { ...stateRef.current.paddle, x } }
     }
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault()
       const rect = canvas.getBoundingClientRect()
       const scale = CANVAS_WIDTH / rect.width
       const touchX = (e.touches[0].clientX - rect.left) * scale
-      stateRef.current.paddle.x = Math.max(
-        0,
-        Math.min(CANVAS_WIDTH - PADDLE_WIDTH, touchX - PADDLE_WIDTH / 2)
-      )
+      const x = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, touchX - PADDLE_WIDTH / 2))
+      stateRef.current = { ...stateRef.current, paddle: { ...stateRef.current.paddle, x } }
     }
     canvas.addEventListener('mousemove', onMouseMove)
     canvas.addEventListener('touchmove', onTouchMove, { passive: false })

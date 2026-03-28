@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   createEmptyGrid,
   addRandomTile,
@@ -48,6 +48,7 @@ export function Game2048() {
   const [best, setBest] = useState(0)
   const [gameOver, setGameOver] = useState(false)
   const [won, setWon] = useState(false)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   const handleMove = useCallback(
     (direction: Direction) => {
@@ -86,6 +87,28 @@ export function Game2048() {
     return () => window.removeEventListener('keydown', listener)
   }, [handleMove])
 
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }, [])
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (!touchStartRef.current) return
+      const touch = e.changedTouches[0]
+      const dx = touch.clientX - touchStartRef.current.x
+      const dy = touch.clientY - touchStartRef.current.y
+      touchStartRef.current = null
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return
+      if (Math.abs(dx) > Math.abs(dy)) {
+        handleMove(dx > 0 ? 'right' : 'left')
+      } else {
+        handleMove(dy > 0 ? 'down' : 'up')
+      }
+    },
+    [handleMove]
+  )
+
   const restart = () => {
     setState(initGame())
     setGameOver(false)
@@ -115,7 +138,11 @@ export function Game2048() {
       </div>
 
       {/* Grid */}
-      <div className="relative w-full rounded-2xl bg-zinc-300 p-2 dark:bg-zinc-700">
+      <div
+        className="relative w-full rounded-2xl bg-zinc-300 p-2 dark:bg-zinc-700"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         {won && !gameOver && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl bg-yellow-500/80">
             <p className="text-3xl font-extrabold text-white">You Win! 🎉</p>
@@ -182,7 +209,9 @@ export function Game2048() {
           →
         </button>
       </div>
-      <p className="text-xs text-muted-foreground">Use arrow keys or buttons to play</p>
+      <p className="text-xs text-muted-foreground">
+        Use arrow keys, swipe on the grid, or tap the buttons to play
+      </p>
     </div>
   )
 }

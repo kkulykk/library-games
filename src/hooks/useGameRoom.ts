@@ -86,6 +86,7 @@ export interface UseGameRoomReturn<TState, TAction, TBroadcast = never> {
   status: RoomStatus
   error: string | null
   savedSession: Session | null
+  onlinePlayerIds: string[]
   createRoom: (playerName: string) => Promise<void>
   joinRoom: (code: string, playerName: string) => Promise<void>
   restoreSession: () => Promise<void>
@@ -106,8 +107,12 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   const [status, setStatus] = useState<RoomStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [savedSession, setSavedSession] = useState<Session | null>(null)
+  const [onlinePlayerIds, setOnlinePlayerIds] = useState<string[]>([])
   const dbChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null)
   const broadcastChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(
+    null
+  )
+  const presenceChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(
     null
   )
   const onBroadcastRef = useRef<((message: TBroadcast) => void) | null>(null)
@@ -121,6 +126,33 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   useEffect(() => {
     setSavedSession(loadSession(configRef.current.sessionKey))
   }, [])
+
+  // Track presence to show which players are online
+  useEffect(() => {
+    if (!playerId || !roomCode || !supabase) return
+    const { channelPrefix } = configRef.current
+    const channel = supabase
+      .channel(`${channelPrefix}-presence:${roomCode}`)
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState()
+        const ids = Object.values(state)
+          .flat()
+          .map((p) => (p as { player_id: string }).player_id)
+          .filter(Boolean)
+        setOnlinePlayerIds(ids)
+      })
+      .subscribe(async (s) => {
+        if (s === 'SUBSCRIBED') {
+          await channel.track({ player_id: playerId })
+        }
+      })
+    presenceChannelRef.current = channel
+    return () => {
+      channel.unsubscribe()
+      presenceChannelRef.current = null
+      setOnlinePlayerIds([])
+    }
+  }, [playerId, roomCode])
 
   const setStateAndRef = useCallback((state: TState | null, version?: number) => {
     gameStateRef.current = state
@@ -402,11 +434,14 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       dbChannelRef.current = null
       broadcastChannelRef.current?.unsubscribe()
       broadcastChannelRef.current = null
+      presenceChannelRef.current?.unsubscribe()
+      presenceChannelRef.current = null
       setStateAndRef(null, 0)
       setPlayerId(null)
       setRoomCode(null)
       setStatus('idle')
       setError(null)
+      setOnlinePlayerIds([])
       clearSession(cfg.sessionKey)
       setSavedSession(null)
     }
@@ -416,6 +451,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     return () => {
       dbChannelRef.current?.unsubscribe()
       broadcastChannelRef.current?.unsubscribe()
+      presenceChannelRef.current?.unsubscribe()
     }
   }, [])
 
@@ -426,6 +462,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     status,
     error,
     savedSession,
+    onlinePlayerIds,
     createRoom,
     joinRoom,
     restoreSession,
