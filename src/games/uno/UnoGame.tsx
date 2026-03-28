@@ -639,9 +639,9 @@ function GameBoard({
       </div>
 
       {/* Play area */}
-      <div className="relative flex w-full items-center justify-center gap-4 rounded-2xl bg-emerald-100 px-4 py-6 shadow-inner dark:bg-emerald-950/40 sm:gap-8 sm:px-8 sm:py-8">
+      <div className="relative flex w-full items-center justify-center gap-4 rounded-2xl bg-emerald-100 px-4 py-6 shadow-inner sm:gap-8 sm:px-8 sm:py-8 dark:bg-emerald-950/40">
         {/* Direction indicator */}
-        <div className="absolute right-3 top-2 flex items-center gap-1 text-xs text-emerald-600/60 dark:text-emerald-400/60 sm:right-4 sm:top-3">
+        <div className="absolute right-3 top-2 flex items-center gap-1 text-xs text-emerald-600/60 sm:right-4 sm:top-3 dark:text-emerald-400/60">
           <span
             className="inline-block transition-transform duration-500"
             style={{
@@ -673,7 +673,7 @@ function GameBoard({
               />
             </div>
           </div>
-          <span className="text-[10px] tabular-nums text-emerald-700/70 dark:text-emerald-400/50 sm:text-xs">
+          <span className="text-[10px] tabular-nums text-emerald-700/70 sm:text-xs dark:text-emerald-400/50">
             {gameState.drawPile.length}
           </span>
         </div>
@@ -687,7 +687,7 @@ function GameBoard({
               ACTIVE_COLOR_RING[gameState.currentColor]
             )}
           />
-          <span className="text-[10px] capitalize text-emerald-700/70 dark:text-emerald-400/50 sm:text-xs">
+          <span className="text-[10px] capitalize text-emerald-700/70 sm:text-xs dark:text-emerald-400/50">
             {gameState.currentColor}
           </span>
         </div>
@@ -699,7 +699,7 @@ function GameBoard({
               <UnoCard card={topCard} size="lg" />
             </div>
           )}
-          <span className="text-[10px] text-emerald-700/70 dark:text-emerald-400/50 sm:text-xs">
+          <span className="text-[10px] text-emerald-700/70 sm:text-xs dark:text-emerald-400/50">
             discard
           </span>
         </div>
