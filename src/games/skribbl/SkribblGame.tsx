@@ -339,9 +339,16 @@ interface ScoreboardProps {
   currentDrawerId: string | null
   guessedPlayers: string[]
   playerId: string
+  onlinePlayerIds?: string[]
 }
 
-function Scoreboard({ players, currentDrawerId, guessedPlayers, playerId }: ScoreboardProps) {
+function Scoreboard({
+  players,
+  currentDrawerId,
+  guessedPlayers,
+  playerId,
+  onlinePlayerIds,
+}: ScoreboardProps) {
   const sorted = [...players].sort((a, b) => b.score - a.score)
   return (
     <div className="rounded-xl border bg-background">
@@ -349,35 +356,49 @@ function Scoreboard({ players, currentDrawerId, guessedPlayers, playerId }: Scor
         Scoreboard
       </div>
       <div className="p-2">
-        {sorted.map((p, i) => (
-          <div
-            key={p.id}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs',
-              p.id === playerId && 'bg-primary/10'
-            )}
-          >
-            <span className="w-4 text-center font-bold text-muted-foreground">{i + 1}</span>
-            <span
+        {sorted.map((p, i) => {
+          const isOnline = !onlinePlayerIds || onlinePlayerIds.includes(p.id)
+          return (
+            <div
+              key={p.id}
               className={cn(
-                'h-2 w-2 rounded-full',
-                p.id === currentDrawerId
-                  ? 'bg-amber-400'
-                  : guessedPlayers.includes(p.id)
-                    ? 'bg-emerald-400'
-                    : 'bg-gray-300'
+                'flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs',
+                p.id === playerId && 'bg-primary/10'
               )}
-            />
-            <span className="flex-1 truncate font-medium">
-              {p.name}
-              {p.id === playerId && <span className="ml-1 text-muted-foreground">(you)</span>}
-            </span>
-            {p.id === currentDrawerId && (
-              <span className="text-[10px] text-amber-600 dark:text-amber-400">drawing</span>
-            )}
-            <span className="font-bold tabular-nums">{p.score}</span>
-          </div>
-        ))}
+            >
+              <span className="w-4 text-center font-bold text-muted-foreground">{i + 1}</span>
+              <span
+                className={cn(
+                  'h-2 w-2 rounded-full',
+                  p.id === currentDrawerId
+                    ? 'bg-amber-400'
+                    : guessedPlayers.includes(p.id)
+                      ? 'bg-emerald-400'
+                      : isOnline
+                        ? 'bg-green-400'
+                        : 'bg-gray-300 opacity-50'
+                )}
+                title={
+                  p.id === currentDrawerId
+                    ? 'Drawing'
+                    : guessedPlayers.includes(p.id)
+                      ? 'Guessed'
+                      : isOnline
+                        ? 'Online'
+                        : 'Offline'
+                }
+              />
+              <span className={cn('flex-1 truncate font-medium', !isOnline && 'opacity-60')}>
+                {p.name}
+                {p.id === playerId && <span className="ml-1 text-muted-foreground">(you)</span>}
+              </span>
+              {p.id === currentDrawerId && (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400">drawing</span>
+              )}
+              <span className="font-bold tabular-nums">{p.score}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -575,11 +596,19 @@ interface LobbyScreenProps {
   gameState: GameState
   playerId: string
   roomCode: string
+  onlinePlayerIds: string[]
   onStart: () => void
   onLeave: () => void
 }
 
-function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyScreenProps) {
+function LobbyScreen({
+  gameState,
+  playerId,
+  roomCode,
+  onlinePlayerIds,
+  onStart,
+  onLeave,
+}: LobbyScreenProps) {
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
@@ -630,22 +659,29 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
         <p className="text-xs font-medium text-muted-foreground">
           Players ({gameState.players.length}/8)
         </p>
-        {gameState.players.map((p, i) => (
-          <div
-            key={p.id}
-            className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm"
-            style={{ animationDelay: `${i * 50}ms` }}
-          >
-            <span
-              className={cn('h-2 w-2 rounded-full', p.isHost ? 'bg-amber-400' : 'bg-green-400')}
-            />
-            <span className="font-medium">{p.name}</span>
-            {p.isHost && <span className="ml-auto text-xs text-muted-foreground">host</span>}
-            {p.id === playerId && !p.isHost && (
-              <span className="ml-auto text-xs text-muted-foreground">you</span>
-            )}
-          </div>
-        ))}
+        {gameState.players.map((p, i) => {
+          const isOnline = onlinePlayerIds.includes(p.id)
+          return (
+            <div
+              key={p.id}
+              className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm"
+              style={{ animationDelay: `${i * 50}ms` }}
+            >
+              <span
+                className={cn(
+                  'h-2 w-2 rounded-full',
+                  isOnline ? 'bg-green-400' : 'bg-gray-400 opacity-50'
+                )}
+                title={isOnline ? 'Online' : 'Offline'}
+              />
+              <span className={cn('font-medium', !isOnline && 'opacity-60')}>{p.name}</span>
+              {p.isHost && <span className="ml-auto text-xs text-muted-foreground">host</span>}
+              {p.id === playerId && !p.isHost && (
+                <span className="ml-auto text-xs text-muted-foreground">you</span>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {isHost && gameState.players.length < 2 && (
@@ -857,11 +893,18 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
 interface GameBoardProps {
   gameState: GameState
   playerId: string
+  onlinePlayerIds: string[]
   dispatch: (action: Parameters<ReturnType<typeof useSkribblRoom>['dispatch']>[0]) => void
   onLeave: () => void
 }
 
-function GameBoardScreen({ gameState, playerId, dispatch, onLeave }: GameBoardProps) {
+function GameBoardScreen({
+  gameState,
+  playerId,
+  onlinePlayerIds,
+  dispatch,
+  onLeave,
+}: GameBoardProps) {
   const drawer = getCurrentDrawer(gameState)
   const isDrawer = drawer?.id === playerId
   const hasGuessed = gameState.guessedPlayers.includes(playerId)
@@ -934,6 +977,7 @@ function GameBoardScreen({ gameState, playerId, dispatch, onLeave }: GameBoardPr
             currentDrawerId={drawer?.id ?? null}
             guessedPlayers={gameState.guessedPlayers}
             playerId={playerId}
+            onlinePlayerIds={onlinePlayerIds}
           />
         </div>
 
@@ -990,6 +1034,7 @@ export function SkribblGame() {
     status,
     error,
     savedSession,
+    onlinePlayerIds,
     createRoom,
     joinRoom,
     restoreSession,
@@ -1021,6 +1066,7 @@ export function SkribblGame() {
         gameState={gameState}
         playerId={playerId}
         roomCode={roomCode}
+        onlinePlayerIds={onlinePlayerIds}
         onStart={() => dispatch({ type: 'START_GAME', playerId })}
         onLeave={leaveRoom}
       />
@@ -1054,6 +1100,7 @@ export function SkribblGame() {
       <GameBoardScreen
         gameState={gameState}
         playerId={playerId}
+        onlinePlayerIds={onlinePlayerIds}
         dispatch={dispatch}
         onLeave={leaveRoom}
       />
