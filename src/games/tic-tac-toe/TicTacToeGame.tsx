@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { createInitialState, makeMove, getAIMove, isGameOver, type GameState } from './logic'
 import { cn } from '@/lib/utils'
 
+const AI_THINK_DELAY_MS = 400
+
 type GameMode = 'single' | 'dual'
 
 export function TicTacToeGame() {
@@ -24,7 +26,7 @@ export function TicTacToeGame() {
         setState((prev) => makeMove(prev, move))
       }
       setAiThinking(false)
-    }, 400)
+    }, AI_THINK_DELAY_MS)
 
     return () => clearTimeout(timeout)
   }, [mode, state])

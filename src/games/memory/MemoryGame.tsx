@@ -4,15 +4,18 @@ import { useState, useCallback, useRef } from 'react'
 import { createDeck, flipCard, checkMatch, isGameComplete, type MemoryCard } from './logic'
 import { cn } from '@/lib/utils'
 
+const MATCH_CHECK_DELAY_MS = 800
+const NUM_PAIRS = 8
+
 export function MemoryGame() {
-  const [cards, setCards] = useState<MemoryCard[]>(() => createDeck(8))
+  const [cards, setCards] = useState<MemoryCard[]>(() => createDeck(NUM_PAIRS))
   const [flipped, setFlipped] = useState<number[]>([])
   const [moves, setMoves] = useState(0)
   const lockedRef = useRef(false)
   const [won, setWon] = useState(false)
 
   const restart = () => {
-    setCards(createDeck(8))
+    setCards(createDeck(NUM_PAIRS))
     setFlipped([])
     setMoves(0)
     lockedRef.current = false
@@ -42,7 +45,7 @@ export function MemoryGame() {
           })
           setFlipped([])
           lockedRef.current = false
-        }, 800)
+        }, MATCH_CHECK_DELAY_MS)
       }
     },
     [cards, flipped, won]
