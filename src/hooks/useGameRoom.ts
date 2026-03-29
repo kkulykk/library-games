@@ -137,7 +137,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         const state = channel.presenceState()
         const ids = Object.values(state)
           .flat()
-          .map((p) => (p as { player_id: string }).player_id)
+          .map((p) => (p as unknown as { player_id: string }).player_id)
           .filter(Boolean)
         setOnlinePlayerIds(ids)
       })
