@@ -38,7 +38,7 @@ function clearSession(key: string) {
 }
 
 function generateRoomCode(): string {
-  return crypto.randomUUID().replace(/-/g, '').substring(0, 6).toUpperCase()
+  return crypto.randomUUID().replace(/-/g, '').substring(0, 4).toUpperCase()
 }
 
 export type RoomStatus = 'idle' | 'restoring' | 'creating' | 'joining' | 'connected' | 'error'
