@@ -316,6 +316,14 @@ export function stepGame(state: GameState, input: Input): GameState {
         ball.x = tileLeft - r - 0.01
       } else if (ball.vx < 0) {
         ball.x = tileRight + r + 0.01
+      } else {
+        // Zero velocity — push out based on closest side
+        const tileCenterX = tileLeft + TILE_SIZE / 2
+        if (ball.x < tileCenterX) {
+          ball.x = tileLeft - r - 0.01
+        } else {
+          ball.x = tileRight + r + 0.01
+        }
       }
       ball.vx = 0
     }

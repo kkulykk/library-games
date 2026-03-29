@@ -22,7 +22,9 @@ import {
   T_SPIKE,
   T_SPRING,
   T_FINISH,
+  LEVEL_BONUS,
   GameState,
+  Input,
 } from './logic'
 
 describe('parseLevel', () => {
@@ -128,7 +130,6 @@ describe('createInitialState', () => {
 
 describe('stepGame', () => {
   const noInput: Input = { left: false, right: false, jump: false }
-  type Input = { left: boolean; right: boolean; jump: boolean }
 
   it('returns same reference when gameOver', () => {
     const state = { ...createInitialState(), gameOver: true }
@@ -291,6 +292,52 @@ describe('stepGame', () => {
     const next = stepGame(state, noInput)
     expect(next.gameOver).toBe(true)
     expect(next.lives).toBe(0)
+  })
+
+  it('sets levelComplete when ball reaches finish on non-final level', () => {
+    const state = createInitialState(0)
+    const modified: GameState = {
+      ...state,
+      ball: { x: state.finishX, y: state.finishY, vx: 0, vy: 1 },
+    }
+    const next = stepGame(modified, noInput)
+    expect(next.levelComplete).toBe(true)
+    expect(next.score).toBe(state.score + LEVEL_BONUS)
+  })
+
+  it('sets won when ball reaches finish on final level', () => {
+    const state = createInitialState(TOTAL_LEVELS - 1)
+    const modified: GameState = {
+      ...state,
+      ball: { x: state.finishX, y: state.finishY, vx: 0, vy: 1 },
+    }
+    const next = stepGame(modified, noInput)
+    expect(next.won).toBe(true)
+    expect(next.score).toBe(state.score + LEVEL_BONUS)
+  })
+
+  it('pushes ball out of solid tile when vx is zero', () => {
+    const state = createInitialState()
+    const tiles = state.tiles.map((row) => [...row])
+    // Place a brick where the ball is
+    const brickCol = 5
+    const brickRow = 5
+    if (tiles[brickRow]) tiles[brickRow][brickCol] = T_BRICK
+    const tileCenter = brickCol * TILE_SIZE + TILE_SIZE / 2
+    // Ball slightly left of tile center, stationary
+    const modified: GameState = {
+      ...state,
+      tiles,
+      ball: {
+        x: tileCenter - 2,
+        y: brickRow * TILE_SIZE + TILE_SIZE / 2,
+        vx: 0,
+        vy: 0,
+      },
+    }
+    const next = stepGame(modified, noInput)
+    // Ball should be pushed out to the left of the tile
+    expect(next.ball.x).toBeLessThan(brickCol * TILE_SIZE)
   })
 
   it('updates camera position', () => {
