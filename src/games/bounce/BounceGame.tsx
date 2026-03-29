@@ -12,6 +12,7 @@ import {
   T_SPRING,
   T_FINISH,
   TOTAL_LEVELS,
+  LEVEL_BONUS,
   GameState,
   createInitialState,
   stepGame,
@@ -455,7 +456,7 @@ function renderFrame(
       'LEVEL CLEAR!',
       [`Score: ${state.score}`],
       'Tap or press Space for next level',
-      `+${500} LEVEL BONUS`
+      `+${LEVEL_BONUS} LEVEL BONUS`
     )
   }
 }
@@ -511,7 +512,7 @@ export default function BounceGame() {
       }
 
       squishRef.current = Math.max(0, squishRef.current - 0.08)
-      renderFrame(ctx!, stateRef.current!, frameRef.current++, squishRef.current)
+      renderFrame(ctx, stateRef.current!, frameRef.current++, squishRef.current)
       rafRef.current = requestAnimationFrame(loop)
     }
 
