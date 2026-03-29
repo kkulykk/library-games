@@ -5,316 +5,372 @@ import {
   BALL_RADIUS,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
-  PLATFORM_H,
-  STAR_RADIUS,
+  TILE_SIZE,
+  T_BRICK,
+  T_BRICK2,
+  T_SPIKE,
+  T_SPRING,
+  T_FINISH,
+  TOTAL_LEVELS,
+  LEVEL_BONUS,
   GameState,
-  Platform,
-  Star,
   createInitialState,
   stepGame,
-  totalScore,
+  advanceLevel,
 } from './logic'
 
-// Doodle Jump-inspired colour palette
+/* ── Nokia-style colour palette ──────────────────── */
 const C = {
-  sky1: '#C8E8F8',
-  sky2: '#EEF6FF',
-  dot: 'rgba(120, 180, 220, 0.38)',
-  platNormal: '#5AB552',
-  platNormalShade: '#3D8030',
-  platNormalShine: 'rgba(255,255,255,0.5)',
-  platMoving: '#4A7FC1',
-  platMovingShade: '#2A5598',
-  platMovingShine: 'rgba(255,255,255,0.38)',
-  platBreaking: '#C4883A',
-  platBreakingShade: '#9A6018',
-  platBreakingShine: 'rgba(255,255,255,0.22)',
-  springTop: '#FFD700',
-  springBottom: '#E8A800',
-  springLine: '#AA7A00',
-  doodleBody: '#9EDA8E',
-  doodleOutline: '#5A9A50',
-  doodleNose: '#76C468',
-  star: '#FFD600',
-  starGlow: 'rgba(255,214,0,0.22)',
-  hudScore: '#1A3A5C',
-  hudBest: '#4A7099',
-  overBg: 'rgba(210,235,255,0.92)',
-  overPanel: 'rgba(255,255,255,0.96)',
-  overBorder: 'rgba(70,130,190,0.35)',
-  overTitle: '#1A3A5C',
-  overText: '#2A5080',
-  overSub: '#5A80A0',
+  bg: '#00B4D8',
+  brickFace: '#C43C2C',
+  brickMortar: '#8B2215',
+  brickFace2: '#A85030',
+  brickMortar2: '#6B1810',
+  ballMain: '#E03030',
+  ballShade: '#A01818',
+  ballShine: '#FF7070',
+  ringOuter: '#FFD700',
+  ringInner: '#FFA500',
+  ringCollected: 'rgba(255,215,0,0.3)',
+  springBase: '#888888',
+  springCoil: '#DDDD00',
+  springTop: '#FFEE44',
+  spikeBody: '#666666',
+  spikeTip: '#999999',
+  finishGlow: '#44FF44',
+  finishCore: '#22CC22',
+  hudBg: 'rgba(0,0,0,0.65)',
+  hudText: '#FFFFFF',
+  hudScore: '#FFD700',
+  overBg: 'rgba(0,0,0,0.75)',
+  overPanel: '#1A1A2E',
+  overBorder: '#C43C2C',
+  overTitle: '#FFFFFF',
+  overText: '#CCCCCC',
+  overHighlight: '#FFD700',
+  btnBg: '#2A2A3E',
+  btnBorder: '#555577',
+  btnText: '#FFFFFF',
+  btnActive: '#3A3A5E',
 }
 
-/** Draw a rounded-rectangle path (no fill/stroke applied yet). */
-function rrect(
+/* ── drawing helpers ─────────────────────────────── */
+
+function drawBrickTile(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  w: number,
-  h: number,
-  r: number
+  variant: 'normal' | 'dark'
 ) {
-  r = Math.min(r, w / 2, h / 2)
-  ctx.beginPath()
-  ctx.moveTo(x + r, y)
-  ctx.lineTo(x + w - r, y)
-  ctx.arcTo(x + w, y, x + w, y + r, r)
-  ctx.lineTo(x + w, y + h - r)
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
-  ctx.lineTo(x + r, y + h)
-  ctx.arcTo(x, y + h, x, y + h - r, r)
-  ctx.lineTo(x, y + r)
-  ctx.arcTo(x, y, x + r, y, r)
-  ctx.closePath()
-}
+  const face = variant === 'dark' ? C.brickFace2 : C.brickFace
+  const mortar = variant === 'dark' ? C.brickMortar2 : C.brickMortar
 
-function drawDoodle(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  vx: number,
-  squishX: number,
-  squishY: number
-) {
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.scale(squishX, squishY)
+  // Mortar background
+  ctx.fillStyle = mortar
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE)
 
-  const bw = BALL_RADIUS * 1.35
-  const bh = BALL_RADIUS
+  // Brick faces — standard running bond pattern
+  ctx.fillStyle = face
+  const bh = 7 // brick height (with 1px mortar gap)
+  const bw = 15 // brick width (with 1px mortar gap)
 
-  // Drop shadow
-  ctx.beginPath()
-  ctx.ellipse(2, 3, bw, bh * 0.45, 0, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(0,0,0,0.10)'
-  ctx.fill()
-
-  // Body
-  ctx.beginPath()
-  ctx.ellipse(0, 0, bw, bh, 0, 0, Math.PI * 2)
-  ctx.fillStyle = C.doodleBody
-  ctx.fill()
-  ctx.strokeStyle = C.doodleOutline
-  ctx.lineWidth = 1.5
-  ctx.stroke()
-
-  // Body highlight (top-left arc)
-  ctx.beginPath()
-  ctx.ellipse(-3, -3, bw * 0.55, bh * 0.45, -0.5, Math.PI, Math.PI * 1.7)
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)'
-  ctx.lineWidth = 2.5
-  ctx.stroke()
-
-  // Pupils shift with horizontal movement
-  const pupilShift = vx > 0.5 ? 1.5 : vx < -0.5 ? -1.5 : 0
-  const eyeY = -3
-
-  for (const ex of [-6, 6]) {
-    // White of eye
-    ctx.beginPath()
-    ctx.arc(ex, eyeY, 4.5, 0, Math.PI * 2)
-    ctx.fillStyle = 'white'
-    ctx.fill()
-    // Pupil
-    ctx.beginPath()
-    ctx.arc(ex + pupilShift, eyeY + 0.5, 2.5, 0, Math.PI * 2)
-    ctx.fillStyle = '#111'
-    ctx.fill()
-    // Eye shine
-    ctx.beginPath()
-    ctx.arc(ex + pupilShift - 1, eyeY - 1, 1, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(255,255,255,0.9)'
-    ctx.fill()
+  for (let row = 0; row < 4; row++) {
+    const by = y + row * (bh + 1)
+    const offset = row % 2 === 0 ? 0 : 8
+    for (let bx = x + offset - 8; bx < x + TILE_SIZE; bx += bw + 1) {
+      const clampLeft = Math.max(bx, x)
+      const clampRight = Math.min(bx + bw, x + TILE_SIZE)
+      if (clampRight > clampLeft) {
+        ctx.fillRect(clampLeft, by, clampRight - clampLeft, bh)
+      }
+    }
   }
 
-  // Nose
-  ctx.beginPath()
-  ctx.ellipse(0, 5, 4, 2.5, 0, 0, Math.PI * 2)
-  ctx.fillStyle = C.doodleNose
-  ctx.fill()
-
-  ctx.restore()
+  // Subtle top-left highlight for 3D feel
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'
+  ctx.fillRect(x, y, TILE_SIZE, 1)
+  ctx.fillRect(x, y, 1, TILE_SIZE)
 }
 
-function drawSpring(ctx: CanvasRenderingContext2D, cx: number, topY: number) {
-  const sw = 14
-  const sh = 11
-  // Body
-  ctx.fillStyle = C.springBottom
-  ctx.fillRect(cx - sw / 2, topY - sh, sw, sh)
-  // Top highlight
-  ctx.fillStyle = C.springTop
-  ctx.fillRect(cx - sw / 2, topY - sh, sw, sh * 0.42)
-  // Coil lines
-  ctx.strokeStyle = C.springLine
-  ctx.lineWidth = 1.5
-  for (let i = 1; i < 3; i++) {
+function drawSpikeTile(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  const ts = TILE_SIZE
+  const spikes = 3
+  const sw = ts / spikes
+
+  for (let i = 0; i < spikes; i++) {
+    const sx = x + i * sw
     ctx.beginPath()
-    ctx.moveTo(cx - sw / 2, topY - sh + (sh / 3) * i)
-    ctx.lineTo(cx + sw / 2, topY - sh + (sh / 3) * i)
+    ctx.moveTo(sx, y + ts)
+    ctx.lineTo(sx + sw / 2, y + 4)
+    ctx.lineTo(sx + sw, y + ts)
+    ctx.closePath()
+    ctx.fillStyle = C.spikeBody
+    ctx.fill()
+
+    // Tip highlight
+    ctx.beginPath()
+    ctx.moveTo(sx + sw / 2 - 2, y + 8)
+    ctx.lineTo(sx + sw / 2, y + 4)
+    ctx.lineTo(sx + sw / 2 + 2, y + 8)
+    ctx.closePath()
+    ctx.fillStyle = C.spikeTip
+    ctx.fill()
+  }
+}
+
+function drawSpringTile(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  const ts = TILE_SIZE
+  const cx = x + ts / 2
+
+  // Base
+  ctx.fillStyle = C.springBase
+  ctx.fillRect(cx - 10, y + ts - 6, 20, 6)
+
+  // Coils
+  ctx.strokeStyle = C.springCoil
+  ctx.lineWidth = 3
+  const coils = 4
+  const coilH = (ts - 10) / coils
+  for (let i = 0; i < coils; i++) {
+    const cy = y + ts - 8 - i * coilH
+    ctx.beginPath()
+    ctx.moveTo(cx - 8, cy)
+    ctx.lineTo(cx + 8, cy - coilH * 0.5)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(cx + 8, cy - coilH * 0.5)
+    ctx.lineTo(cx - 8, cy - coilH)
     ctx.stroke()
   }
-  // Rounded cap
-  ctx.beginPath()
-  ctx.ellipse(cx, topY - sh, sw / 2, 2, 0, 0, Math.PI * 2)
+
+  // Top cap
   ctx.fillStyle = C.springTop
-  ctx.fill()
+  ctx.fillRect(cx - 10, y + 2, 20, 5)
+  ctx.fillStyle = 'rgba(255,255,255,0.3)'
+  ctx.fillRect(cx - 10, y + 2, 20, 2)
 }
 
-function drawPlatform(ctx: CanvasRenderingContext2D, p: Platform) {
-  const h = PLATFORM_H
-  const r = 6
-
-  let main: string, shade: string, shine: string
-  if (p.type === 'moving') {
-    main = C.platMoving
-    shade = C.platMovingShade
-    shine = C.platMovingShine
-  } else if (p.type === 'breaking') {
-    main = C.platBreaking
-    shade = C.platBreakingShade
-    shine = C.platBreakingShine
-  } else {
-    // normal or spring — both green
-    main = C.platNormal
-    shade = C.platNormalShade
-    shine = C.platNormalShine
-  }
-
-  // Main body
-  rrect(ctx, p.x, p.y, p.w, h, r)
-  ctx.fillStyle = main
-  ctx.fill()
-
-  // Bottom shade (clipped to platform shape)
-  ctx.save()
-  rrect(ctx, p.x, p.y, p.w, h, r)
-  ctx.clip()
-  ctx.fillStyle = shade
-  ctx.fillRect(p.x, p.y + h * 0.55, p.w, h)
-  ctx.restore()
-
-  // Top shine strip
-  rrect(ctx, p.x + 5, p.y + 2, p.w - 10, 3, 2)
-  ctx.fillStyle = shine
-  ctx.fill()
-
-  // Spring pad on top
-  if (p.type === 'spring') {
-    drawSpring(ctx, p.x + p.w / 2, p.y)
-  }
-}
-
-function drawStar(ctx: CanvasRenderingContext2D, star: Star, frame: number) {
-  const pulse = Math.sin(frame * 0.07 + star.id * 1.5) * 1.2
-  const r = STAR_RADIUS - 2 + pulse
-  const { x, y } = star
+function drawRing(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  frame: number,
+  collected: boolean
+) {
+  if (collected) return
+  const pulse = Math.sin(frame * 0.08) * 1.5
+  const rx = x + TILE_SIZE / 2
+  const ry = y + TILE_SIZE / 2
+  const rr = 9 + pulse
 
   // Glow
   ctx.beginPath()
-  ctx.arc(x, y, r + 5, 0, Math.PI * 2)
-  ctx.fillStyle = C.starGlow
+  ctx.arc(rx, ry, rr + 4, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255,215,0,0.15)'
   ctx.fill()
 
-  // Star shape
+  // Outer ring
   ctx.beginPath()
-  for (let i = 0; i < 10; i++) {
-    const a = (Math.PI / 5) * i - Math.PI / 2
-    const rad = i % 2 === 0 ? r : r * 0.42
-    const px = x + Math.cos(a) * rad
-    const py = y + Math.sin(a) * rad
-    if (i === 0) ctx.moveTo(px, py)
-    else ctx.lineTo(px, py)
-  }
-  ctx.closePath()
-  ctx.fillStyle = C.star
-  ctx.fill()
-  ctx.strokeStyle = 'rgba(160,110,0,0.5)'
-  ctx.lineWidth = 0.8
+  ctx.arc(rx, ry, rr, 0, Math.PI * 2)
+  ctx.strokeStyle = C.ringOuter
+  ctx.lineWidth = 3.5
+  ctx.stroke()
+
+  // Inner highlight
+  ctx.beginPath()
+  ctx.arc(rx, ry, rr - 2, -0.8, 0.8)
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+  ctx.lineWidth = 1.5
   ctx.stroke()
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, cameraY: number) {
-  // Sky gradient
-  const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT)
-  grad.addColorStop(0, C.sky1)
-  grad.addColorStop(1, C.sky2)
-  ctx.fillStyle = grad
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+function drawFinish(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number) {
+  const cx = x + TILE_SIZE / 2
+  const cy = y + TILE_SIZE / 2
+  const pulse = Math.sin(frame * 0.06) * 4
 
-  // Dot grid — graph-paper texture
-  const spacing = 38
-  const oy = ((-cameraY % spacing) + spacing) % spacing
-  ctx.fillStyle = C.dot
-  for (let dy = oy - spacing; dy < CANVAS_HEIGHT + spacing; dy += spacing) {
-    for (let dx = spacing / 2; dx < CANVAS_WIDTH; dx += spacing) {
-      ctx.fillRect(dx - 1, dy - 1, 2, 2)
-    }
-  }
+  // Glow
+  ctx.beginPath()
+  ctx.arc(cx, cy, 16 + pulse, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(68,255,68,0.15)'
+  ctx.fill()
+
+  // Core
+  ctx.beginPath()
+  ctx.arc(cx, cy, 10 + pulse * 0.3, 0, Math.PI * 2)
+  ctx.fillStyle = C.finishGlow
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2)
+  ctx.fillStyle = C.finishCore
+  ctx.fill()
+
+  // Arrow/checkmark
+  ctx.strokeStyle = '#FFFFFF'
+  ctx.lineWidth = 2.5
+  ctx.beginPath()
+  ctx.moveTo(cx - 4, cy)
+  ctx.lineTo(cx - 1, cy + 3)
+  ctx.lineTo(cx + 5, cy - 4)
+  ctx.stroke()
+}
+
+function drawBall(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  squish: number,
+  deathTimer: number
+) {
+  if (deathTimer > 0 && Math.floor(deathTimer / 3) % 2 === 0) return // flash
+
+  ctx.save()
+  ctx.translate(x, y)
+  const sx = 1 + squish * 0.2
+  const sy = 1 - squish * 0.2
+  ctx.scale(sx, sy)
+
+  const r = BALL_RADIUS
+
+  // Shadow
+  ctx.beginPath()
+  ctx.ellipse(1.5, 2, r, r * 0.35, 0, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0,0,0,0.18)'
+  ctx.fill()
+
+  // Main ball
+  ctx.beginPath()
+  ctx.arc(0, 0, r, 0, Math.PI * 2)
+  ctx.fillStyle = C.ballMain
+  ctx.fill()
+
+  // Bottom shade
+  ctx.beginPath()
+  ctx.arc(0, 1, r, 0, Math.PI)
+  ctx.fillStyle = C.ballShade
+  ctx.fill()
+
+  // Top highlight
+  ctx.beginPath()
+  ctx.arc(-2, -3, r * 0.4, 0, Math.PI * 2)
+  ctx.fillStyle = C.ballShine
+  ctx.fill()
+
+  // Tiny white shine
+  ctx.beginPath()
+  ctx.arc(-3, -4, 2, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255,255,255,0.8)'
+  ctx.fill()
+
+  ctx.restore()
 }
 
 function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
-  const score = totalScore(state)
-  ctx.textBaseline = 'alphabetic'
+  const hudH = 28
 
-  // Score — left
-  ctx.fillStyle = C.hudScore
-  ctx.font = 'bold 11px sans-serif'
+  // Background bar
+  ctx.fillStyle = C.hudBg
+  ctx.fillRect(0, 0, CANVAS_WIDTH, hudH)
+
+  ctx.textBaseline = 'middle'
+  ctx.font = 'bold 13px monospace'
+
+  // Lives — left side
+  const livesX = 10
+  // Draw mini ball icon
+  ctx.beginPath()
+  ctx.arc(livesX + 6, hudH / 2, 5, 0, Math.PI * 2)
+  ctx.fillStyle = C.ballMain
+  ctx.fill()
+  ctx.fillStyle = C.hudText
   ctx.textAlign = 'left'
-  ctx.fillText('SCORE', 14, 22)
-  ctx.font = 'bold 28px sans-serif'
-  ctx.fillText(String(score), 14, 50)
+  ctx.fillText(`x${state.lives}`, livesX + 14, hudH / 2 + 1)
 
-  // Best — right
-  ctx.fillStyle = C.hudBest
-  ctx.font = 'bold 11px sans-serif'
+  // Rings — center
+  const totalRings = state.rings.length
+  const collected = state.rings.filter((r) => r.collected).length
+  ctx.textAlign = 'center'
+  // Mini ring icon
+  ctx.beginPath()
+  ctx.arc(CANVAS_WIDTH / 2 - 30, hudH / 2, 5, 0, Math.PI * 2)
+  ctx.strokeStyle = C.ringOuter
+  ctx.lineWidth = 2
+  ctx.stroke()
+  ctx.fillStyle = C.hudText
+  ctx.fillText(`${collected}/${totalRings}`, CANVAS_WIDTH / 2, hudH / 2 + 1)
+
+  // Score — right side
   ctx.textAlign = 'right'
-  ctx.fillText('BEST', CANVAS_WIDTH - 14, 22)
-  ctx.font = 'bold 20px sans-serif'
-  ctx.fillText(String(state.highScore), CANVAS_WIDTH - 14, 46)
+  ctx.fillStyle = C.hudScore
+  ctx.fillText(String(state.score).padStart(7, '0'), CANVAS_WIDTH - 10, hudH / 2 + 1)
+
+  // Level indicator
+  ctx.textAlign = 'center'
+  ctx.fillStyle = C.hudText
+  ctx.font = 'bold 11px monospace'
+  ctx.fillText(`LVL ${state.level + 1}`, CANVAS_WIDTH / 2 + 80, hudH / 2 + 1)
 
   ctx.textAlign = 'left'
 }
 
-function drawGameOver(ctx: CanvasRenderingContext2D, state: GameState) {
-  const score = totalScore(state)
+function drawOverlayPanel(
+  ctx: CanvasRenderingContext2D,
+  title: string,
+  lines: string[],
+  actionText: string,
+  highlight?: string
+) {
   const cx = CANVAS_WIDTH / 2
   const cy = CANVAS_HEIGHT / 2
+  const pw = 280
+  const ph = 180
 
-  // Frosted overlay
+  // Dim background
   ctx.fillStyle = C.overBg
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
   // Panel
-  rrect(ctx, cx - 135, cy - 95, 270, 200, 18)
   ctx.fillStyle = C.overPanel
-  ctx.fill()
   ctx.strokeStyle = C.overBorder
-  ctx.lineWidth = 2
-  ctx.stroke()
+  ctx.lineWidth = 3
+  ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph)
+  ctx.strokeRect(cx - pw / 2, cy - ph / 2, pw, ph)
+
+  // Inner border
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(cx - pw / 2 + 4, cy - ph / 2 + 4, pw - 8, ph - 8)
 
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
 
+  // Title
   ctx.fillStyle = C.overTitle
-  ctx.font = 'bold 34px sans-serif'
-  ctx.fillText('GAME OVER', cx, cy - 48)
+  ctx.font = 'bold 28px monospace'
+  ctx.fillText(title, cx, cy - ph / 2 + 42)
 
+  // Lines
   ctx.fillStyle = C.overText
-  ctx.font = 'bold 20px sans-serif'
-  ctx.fillText(`Score: ${score}`, cx, cy + 2)
-
-  if (score > 0 && score >= state.highScore) {
-    ctx.fillStyle = '#F9A000'
-    ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('★  NEW HIGH SCORE  ★', cx, cy + 30)
+  ctx.font = '14px monospace'
+  let ly = cy - 10
+  for (const line of lines) {
+    ctx.fillText(line, cx, ly)
+    ly += 22
   }
 
-  ctx.fillStyle = C.overSub
-  ctx.font = '14px sans-serif'
-  ctx.fillText('Tap or press Space to play again', cx, cy + 68)
+  // Highlight
+  if (highlight) {
+    ctx.fillStyle = C.overHighlight
+    ctx.font = 'bold 14px monospace'
+    ctx.fillText(highlight, cx, ly)
+    ly += 22
+  }
+
+  // Action
+  ctx.fillStyle = C.overText
+  ctx.font = '12px monospace'
+  ctx.fillText(actionText, cx, cy + ph / 2 - 18)
 
   ctx.textAlign = 'left'
 }
@@ -325,79 +381,119 @@ function renderFrame(
   frame: number,
   squish: number
 ) {
-  const { cameraY, ball, platforms, stars } = state
+  const { cameraX, cameraY, tiles, levelWidth, levelHeight, ball, rings } = state
 
-  drawBackground(ctx, cameraY)
+  // ── background ──
+  ctx.fillStyle = C.bg
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
   ctx.save()
-  ctx.translate(0, -cameraY)
+  ctx.translate(-cameraX, -cameraY)
 
-  for (const p of platforms) {
-    if (p.y + PLATFORM_H < cameraY - 20 || p.y > cameraY + CANVAS_HEIGHT + 20) continue
-    drawPlatform(ctx, p)
+  // ── tiles ──
+  const startCol = Math.max(0, Math.floor(cameraX / TILE_SIZE) - 1)
+  const endCol = Math.min(levelWidth, Math.ceil((cameraX + CANVAS_WIDTH) / TILE_SIZE) + 1)
+  const startRow = Math.max(0, Math.floor(cameraY / TILE_SIZE) - 1)
+  const endRow = Math.min(levelHeight, Math.ceil((cameraY + CANVAS_HEIGHT) / TILE_SIZE) + 1)
+
+  for (let row = startRow; row < endRow; row++) {
+    for (let col = startCol; col < endCol; col++) {
+      const t = tiles[row]?.[col] ?? 0
+      const tx = col * TILE_SIZE
+      const ty = row * TILE_SIZE
+
+      switch (t) {
+        case T_BRICK:
+          drawBrickTile(ctx, tx, ty, 'normal')
+          break
+        case T_BRICK2:
+          drawBrickTile(ctx, tx, ty, 'dark')
+          break
+        case T_SPIKE:
+          drawSpikeTile(ctx, tx, ty)
+          break
+        case T_SPRING:
+          drawSpringTile(ctx, tx, ty)
+          break
+        case T_FINISH:
+          drawFinish(ctx, tx, ty, frame)
+          break
+      }
+    }
   }
 
-  for (const s of stars) {
-    if (s.y < cameraY - 20 || s.y > cameraY + CANVAS_HEIGHT + 20) continue
-    drawStar(ctx, s, frame)
+  // ── rings ──
+  for (const ring of rings) {
+    const rx = ring.col * TILE_SIZE
+    const ry = ring.row * TILE_SIZE
+    if (rx + TILE_SIZE < cameraX - 32 || rx > cameraX + CANVAS_WIDTH + 32) continue
+    if (ry + TILE_SIZE < cameraY - 32 || ry > cameraY + CANVAS_HEIGHT + 32) continue
+    drawRing(ctx, rx, ry, frame, ring.collected)
   }
 
-  const squishX = 1 + squish * 0.28
-  const squishY = 1 - squish * 0.28
-  drawDoodle(ctx, ball.x, ball.y, ball.vx, squishX, squishY)
+  // ── ball ──
+  drawBall(ctx, ball.x, ball.y, squish, state.deathTimer)
 
   ctx.restore()
 
+  // ── HUD ──
   drawHUD(ctx, state)
-  if (state.gameOver) drawGameOver(ctx, state)
+
+  // ── overlay screens ──
+  if (state.gameOver) {
+    drawOverlayPanel(ctx, 'GAME OVER', [`Score: ${state.score}`], 'Tap or press Space to retry')
+  } else if (state.won) {
+    drawOverlayPanel(
+      ctx,
+      'YOU WIN!',
+      [`Final Score: ${state.score}`, `All ${TOTAL_LEVELS} levels cleared!`],
+      'Tap or press Space to play again',
+      '★ CONGRATULATIONS ★'
+    )
+  } else if (state.levelComplete) {
+    drawOverlayPanel(
+      ctx,
+      'LEVEL CLEAR!',
+      [`Score: ${state.score}`],
+      'Tap or press Space for next level',
+      `+${LEVEL_BONUS} LEVEL BONUS`
+    )
+  }
 }
+
+/* ── main component ──────────────────────────────── */
 
 export default function BounceGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef<GameState | null>(null)
-  const inputRef = useRef<{ left: boolean; right: boolean; analogX?: number }>({
+  const inputRef = useRef<{ left: boolean; right: boolean; jump: boolean }>({
     left: false,
     right: false,
+    jump: false,
   })
   const frameRef = useRef(0)
   const rafRef = useRef(0)
-  const prevVyRef = useRef(0)
   const squishRef = useRef(0)
 
-  const getStoredHigh = () => {
-    try {
-      return parseInt(localStorage.getItem('bounce-hs') ?? '0', 10) || 0
-    } catch {
-      return 0
-    }
-  }
-
-  const saveHigh = (score: number) => {
-    try {
-      if (score > getStoredHigh()) localStorage.setItem('bounce-hs', String(score))
-    } catch {
-      // ignore
-    }
-  }
-
   const newGame = useCallback(() => {
-    stateRef.current = createInitialState(
-      Math.max(getStoredHigh(), stateRef.current?.highScore ?? 0)
-    )
+    stateRef.current = createInitialState()
     squishRef.current = 0
-    prevVyRef.current = 0
   }, [])
 
-  // Main game loop
-  useEffect(() => {
-    stateRef.current = createInitialState(getStoredHigh())
+  const nextLevel = useCallback(() => {
+    if (!stateRef.current) return
+    stateRef.current = advanceLevel(stateRef.current)
+    squishRef.current = 0
+  }, [])
 
+  // ── game loop ──
+  useEffect(() => {
+    stateRef.current = createInitialState()
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Prevent iOS scroll interference
     const prevent = (e: TouchEvent) => e.preventDefault()
     canvas.addEventListener('touchmove', prevent, { passive: false })
     canvas.addEventListener('touchstart', prevent, { passive: false })
@@ -405,21 +501,18 @@ export default function BounceGame() {
     function loop() {
       const state = stateRef.current!
 
-      if (!state.gameOver) {
-        const prevVy = prevVyRef.current
+      if (!state.gameOver && !state.levelComplete && !state.won) {
+        const prevVy = state.ball.vy
         stateRef.current = stepGame(state, inputRef.current)
-        const nextVy = stateRef.current.ball.vy
 
-        // Detect bounce: vy flipped from positive to negative
-        if (prevVy > 2 && nextVy < 0) squishRef.current = 1
-        prevVyRef.current = nextVy
-
-        if (stateRef.current.gameOver) saveHigh(totalScore(stateRef.current))
+        // Detect bounce for squish animation
+        if (stateRef.current.justBounced && prevVy > 1) {
+          squishRef.current = 1
+        }
       }
 
-      squishRef.current = Math.max(0, squishRef.current - 0.07)
+      squishRef.current = Math.max(0, squishRef.current - 0.08)
       renderFrame(ctx!, stateRef.current!, frameRef.current++, squishRef.current)
-
       rafRef.current = requestAnimationFrame(loop)
     }
 
@@ -429,10 +522,9 @@ export default function BounceGame() {
       canvas.removeEventListener('touchmove', prevent)
       canvas.removeEventListener('touchstart', prevent)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Keyboard controls
+  // ── keyboard ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const down = e.type === 'keydown'
@@ -444,8 +536,14 @@ export default function BounceGame() {
         inputRef.current.right = down
         if (down) e.preventDefault()
       }
-      if (down && (e.key === ' ' || e.key === 'Enter') && stateRef.current?.gameOver) {
-        newGame()
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') {
+        inputRef.current.jump = down
+        if (down) e.preventDefault()
+      }
+      if (down && (e.key === ' ' || e.key === 'Enter')) {
+        const s = stateRef.current
+        if (s?.gameOver || s?.won) newGame()
+        else if (s?.levelComplete) nextLevel()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -454,32 +552,25 @@ export default function BounceGame() {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onKey)
     }
-  }, [newGame])
+  }, [newGame, nextLevel])
 
-  // Pointer/touch controls — finger position maps to horizontal direction
-  const getAnalogX = (e: React.PointerEvent<HTMLCanvasElement>): number => {
-    const canvas = canvasRef.current!
-    const rect = canvas.getBoundingClientRect()
-    const cx = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH
-    return Math.max(-1, Math.min(1, (cx - CANVAS_WIDTH / 2) / (CANVAS_WIDTH / 2)))
-  }
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    if (stateRef.current?.gameOver) {
-      newGame()
-      return
+  // ── on-screen button helpers ──
+  const btnDown = (key: 'left' | 'right' | 'jump') => () => {
+    inputRef.current[key] = true
+    const s = stateRef.current
+    if (key === 'jump') {
+      if (s?.gameOver || s?.won) newGame()
+      else if (s?.levelComplete) nextLevel()
     }
-    inputRef.current.analogX = getAnalogX(e)
+  }
+  const btnUp = (key: 'left' | 'right' | 'jump') => () => {
+    inputRef.current[key] = false
   }
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.buttons === 0) return
-    inputRef.current.analogX = getAnalogX(e)
-  }
-
-  const handlePointerUp = () => {
-    inputRef.current.analogX = undefined
+  const handleCanvasTap = () => {
+    const s = stateRef.current
+    if (s?.gameOver || s?.won) newGame()
+    else if (s?.levelComplete) nextLevel()
   }
 
   return (
@@ -488,22 +579,66 @@ export default function BounceGame() {
         ref={canvasRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        className="rounded-2xl shadow-2xl"
+        className="rounded-lg shadow-2xl"
         style={{
           maxWidth: '100%',
           height: 'auto',
-          cursor: 'none',
           touchAction: 'none',
           userSelect: 'none',
+          imageRendering: 'pixelated',
         }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onClick={handleCanvasTap}
       />
+      {/* Nokia-style on-screen controls */}
+      <div className="flex select-none items-center gap-3" style={{ touchAction: 'none' }}>
+        <button
+          className="flex h-14 w-14 items-center justify-center rounded-lg text-2xl font-bold transition-colors active:brightness-125"
+          style={{
+            background: C.btnBg,
+            border: `2px solid ${C.btnBorder}`,
+            color: C.btnText,
+          }}
+          onPointerDown={btnDown('left')}
+          onPointerUp={btnUp('left')}
+          onPointerLeave={btnUp('left')}
+          onPointerCancel={btnUp('left')}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          ◀
+        </button>
+        <button
+          className="flex h-14 w-20 items-center justify-center rounded-lg text-sm font-bold uppercase tracking-wider transition-colors active:brightness-125"
+          style={{
+            background: C.overBorder,
+            border: `2px solid ${C.brickFace}`,
+            color: C.btnText,
+          }}
+          onPointerDown={btnDown('jump')}
+          onPointerUp={btnUp('jump')}
+          onPointerLeave={btnUp('jump')}
+          onPointerCancel={btnUp('jump')}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          JUMP
+        </button>
+        <button
+          className="flex h-14 w-14 items-center justify-center rounded-lg text-2xl font-bold transition-colors active:brightness-125"
+          style={{
+            background: C.btnBg,
+            border: `2px solid ${C.btnBorder}`,
+            color: C.btnText,
+          }}
+          onPointerDown={btnDown('right')}
+          onPointerUp={btnUp('right')}
+          onPointerLeave={btnUp('right')}
+          onPointerCancel={btnUp('right')}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          ▶
+        </button>
+      </div>
       <p className="text-sm text-gray-400">
-        Arrow keys / A–D on desktop &nbsp;·&nbsp; Slide finger left/right on mobile
+        Arrow keys / A–D + Space on desktop · On-screen buttons on mobile
       </p>
     </div>
   )
