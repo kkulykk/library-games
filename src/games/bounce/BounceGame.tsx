@@ -512,7 +512,7 @@ export default function BounceGame() {
       }
 
       squishRef.current = Math.max(0, squishRef.current - 0.08)
-      renderFrame(ctx, stateRef.current!, frameRef.current++, squishRef.current)
+      renderFrame(ctx!, stateRef.current!, frameRef.current++, squishRef.current)
       rafRef.current = requestAnimationFrame(loop)
     }
 
