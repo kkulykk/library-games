@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function BouncePage() {
   return (
-    <GameLayout title="Doodle Jump" slug="bounce">
+    <GameLayout title="Bounce" slug="bounce">
       <BounceGame />
     </GameLayout>
   )
