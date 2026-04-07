@@ -38,7 +38,7 @@ function clearSession(key: string) {
 }
 
 function generateRoomCode(): string {
-  return crypto.randomUUID().replace(/-/g, '').substring(0, 6).toUpperCase()
+  return crypto.randomUUID().replace(/-/g, '').substring(0, 4).toUpperCase()
 }
 
 export type RoomStatus = 'idle' | 'restoring' | 'creating' | 'joining' | 'connected' | 'error'
@@ -137,7 +137,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         const state = channel.presenceState()
         const ids = Object.values(state)
           .flat()
-          .map((p) => (p as { player_id: string }).player_id)
+          .map((p) => (p as unknown as { player_id: string }).player_id)
           .filter(Boolean)
         setOnlinePlayerIds(ids)
       })
