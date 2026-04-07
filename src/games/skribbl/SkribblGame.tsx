@@ -764,7 +764,7 @@ function RoundEndScreen({ gameState, playerId, onNext, onLeave }: RoundEndProps)
 
   useEffect(() => {
     advancedRef.current = false
-    setCountdown(ROUND_END_DELAY)
+    const rafId = requestAnimationFrame(() => setCountdown(ROUND_END_DELAY))
     const interval = setInterval(() => {
       setCountdown((prev) => {
         const next = prev - 1
@@ -775,7 +775,10 @@ function RoundEndScreen({ gameState, playerId, onNext, onLeave }: RoundEndProps)
         return Math.max(0, next)
       })
     }, 1000)
-    return () => clearInterval(interval)
+    return () => {
+      cancelAnimationFrame(rafId)
+      clearInterval(interval)
+    }
   }, [isHost, onNext])
 
   const allGuessed =

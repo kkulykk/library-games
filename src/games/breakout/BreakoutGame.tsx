@@ -38,6 +38,7 @@ export function BreakoutGame() {
     level: 1,
   })
   const rafRef = useRef<number | null>(null)
+  const gameLoopRef = useRef<(() => void) | null>(null)
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -123,8 +124,12 @@ export function BreakoutGame() {
     }
 
     draw()
-    rafRef.current = requestAnimationFrame(gameLoop)
+    rafRef.current = requestAnimationFrame(() => gameLoopRef.current?.())
   }, [draw])
+
+  useEffect(() => {
+    gameLoopRef.current = gameLoop
+  }, [gameLoop])
 
   // Mouse/touch paddle control
   useEffect(() => {

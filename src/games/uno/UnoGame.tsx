@@ -531,8 +531,9 @@ function GameBoard({
   const topCardId = topCard?.id ?? null
   useEffect(() => {
     if (topCardId !== prevTopCardRef.current) {
-      setDiscardKey((k) => k + 1)
+      const id = requestAnimationFrame(() => setDiscardKey((k) => k + 1))
       prevTopCardRef.current = topCardId
+      return () => cancelAnimationFrame(id)
     }
   }, [topCardId])
 
@@ -878,8 +879,8 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
   )
 }
 
-function ConfettiEffect() {
-  const particles = Array.from({ length: 30 }, (_, i) => ({
+function makeUnoConfettiParticles() {
+  return Array.from({ length: 30 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
     delay: Math.random() * 0.5,
@@ -887,6 +888,10 @@ function ConfettiEffect() {
     color: ['#ef4444', '#eab308', '#22c55e', '#3b82f6'][i % 4],
     size: 4 + Math.random() * 6,
   }))
+}
+
+function ConfettiEffect() {
+  const [particles] = useState(makeUnoConfettiParticles)
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">

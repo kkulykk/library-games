@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -552,9 +552,12 @@ function GameBoard({
   const pick = gameState.blackCard?.pick ?? 1
 
   // Reset selection on phase change
+  const currentPhase = gameState.phase
+  const currentBlackCardText = gameState.blackCard?.text
   useEffect(() => {
-    setSelectedCards([])
-  }, [gameState.phase, gameState.blackCard?.text])
+    const id = requestAnimationFrame(() => setSelectedCards([]))
+    return () => cancelAnimationFrame(id)
+  }, [currentPhase, currentBlackCardText])
 
   function handleCardClick(cardIndex: number) {
     if (amCzar || submitted || gameState.phase !== 'playing') return
@@ -970,20 +973,20 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
   )
 }
 
+function makeConfettiParticles() {
+  return Array.from({ length: 40 }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.8,
+    duration: 1.5 + Math.random() * 2,
+    color: ['#000', '#fff', '#f59e0b', '#6b7280', '#d1d5db', '#1f2937'][i % 6],
+    size: 4 + Math.random() * 8,
+    rotation: Math.random() * 360,
+  }))
+}
+
 function ConfettiEffect() {
-  const particles = useMemo(
-    () =>
-      Array.from({ length: 40 }, (_, i) => ({
-        id: i,
-        left: Math.random() * 100,
-        delay: Math.random() * 0.8,
-        duration: 1.5 + Math.random() * 2,
-        color: ['#000', '#fff', '#f59e0b', '#6b7280', '#d1d5db', '#1f2937'][i % 6],
-        size: 4 + Math.random() * 8,
-        rotation: Math.random() * 360,
-      })),
-    []
-  )
+  const [particles] = useState(makeConfettiParticles)
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">

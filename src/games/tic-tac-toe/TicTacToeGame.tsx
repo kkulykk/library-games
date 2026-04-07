@@ -19,7 +19,7 @@ export function TicTacToeGame() {
     if (state.currentPlayer !== 'O') return
     if (isGameOver(state)) return
 
-    setAiThinking(true)
+    const rafId = requestAnimationFrame(() => setAiThinking(true))
     const timeout = setTimeout(() => {
       const move = getAIMove(state.board, 'O')
       if (move !== -1) {
@@ -28,7 +28,10 @@ export function TicTacToeGame() {
       setAiThinking(false)
     }, AI_THINK_DELAY_MS)
 
-    return () => clearTimeout(timeout)
+    return () => {
+      cancelAnimationFrame(rafId)
+      clearTimeout(timeout)
+    }
   }, [mode, state])
 
   function handleCellClick(index: number) {
