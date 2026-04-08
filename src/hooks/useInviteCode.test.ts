@@ -10,47 +10,30 @@ describe('getInviteLink', () => {
 })
 
 describe('useInviteCode', () => {
-  const originalLocation = window.location
-
   afterEach(() => {
-    Object.defineProperty(window, 'location', {
-      value: originalLocation,
-      writable: true,
-    })
+    window.history.replaceState({}, '', '/')
   })
 
   it('returns null when no code param is present', () => {
-    Object.defineProperty(window, 'location', {
-      value: { ...originalLocation, search: '' },
-      writable: true,
-    })
+    window.history.replaceState({}, '', '/')
     const { result } = renderHook(() => useInviteCode())
     expect(result.current).toBeNull()
   })
 
   it('returns uppercased code from URL', () => {
-    Object.defineProperty(window, 'location', {
-      value: { ...originalLocation, search: '?code=abc123' },
-      writable: true,
-    })
+    window.history.replaceState({}, '', '/?code=abc123')
     const { result } = renderHook(() => useInviteCode())
     expect(result.current).toBe('ABC123')
   })
 
   it('returns null for empty code param', () => {
-    Object.defineProperty(window, 'location', {
-      value: { ...originalLocation, search: '?code=' },
-      writable: true,
-    })
+    window.history.replaceState({}, '', '/?code=')
     const { result } = renderHook(() => useInviteCode())
     expect(result.current).toBeNull()
   })
 
   it('trims whitespace from code', () => {
-    Object.defineProperty(window, 'location', {
-      value: { ...originalLocation, search: '?code=%20xyz%20' },
-      writable: true,
-    })
+    window.history.replaceState({}, '', '/?code=%20xyz%20')
     const { result } = renderHook(() => useInviteCode())
     expect(result.current).toBe('XYZ')
   })

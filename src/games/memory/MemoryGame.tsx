@@ -54,10 +54,10 @@ export function MemoryGame() {
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-4">
       <div className="flex w-full items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">Moves: {moves}</span>
+        <span className="text-muted-foreground text-sm font-medium">Moves: {moves}</span>
         <button
           onClick={restart}
-          className="rounded-lg bg-secondary px-4 py-1.5 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-lg px-4 py-1.5 text-sm font-semibold"
         >
           Restart
         </button>
@@ -75,10 +75,10 @@ export function MemoryGame() {
             key={card.id}
             onClick={() => handleCardClick(card.id)}
             className={cn(
-              'flex h-16 w-16 select-none items-center justify-center rounded-xl text-3xl transition-all duration-200',
+              'flex h-16 w-16 items-center justify-center rounded-xl text-3xl transition-all duration-200 select-none',
               card.flipped || card.matched
                 ? 'bg-blue-100 shadow-inner dark:bg-blue-900'
-                : 'bg-secondary shadow-md hover:bg-secondary/80'
+                : 'bg-secondary hover:bg-secondary/80 shadow-md'
             )}
           >
             {card.flipped || card.matched ? card.symbol : '?'}

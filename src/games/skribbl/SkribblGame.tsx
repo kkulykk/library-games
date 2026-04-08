@@ -161,7 +161,7 @@ function DrawingCanvas({ strokes, isDrawer, onStrokeComplete, onClear, onUndo }:
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="overflow-hidden rounded-xl border-2 border-border bg-white shadow-inner">
+      <div className="border-border overflow-hidden rounded-xl border-2 bg-white shadow-inner">
         <canvas
           ref={canvasRef}
           width={600}
@@ -181,7 +181,7 @@ function DrawingCanvas({ strokes, isDrawer, onStrokeComplete, onClear, onUndo }:
       </div>
 
       {isDrawer && (
-        <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl bg-secondary/60 p-2">
+        <div className="bg-secondary/60 flex flex-wrap items-center justify-center gap-2 rounded-xl p-2">
           {/* Colors */}
           <div className="flex flex-wrap gap-1">
             {COLORS.map((c) => (
@@ -194,7 +194,7 @@ function DrawingCanvas({ strokes, isDrawer, onStrokeComplete, onClear, onUndo }:
                 className={cn(
                   'h-6 w-6 rounded-full border-2 transition-transform hover:scale-110',
                   color === c && tool === 'pen'
-                    ? 'scale-110 border-foreground'
+                    ? 'border-foreground scale-110'
                     : 'border-transparent'
                 )}
                 style={{ backgroundColor: c }}
@@ -203,7 +203,7 @@ function DrawingCanvas({ strokes, isDrawer, onStrokeComplete, onClear, onUndo }:
             ))}
           </div>
 
-          <div className="mx-1 h-6 w-px bg-border" />
+          <div className="bg-border mx-1 h-6 w-px" />
 
           {/* Brush sizes */}
           <div className="flex items-center gap-1">
@@ -218,14 +218,14 @@ function DrawingCanvas({ strokes, isDrawer, onStrokeComplete, onClear, onUndo }:
                 title={`Size ${s}`}
               >
                 <div
-                  className="rounded-full bg-foreground"
+                  className="bg-foreground rounded-full"
                   style={{ width: Math.min(s, 20), height: Math.min(s, 20) }}
                 />
               </button>
             ))}
           </div>
 
-          <div className="mx-1 h-6 w-px bg-border" />
+          <div className="bg-border mx-1 h-6 w-px" />
 
           {/* Tools */}
           <button
@@ -239,7 +239,7 @@ function DrawingCanvas({ strokes, isDrawer, onStrokeComplete, onClear, onUndo }:
           </button>
           <button
             onClick={onUndo}
-            className="rounded-lg px-2 py-1 text-xs font-medium hover:bg-foreground/10"
+            className="hover:bg-foreground/10 rounded-lg px-2 py-1 text-xs font-medium"
           >
             Undo
           </button>
@@ -284,8 +284,8 @@ function ChatPanel({ messages, isDrawer, hasGuessed, onGuess }: ChatPanelProps) 
   const canGuess = !isDrawer && !hasGuessed
 
   return (
-    <div className="flex max-h-[400px] flex-col rounded-xl border bg-background">
-      <div className="border-b px-3 py-2 text-xs font-semibold text-muted-foreground">Chat</div>
+    <div className="bg-background flex max-h-[400px] flex-col rounded-xl border">
+      <div className="text-muted-foreground border-b px-3 py-2 text-xs font-semibold">Chat</div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-2">
         {messages.map((msg) => (
           <div
@@ -294,7 +294,7 @@ function ChatPanel({ messages, isDrawer, hasGuessed, onGuess }: ChatPanelProps) 
               'mb-1 rounded-lg px-2 py-1 text-xs',
               msg.isCorrect &&
                 'bg-emerald-100 font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-              msg.isSystem && !msg.isCorrect && 'italic text-muted-foreground'
+              msg.isSystem && !msg.isCorrect && 'text-muted-foreground italic'
             )}
           >
             {!msg.isSystem && <span className="mr-1 font-semibold">{msg.playerName}:</span>}
@@ -302,7 +302,7 @@ function ChatPanel({ messages, isDrawer, hasGuessed, onGuess }: ChatPanelProps) 
           </div>
         ))}
         {messages.length === 0 && (
-          <p className="py-4 text-center text-xs text-muted-foreground">
+          <p className="text-muted-foreground py-4 text-center text-xs">
             {isDrawer ? 'Players will guess here' : 'Type your guesses below'}
           </p>
         )}
@@ -317,12 +317,12 @@ function ChatPanel({ messages, isDrawer, hasGuessed, onGuess }: ChatPanelProps) 
             }
             disabled={!canGuess}
             maxLength={50}
-            className="flex-1 rounded-lg border bg-background px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+            className="bg-background focus:ring-primary/40 flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none focus:ring-2 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={!canGuess || !input.trim()}
-            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+            className="bg-primary text-primary-foreground rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
           >
             Send
           </button>
@@ -351,8 +351,8 @@ function Scoreboard({
 }: ScoreboardProps) {
   const sorted = [...players].sort((a, b) => b.score - a.score)
   return (
-    <div className="rounded-xl border bg-background">
-      <div className="border-b px-3 py-2 text-xs font-semibold text-muted-foreground">
+    <div className="bg-background rounded-xl border">
+      <div className="text-muted-foreground border-b px-3 py-2 text-xs font-semibold">
         Scoreboard
       </div>
       <div className="p-2">
@@ -366,7 +366,7 @@ function Scoreboard({
                 p.id === playerId && 'bg-primary/10'
               )}
             >
-              <span className="w-4 text-center font-bold text-muted-foreground">{i + 1}</span>
+              <span className="text-muted-foreground w-4 text-center font-bold">{i + 1}</span>
               <span
                 className={cn(
                   'h-2 w-2 rounded-full',
@@ -390,7 +390,7 @@ function Scoreboard({
               />
               <span className={cn('flex-1 truncate font-medium', !isOnline && 'opacity-60')}>
                 {p.name}
-                {p.id === playerId && <span className="ml-1 text-muted-foreground">(you)</span>}
+                {p.id === playerId && <span className="text-muted-foreground ml-1">(you)</span>}
               </span>
               {p.id === currentDrawerId && (
                 <span className="text-[10px] text-amber-600 dark:text-amber-400">drawing</span>
@@ -434,7 +434,7 @@ function Timer({ startTime, duration, onTimeUp }: TimerProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
+      <div className="bg-secondary h-2 flex-1 overflow-hidden rounded-full">
         <div
           className={cn(
             'h-full rounded-full transition-all duration-300',
@@ -459,15 +459,15 @@ function Timer({ startTime, duration, onTimeUp }: TimerProps) {
 
 function SetupRequired() {
   return (
-    <div className="mx-auto max-w-md rounded-2xl border bg-secondary/40 p-6 text-center">
+    <div className="bg-secondary/40 mx-auto max-w-md rounded-2xl border p-6 text-center">
       <div className="mb-3 text-4xl">🔧</div>
       <h2 className="mb-2 text-lg font-bold">Supabase setup required</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
+      <p className="text-muted-foreground mb-4 text-sm">
         Online multiplayer requires a Supabase project. Create a free project at{' '}
-        <span className="font-medium text-foreground">supabase.com</span>, run the schema from{' '}
-        <code className="rounded bg-secondary px-1 text-xs">supabase-schema.sql</code>, then set:
+        <span className="text-foreground font-medium">supabase.com</span>, run the schema from{' '}
+        <code className="bg-secondary rounded px-1 text-xs">supabase-schema.sql</code>, then set:
       </p>
-      <pre className="rounded-lg bg-secondary p-3 text-left text-xs">
+      <pre className="bg-secondary rounded-lg p-3 text-left text-xs">
         {`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
       </pre>
     </div>
@@ -503,15 +503,15 @@ function EntryScreen({
         <div className="text-center">
           <div className="mb-3 text-5xl">🎨</div>
           <h2 className="text-xl font-black tracking-tight">Skribbl Online</h2>
-          <p className="text-sm text-muted-foreground">2-8 players &middot; Draw & Guess</p>
+          <p className="text-muted-foreground text-sm">2-8 players &middot; Draw & Guess</p>
         </div>
         {savedSession && (
           <button
             onClick={onRestore}
-            className="w-64 rounded-xl border-2 border-dashed border-primary/40 px-6 py-3 text-center text-sm transition-colors hover:bg-secondary"
+            className="border-primary/40 hover:bg-secondary w-64 rounded-xl border-2 border-dashed px-6 py-3 text-center text-sm transition-colors"
           >
             <div className="font-semibold">Resume session</div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-muted-foreground text-xs">
               {savedSession.playerName} &middot; Room {savedSession.roomCode}
             </div>
           </button>
@@ -519,23 +519,23 @@ function EntryScreen({
         <div className="flex gap-3">
           <button
             onClick={() => setMode('create')}
-            className="flex w-36 flex-col items-center gap-2 rounded-2xl bg-secondary px-6 py-5 text-center font-semibold transition-all hover:bg-secondary/70 hover:shadow-lg active:scale-95"
+            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
               <span className="text-2xl">+</span>
             </div>
             <span>Create Room</span>
-            <span className="text-xs font-normal text-muted-foreground">Host a game</span>
+            <span className="text-muted-foreground text-xs font-normal">Host a game</span>
           </button>
           <button
             onClick={() => setMode('join')}
-            className="flex w-36 flex-col items-center gap-2 rounded-2xl bg-secondary px-6 py-5 text-center font-semibold transition-all hover:bg-secondary/70 hover:shadow-lg active:scale-95"
+            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
               <span className="text-2xl">&rarr;</span>
             </div>
             <span>Join Room</span>
-            <span className="text-xs font-normal text-muted-foreground">Enter a code</span>
+            <span className="text-muted-foreground text-xs font-normal">Enter a code</span>
           </button>
         </div>
       </div>
@@ -547,33 +547,33 @@ function EntryScreen({
     <div className="flex w-72 flex-col gap-4">
       <button
         onClick={() => setMode('choose')}
-        className="self-start text-sm text-muted-foreground hover:text-foreground"
+        className="text-muted-foreground hover:text-foreground self-start text-sm"
       >
         &larr; Back
       </button>
       <h2 className="text-lg font-bold">{isCreate ? 'Create Room' : 'Join Room'}</h2>
       {error && (
-        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+        <p className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm">{error}</p>
       )}
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Your name</span>
+        <span className="text-muted-foreground text-xs font-medium">Your name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your name"
           maxLength={16}
-          className="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+          className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"
         />
       </label>
       {!isCreate && (
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Room code</span>
+          <span className="text-muted-foreground text-xs font-medium">Room code</span>
           <input
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="e.g. AB12"
             maxLength={4}
-            className="rounded-lg border bg-background px-3 py-2 text-sm uppercase tracking-widest outline-none focus:ring-2 focus:ring-primary/40"
+            className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm tracking-widest uppercase outline-none focus:ring-2"
           />
         </label>
       )}
@@ -584,7 +584,7 @@ function EntryScreen({
           if (isCreate) onCreate(name.trim())
           else onJoin(joinCode, name.trim())
         }}
-        className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-50"
+        className="bg-primary text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
       >
         {loading ? 'Connecting\u2026' : isCreate ? 'Create Room' : 'Join Room'}
       </button>
@@ -634,21 +634,21 @@ function LobbyScreen({
 
   return (
     <div className="flex w-80 flex-col gap-5">
-      <div className="rounded-2xl bg-secondary p-5 text-center">
-        <p className="mb-1 text-xs font-medium text-muted-foreground">
+      <div className="bg-secondary rounded-2xl p-5 text-center">
+        <p className="text-muted-foreground mb-1 text-xs font-medium">
           Room code &mdash; share with friends
         </p>
         <p className="mb-3 text-4xl font-black tracking-widest">{roomCode}</p>
         <div className="flex justify-center gap-2">
           <button
             onClick={copyCode}
-            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
           >
             {copied === 'code' ? 'Copied!' : 'Copy code'}
           </button>
           <button
             onClick={copyInviteLink}
-            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
           >
             {copied === 'link' ? 'Copied!' : 'Copy invite link'}
           </button>
@@ -656,7 +656,7 @@ function LobbyScreen({
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium text-muted-foreground">
+        <p className="text-muted-foreground text-xs font-medium">
           Players ({gameState.players.length}/8)
         </p>
         {gameState.players.map((p, i) => {
@@ -664,7 +664,7 @@ function LobbyScreen({
           return (
             <div
               key={p.id}
-              className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm"
+              className="bg-secondary flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
               style={{ animationDelay: `${i * 50}ms` }}
             >
               <span
@@ -675,9 +675,9 @@ function LobbyScreen({
                 title={isOnline ? 'Online' : 'Offline'}
               />
               <span className={cn('font-medium', !isOnline && 'opacity-60')}>{p.name}</span>
-              {p.isHost && <span className="ml-auto text-xs text-muted-foreground">host</span>}
+              {p.isHost && <span className="text-muted-foreground ml-auto text-xs">host</span>}
               {p.id === playerId && !p.isHost && (
-                <span className="ml-auto text-xs text-muted-foreground">you</span>
+                <span className="text-muted-foreground ml-auto text-xs">you</span>
               )}
             </div>
           )
@@ -685,7 +685,7 @@ function LobbyScreen({
       </div>
 
       {isHost && gameState.players.length < 2 && (
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-center text-xs">
           Waiting for at least one more player&hellip;
         </p>
       )}
@@ -695,19 +695,19 @@ function LobbyScreen({
           <button
             disabled={gameState.players.length < 2}
             onClick={onStart}
-            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-40"
+            className="bg-primary text-primary-foreground flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
           >
             Start Game
           </button>
         )}
         {!isHost && (
-          <p className="flex-1 text-center text-sm text-muted-foreground">
+          <p className="text-muted-foreground flex-1 text-center text-sm">
             Waiting for host to start&hellip;
           </p>
         )}
         <button
           onClick={onLeave}
-          className="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-secondary"
+          className="hover:bg-secondary rounded-lg border px-4 py-2.5 text-sm font-semibold"
         >
           Leave
         </button>
@@ -728,14 +728,14 @@ function WordPicker({ words, onPick }: WordPickerProps) {
     <div className="flex flex-col items-center gap-4">
       <div className="text-center">
         <h2 className="text-lg font-bold">Choose a word to draw</h2>
-        <p className="text-sm text-muted-foreground">Pick one of the three options</p>
+        <p className="text-muted-foreground text-sm">Pick one of the three options</p>
       </div>
       <div className="flex gap-3">
         {words.map((word) => (
           <button
             key={word}
             onClick={() => onPick(word)}
-            className="rounded-xl bg-secondary px-6 py-4 text-sm font-bold transition-all hover:bg-primary hover:text-primary-foreground hover:shadow-lg active:scale-95"
+            className="bg-secondary hover:bg-primary hover:text-primary-foreground rounded-xl px-6 py-4 text-sm font-bold transition-all hover:shadow-lg active:scale-95"
           >
             {decodeWord(word)}
           </button>
@@ -787,11 +787,11 @@ function RoundEndScreen({ gameState, playerId, onNext, onLeave }: RoundEndProps)
         <h2 className="text-xl font-bold">
           {allGuessed ? 'Everyone guessed it!' : 'Time\u2019s up!'}
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-muted-foreground mt-1 text-sm">
           The word was:{' '}
-          <span className="font-bold text-foreground">{decodeWord(gameState.word ?? '')}</span>
+          <span className="text-foreground font-bold">{decodeWord(gameState.word ?? '')}</span>
         </p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           {drawer?.name} was drawing &middot; Round {gameState.round}/{gameState.totalRounds}
         </p>
       </div>
@@ -813,16 +813,16 @@ function RoundEndScreen({ gameState, playerId, onNext, onLeave }: RoundEndProps)
                   onNext()
                 }
               }}
-              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground active:scale-95"
+              className="bg-primary text-primary-foreground rounded-lg px-5 py-2.5 text-sm font-semibold active:scale-95"
             >
               Next Turn ({countdown}s)
             </button>
           ) : (
-            <p className="text-sm text-muted-foreground">Next turn in {countdown}s&hellip;</p>
+            <p className="text-muted-foreground text-sm">Next turn in {countdown}s&hellip;</p>
           )}
           <button
             onClick={onLeave}
-            className="rounded-lg border px-5 py-2.5 text-sm font-semibold hover:bg-secondary"
+            className="hover:bg-secondary rounded-lg border px-5 py-2.5 text-sm font-semibold"
           >
             Leave
           </button>
@@ -854,7 +854,7 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
         <h2 className="text-2xl font-black">
           {isWinner ? 'You win!' : `${winner?.name ?? '?'} wins!`}
         </h2>
-        <p className="text-sm text-muted-foreground">Final score: {winner?.score ?? 0} points</p>
+        <p className="text-muted-foreground text-sm">Final score: {winner?.score ?? 0} points</p>
       </div>
 
       <div className="w-72">
@@ -870,16 +870,16 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
         {isHost ? (
           <button
             onClick={onPlayAgain}
-            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground active:scale-95"
+            className="bg-primary text-primary-foreground rounded-lg px-5 py-2.5 text-sm font-semibold active:scale-95"
           >
             Play Again
           </button>
         ) : (
-          <p className="text-sm text-muted-foreground">Waiting for host&hellip;</p>
+          <p className="text-muted-foreground text-sm">Waiting for host&hellip;</p>
         )}
         <button
           onClick={onLeave}
-          className="rounded-lg border px-5 py-2.5 text-sm font-semibold hover:bg-secondary"
+          className="hover:bg-secondary rounded-lg border px-5 py-2.5 text-sm font-semibold"
         >
           Leave
         </button>
@@ -944,8 +944,8 @@ function GameBoardScreen({
   return (
     <div className="flex w-full max-w-5xl flex-col gap-3 px-2">
       {/* Top bar: round, hint/word, timer */}
-      <div className="flex items-center gap-3 rounded-xl bg-secondary/60 px-4 py-2">
-        <span className="text-xs font-semibold text-muted-foreground">
+      <div className="bg-secondary/60 flex items-center gap-3 rounded-xl px-4 py-2">
+        <span className="text-muted-foreground text-xs font-semibold">
           Round {gameState.round}/{gameState.totalRounds}
         </span>
         <div className="flex-1 text-center">
@@ -1005,7 +1005,7 @@ function GameBoardScreen({
 
       {/* Status + leave */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           {isDrawer
             ? "You're drawing!"
             : hasGuessed
@@ -1014,7 +1014,7 @@ function GameBoardScreen({
         </p>
         <button
           onClick={onLeave}
-          className="rounded-lg border px-3 py-1.5 text-xs hover:bg-secondary"
+          className="hover:bg-secondary rounded-lg border px-3 py-1.5 text-xs"
         >
           Leave
         </button>
@@ -1090,7 +1090,7 @@ export function SkribblGame() {
       <div className="flex flex-col items-center gap-4">
         <div className="text-5xl">🎨</div>
         <h2 className="text-lg font-bold">{drawer?.name} is picking a word...</h2>
-        <p className="text-sm text-muted-foreground">Get ready to guess!</p>
+        <p className="text-muted-foreground text-sm">Get ready to guess!</p>
       </div>
     )
   }
