@@ -44,7 +44,7 @@ function Tile({ letter, state }: { letter: string; state: TileState }) {
   return (
     <div
       className={cn(
-        'flex h-14 w-14 select-none items-center justify-center border-2 text-xl font-bold uppercase transition-colors duration-300',
+        'flex h-14 w-14 items-center justify-center border-2 text-xl font-bold uppercase transition-colors duration-300 select-none',
         TILE_COLORS[state]
       )}
     >
@@ -67,7 +67,7 @@ function Key({
     <button
       onClick={() => onClick(label)}
       className={cn(
-        'flex h-14 select-none items-center justify-center rounded font-bold transition-colors duration-200',
+        'flex h-14 items-center justify-center rounded font-bold transition-colors duration-200 select-none',
         isWide ? 'px-3 text-xs' : 'w-9 text-sm',
         KEY_COLORS[state]
       )}
@@ -176,7 +176,7 @@ export function WordleGame() {
       {/* Message toast */}
       <div
         className={cn(
-          'fixed left-1/2 top-20 z-50 -translate-x-1/2 rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background transition-opacity duration-200',
+          'bg-foreground text-background fixed top-20 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-bold transition-opacity duration-200',
           message ? 'opacity-100' : 'pointer-events-none opacity-0'
         )}
       >
@@ -212,8 +212,8 @@ export function WordleGame() {
       </div>
 
       {gameOver && !won && (
-        <p className="text-sm text-muted-foreground">
-          The word was <span className="font-bold text-foreground">{answer}</span>
+        <p className="text-muted-foreground text-sm">
+          The word was <span className="text-foreground font-bold">{answer}</span>
         </p>
       )}
     </div>

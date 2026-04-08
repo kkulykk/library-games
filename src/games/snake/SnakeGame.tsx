@@ -130,7 +130,7 @@ export function SnakeGame() {
         <span className="font-semibold">Score: {score}</span>
         <button
           onClick={() => dispatch({ type: 'restart' })}
-          className="rounded-lg bg-secondary px-4 py-1.5 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-lg px-4 py-1.5 text-sm font-semibold"
         >
           Restart
         </button>
@@ -138,7 +138,7 @@ export function SnakeGame() {
 
       {/* Canvas-like grid */}
       <div
-        className="relative overflow-hidden rounded border-2 border-border bg-zinc-100 dark:bg-zinc-900"
+        className="border-border relative overflow-hidden rounded border-2 bg-zinc-100 dark:bg-zinc-900"
         style={{ width: GRID_SIZE * CELL_PX, height: GRID_SIZE * CELL_PX }}
         onClick={() => !started && dispatch({ type: 'start' })}
       >
@@ -193,31 +193,31 @@ export function SnakeGame() {
         <div />
         <button
           onClick={() => handleDirection('UP')}
-          className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
+          className="bg-secondary hover:bg-secondary/80 rounded-lg p-3 text-lg"
         >
           ↑
         </button>
         <div />
         <button
           onClick={() => handleDirection('LEFT')}
-          className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
+          className="bg-secondary hover:bg-secondary/80 rounded-lg p-3 text-lg"
         >
           ←
         </button>
         <button
           onClick={() => handleDirection('DOWN')}
-          className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
+          className="bg-secondary hover:bg-secondary/80 rounded-lg p-3 text-lg"
         >
           ↓
         </button>
         <button
           onClick={() => handleDirection('RIGHT')}
-          className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
+          className="bg-secondary hover:bg-secondary/80 rounded-lg p-3 text-lg"
         >
           →
         </button>
       </div>
-      <p className="text-xs text-muted-foreground">Arrow keys or WASD to control</p>
+      <p className="text-muted-foreground text-xs">Arrow keys or WASD to control</p>
     </div>
   )
 }

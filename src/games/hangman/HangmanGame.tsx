@@ -51,7 +51,7 @@ function HangmanSvg({ wrongCount }: { wrongCount: number }) {
   return (
     <svg
       viewBox="0 0 200 220"
-      className="h-52 w-52 text-foreground"
+      className="text-foreground h-52 w-52"
       stroke="currentColor"
       fill="none"
       strokeLinecap="round"
@@ -127,7 +127,7 @@ export function HangmanGame() {
       <HangmanSvg wrongCount={wrongCount} />
 
       {/* Wrong guesses counter */}
-      <p className="text-sm text-muted-foreground">
+      <p className="text-muted-foreground text-sm">
         {wrongCount} / {MAX_WRONG_GUESSES} wrong guesses
       </p>
 
@@ -135,10 +135,10 @@ export function HangmanGame() {
       <div className="flex flex-wrap justify-center gap-2">
         {masked.map((char, i) => (
           <div key={i} className="flex flex-col items-center">
-            <span className="min-w-[1.5rem] text-center text-2xl font-bold uppercase tracking-widest text-foreground">
+            <span className="text-foreground min-w-[1.5rem] text-center text-2xl font-bold tracking-widest uppercase">
               {char === '_' ? '\u00A0' : char}
             </span>
-            <span className="mt-1 h-0.5 w-6 bg-foreground" />
+            <span className="bg-foreground mt-1 h-0.5 w-6" />
           </div>
         ))}
       </div>
@@ -167,7 +167,7 @@ export function HangmanGame() {
                   onClick={() => handleGuess(letter)}
                   disabled={state !== 'unguessed' || gameOver}
                   className={cn(
-                    'flex h-10 w-9 select-none items-center justify-center rounded text-sm font-bold transition-colors duration-200',
+                    'flex h-10 w-9 items-center justify-center rounded text-sm font-bold transition-colors duration-200 select-none',
                     KEY_COLORS[state],
                     state !== 'unguessed' || gameOver ? 'cursor-default' : 'cursor-pointer'
                   )}
@@ -184,7 +184,7 @@ export function HangmanGame() {
       {gameOver && (
         <button
           onClick={() => startNewGame()}
-          className="rounded-lg bg-foreground px-6 py-2 font-bold text-background transition-opacity hover:opacity-80"
+          className="bg-foreground text-background rounded-lg px-6 py-2 font-bold transition-opacity hover:opacity-80"
         >
           New Game
         </button>

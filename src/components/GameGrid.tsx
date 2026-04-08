@@ -70,7 +70,7 @@ export function GameGrid({ games }: GameGridProps) {
           ))}
         </div>
       ) : (
-        <div className="py-20 text-center text-muted-foreground">
+        <div className="text-muted-foreground py-20 text-center">
           No games in this category yet.
         </div>
       )}
@@ -79,8 +79,8 @@ export function GameGrid({ games }: GameGridProps) {
       {comingSoonGames.length > 0 && filter === 'all' && (
         <section className="mt-16">
           <div className="mb-6 flex items-center gap-3">
-            <h2 className="text-xl font-bold text-foreground">Coming Soon</h2>
-            <span className="rounded-full bg-muted px-3 py-0.5 text-xs font-medium text-muted-foreground">
+            <h2 className="text-foreground text-xl font-bold">Coming Soon</h2>
+            <span className="bg-muted text-muted-foreground rounded-full px-3 py-0.5 text-xs font-medium">
               {comingSoonGames.length} in development
             </span>
           </div>

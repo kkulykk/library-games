@@ -55,19 +55,19 @@ export function TicTacToeGame() {
         <div className="flex flex-col gap-3 sm:flex-row">
           <button
             onClick={() => setMode('single')}
-            className="flex flex-col items-center gap-1 rounded-2xl bg-secondary px-8 py-5 text-center font-semibold transition-colors hover:bg-secondary/70"
+            className="bg-secondary hover:bg-secondary/70 flex flex-col items-center gap-1 rounded-2xl px-8 py-5 text-center font-semibold transition-colors"
           >
             <span className="text-3xl">🤖</span>
             <span>vs Computer</span>
-            <span className="text-xs font-normal text-muted-foreground">You are X</span>
+            <span className="text-muted-foreground text-xs font-normal">You are X</span>
           </button>
           <button
             onClick={() => setMode('dual')}
-            className="flex flex-col items-center gap-1 rounded-2xl bg-secondary px-8 py-5 text-center font-semibold transition-colors hover:bg-secondary/70"
+            className="bg-secondary hover:bg-secondary/70 flex flex-col items-center gap-1 rounded-2xl px-8 py-5 text-center font-semibold transition-colors"
           >
             <span className="text-3xl">👥</span>
             <span>2 Players</span>
-            <span className="text-xs font-normal text-muted-foreground">Local co-op</span>
+            <span className="text-muted-foreground text-xs font-normal">Local co-op</span>
           </button>
         </div>
       </div>
@@ -115,7 +115,7 @@ export function TicTacToeGame() {
               disabled={cell !== null || isGameOver(state) || aiThinking}
               aria-label={`Cell ${index + 1}${cell ? ` (${cell})` : ''}`}
               className={cn(
-                'flex h-20 w-20 select-none items-center justify-center rounded-2xl text-4xl font-bold transition-all duration-150 sm:h-24 sm:w-24',
+                'flex h-20 w-20 items-center justify-center rounded-2xl text-4xl font-bold transition-all duration-150 select-none sm:h-24 sm:w-24',
                 isWinningCell && 'bg-emerald-200 dark:bg-emerald-800',
                 !isWinningCell && cell === null && !isGameOver(state) && !aiThinking
                   ? 'bg-secondary hover:bg-secondary/70 active:scale-95'
@@ -137,13 +137,13 @@ export function TicTacToeGame() {
       <div className="flex gap-3">
         <button
           onClick={restart}
-          className="rounded-lg bg-secondary px-5 py-2 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80"
+          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-lg px-5 py-2 text-sm font-semibold"
         >
           Restart
         </button>
         <button
           onClick={changeMode}
-          className="rounded-lg border px-5 py-2 text-sm font-semibold hover:bg-secondary"
+          className="hover:bg-secondary rounded-lg border px-5 py-2 text-sm font-semibold"
         >
           Change Mode
         </button>

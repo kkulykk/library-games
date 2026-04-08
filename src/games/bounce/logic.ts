@@ -15,14 +15,14 @@ export const LEVEL_BONUS = 500
 export const INITIAL_LIVES = 3
 
 /* ── tile constants ──────────────────────────────── */
-export const T_EMPTY = 0
-export const T_BRICK = 1
-export const T_BRICK2 = 2
-export const T_SPIKE = 3
-export const T_SPRING = 4
-export const T_FINISH = 5
-
 export type TileType = 0 | 1 | 2 | 3 | 4 | 5
+
+export const T_EMPTY: TileType = 0
+export const T_BRICK: TileType = 1
+export const T_BRICK2: TileType = 2
+export const T_SPIKE: TileType = 3
+export const T_SPRING: TileType = 4
+export const T_FINISH: TileType = 5
 
 /* ── types ───────────────────────────────────────── */
 export interface Ball {

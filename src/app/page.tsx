@@ -11,32 +11,32 @@ export default function HomePage() {
   ).length
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="bg-background min-h-screen">
       {/* Hero */}
-      <header className="border-b bg-gradient-to-b from-accent/60 to-background">
-        <div className="mx-auto max-w-5xl px-4 pb-12 pt-16 text-center">
+      <header className="from-accent/60 to-background border-b bg-gradient-to-b">
+        <div className="mx-auto max-w-5xl px-4 pt-16 pb-12 text-center">
           <div className="mb-4 text-6xl">🎮</div>
-          <h1 className="text-5xl font-extrabold tracking-tight text-foreground sm:text-6xl">
+          <h1 className="text-foreground text-5xl font-extrabold tracking-tight sm:text-6xl">
             Library Games
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-lg text-muted-foreground">
+          <p className="text-muted-foreground mx-auto mt-4 max-w-xl text-lg">
             A collection of classic and modern games — no downloads, no accounts, just play.
           </p>
 
           {/* Stats row */}
           <div className="mt-8 inline-flex flex-wrap justify-center gap-3">
-            <div className="flex items-center gap-2 rounded-full border bg-card px-4 py-2 text-sm shadow-sm">
-              <span className="font-bold text-foreground">{liveCount}</span>
+            <div className="bg-card flex items-center gap-2 rounded-full border px-4 py-2 text-sm shadow-sm">
+              <span className="text-foreground font-bold">{liveCount}</span>
               <span className="text-muted-foreground">games ready to play</span>
             </div>
-            <div className="flex items-center gap-2 rounded-full border bg-card px-4 py-2 text-sm shadow-sm">
+            <div className="bg-card flex items-center gap-2 rounded-full border px-4 py-2 text-sm shadow-sm">
               <span className="text-blue-500">🧩</span>
-              <span className="font-bold text-foreground">{singleCount}</span>
+              <span className="text-foreground font-bold">{singleCount}</span>
               <span className="text-muted-foreground">single player</span>
             </div>
-            <div className="flex items-center gap-2 rounded-full border bg-card px-4 py-2 text-sm shadow-sm">
+            <div className="bg-card flex items-center gap-2 rounded-full border px-4 py-2 text-sm shadow-sm">
               <span className="text-purple-500">👥</span>
-              <span className="font-bold text-foreground">{multiplayerCount}</span>
+              <span className="text-foreground font-bold">{multiplayerCount}</span>
               <span className="text-muted-foreground">multiplayer</span>
             </div>
           </div>
@@ -48,13 +48,13 @@ export default function HomePage() {
       </main>
 
       <footer className="mt-20 border-t">
-        <div className="mx-auto max-w-5xl px-4 py-6 text-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground mx-auto max-w-5xl px-4 py-6 text-center text-sm">
           Open source on{' '}
           <a
             href="https://github.com/kkulykk/library-games"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-foreground"
+            className="hover:text-foreground underline underline-offset-2"
           >
             GitHub
           </a>

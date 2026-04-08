@@ -590,7 +590,7 @@ export default function BounceGame() {
         onClick={handleCanvasTap}
       />
       {/* Nokia-style on-screen controls */}
-      <div className="flex select-none items-center gap-3" style={{ touchAction: 'none' }}>
+      <div className="flex items-center gap-3 select-none" style={{ touchAction: 'none' }}>
         <button
           className="flex h-14 w-14 items-center justify-center rounded-lg text-2xl font-bold transition-colors active:brightness-125"
           style={{
@@ -607,7 +607,7 @@ export default function BounceGame() {
           ◀
         </button>
         <button
-          className="flex h-14 w-20 items-center justify-center rounded-lg text-sm font-bold uppercase tracking-wider transition-colors active:brightness-125"
+          className="flex h-14 w-20 items-center justify-center rounded-lg text-sm font-bold tracking-wider uppercase transition-colors active:brightness-125"
           style={{
             background: C.overBorder,
             border: `2px solid ${C.brickFace}`,
