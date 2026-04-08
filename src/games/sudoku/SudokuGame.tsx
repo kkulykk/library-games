@@ -96,7 +96,7 @@ export function SudokuGame() {
       )}
 
       {/* Grid */}
-      <div className="grid grid-cols-9 overflow-hidden rounded border-2 border-foreground">
+      <div className="border-foreground grid grid-cols-9 overflow-hidden rounded border-2">
         {userGrid.map((row, ri) =>
           row.map((value, ci) => {
             const isSelected = selected?.[0] === ri && selected?.[1] === ci
@@ -115,13 +115,13 @@ export function SudokuGame() {
                 onClick={() => handleCellClick(ri, ci)}
                 className={cn(
                   'flex h-9 w-9 items-center justify-center text-sm font-semibold transition-colors',
-                  'border border-border/50',
-                  ci % 3 === 2 && ci !== 8 ? 'border-r-2 border-r-foreground' : '',
-                  ri % 3 === 2 && ri !== 8 ? 'border-b-2 border-b-foreground' : '',
+                  'border-border/50 border',
+                  ci % 3 === 2 && ci !== 8 ? 'border-r-foreground border-r-2' : '',
+                  ri % 3 === 2 && ri !== 8 ? 'border-b-foreground border-b-2' : '',
                   isSelected ? 'bg-blue-200 dark:bg-blue-800' : '',
                   isHighlighted && !isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : '',
                   !isSelected && !isHighlighted ? 'bg-background' : '',
-                  isLocked ? 'font-bold text-foreground' : 'text-blue-600 dark:text-blue-400',
+                  isLocked ? 'text-foreground font-bold' : 'text-blue-600 dark:text-blue-400',
                   isError ? 'text-red-500' : ''
                 )}
               >
@@ -138,14 +138,14 @@ export function SudokuGame() {
           <button
             key={n}
             onClick={() => handleNumberInput(n)}
-            className="h-10 w-10 rounded-lg bg-secondary text-sm font-bold text-secondary-foreground hover:bg-secondary/80"
+            className="bg-secondary text-secondary-foreground hover:bg-secondary/80 h-10 w-10 rounded-lg text-sm font-bold"
           >
             {n}
           </button>
         ))}
         <button
           onClick={() => handleNumberInput(null)}
-          className="h-10 w-10 rounded-lg bg-destructive/20 text-sm font-bold text-destructive hover:bg-destructive/30"
+          className="bg-destructive/20 text-destructive hover:bg-destructive/30 h-10 w-10 rounded-lg text-sm font-bold"
         >
           ✕
         </button>

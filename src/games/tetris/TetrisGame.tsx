@@ -142,7 +142,7 @@ export function TetrisGame() {
   return (
     <div className="flex items-start gap-6">
       {/* Board */}
-      <div className="relative overflow-hidden rounded border-2 border-border bg-zinc-900">
+      <div className="border-border relative overflow-hidden rounded border-2 bg-zinc-900">
         <div style={{ width: BOARD_WIDTH * CELL_PX, height: BOARD_HEIGHT * CELL_PX }}>
           {displayBoard.map((row, ri) =>
             row.map((color, ci) => (
@@ -191,19 +191,19 @@ export function TetrisGame() {
       {/* Sidebar */}
       <div className="flex min-w-[100px] flex-col gap-4">
         <div>
-          <div className="mb-1 text-xs text-muted-foreground">SCORE</div>
+          <div className="text-muted-foreground mb-1 text-xs">SCORE</div>
           <div className="text-xl font-bold">{state.score}</div>
         </div>
         <div>
-          <div className="mb-1 text-xs text-muted-foreground">LEVEL</div>
+          <div className="text-muted-foreground mb-1 text-xs">LEVEL</div>
           <div className="text-xl font-bold">{level}</div>
         </div>
         <div>
-          <div className="mb-1 text-xs text-muted-foreground">LINES</div>
+          <div className="text-muted-foreground mb-1 text-xs">LINES</div>
           <div className="text-xl font-bold">{state.lines}</div>
         </div>
         <div>
-          <div className="mb-1 text-xs text-muted-foreground">NEXT</div>
+          <div className="text-muted-foreground mb-1 text-xs">NEXT</div>
           <div className="mt-1 rounded bg-zinc-900 p-2">
             {state.next.shape.map((row, ri) => (
               <div key={ri} className="flex">
@@ -235,35 +235,35 @@ export function TetrisGame() {
                 return isValidPosition(p.board, moved) ? { ...p, current: moved } : p
               })
             }
-            className="rounded bg-secondary p-2 text-xs hover:bg-secondary/80"
+            className="bg-secondary hover:bg-secondary/80 rounded p-2 text-xs"
           >
             ↻
           </button>
           <div />
           <button
             onClick={() => tryMove(-1, 0)}
-            className="rounded bg-secondary p-2 text-xs hover:bg-secondary/80"
+            className="bg-secondary hover:bg-secondary/80 rounded p-2 text-xs"
           >
             ←
           </button>
           <button
             onClick={() => drop()}
-            className="rounded bg-secondary p-2 text-xs hover:bg-secondary/80"
+            className="bg-secondary hover:bg-secondary/80 rounded p-2 text-xs"
           >
             ↓
           </button>
           <button
             onClick={() => tryMove(1, 0)}
-            className="rounded bg-secondary p-2 text-xs hover:bg-secondary/80"
+            className="bg-secondary hover:bg-secondary/80 rounded p-2 text-xs"
           >
             →
           </button>
         </div>
-        <p className="text-xs text-muted-foreground">Arrow keys + Space</p>
+        <p className="text-muted-foreground text-xs">Arrow keys + Space</p>
 
         <button
           onClick={restart}
-          className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
+          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-lg px-3 py-1.5 text-xs font-semibold"
         >
           Restart
         </button>

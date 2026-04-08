@@ -13,7 +13,6 @@ describe('useInviteCode', () => {
   const originalHref = window.location.href
 
   afterEach(() => {
-    // Restore original URL
     window.history.replaceState({}, '', originalHref)
   })
 

@@ -432,8 +432,8 @@ function Leaderboard({
     .slice(0, 8)
 
   return (
-    <div className="absolute right-2 top-10 rounded-lg border border-white/10 bg-[#0a0a2e]/80 px-3 py-2 text-sm text-white backdrop-blur-sm">
-      <div className="mb-1 text-center text-xs font-bold uppercase tracking-wider text-white/50">
+    <div className="absolute top-10 right-2 rounded-lg border border-white/10 bg-[#0a0a2e]/80 px-3 py-2 text-sm text-white backdrop-blur-sm">
+      <div className="mb-1 text-center text-xs font-bold tracking-wider text-white/50 uppercase">
         Leaderboard
       </div>
       {sorted.map((s, i) => (
@@ -493,19 +493,19 @@ function Lobby({
   return (
     <div className="flex flex-col items-center gap-6">
       <div className="text-center">
-        <p className="mb-1 text-sm text-muted-foreground">Room Code</p>
+        <p className="text-muted-foreground mb-1 text-sm">Room Code</p>
         <p className="font-mono text-4xl font-bold tracking-widest">{roomCode}</p>
-        <p className="mt-1 text-sm text-muted-foreground">Share this code with friends</p>
+        <p className="text-muted-foreground mt-1 text-sm">Share this code with friends</p>
         <div className="mt-2 flex justify-center gap-2">
           <button
             onClick={copyCode}
-            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
           >
             {copied === 'code' ? 'Copied!' : 'Copy code'}
           </button>
           <button
             onClick={copyInviteLink}
-            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
           >
             {copied === 'link' ? 'Copied!' : 'Copy invite link'}
           </button>
@@ -519,8 +519,8 @@ function Lobby({
             <div
               key={p.id}
               className={cn(
-                'flex items-center gap-2 rounded bg-muted px-3 py-1.5 text-sm',
-                p.id === playerId && 'ring-1 ring-primary'
+                'bg-muted flex items-center gap-2 rounded px-3 py-1.5 text-sm',
+                p.id === playerId && 'ring-primary ring-1'
               )}
             >
               <span
@@ -528,7 +528,7 @@ function Lobby({
                 style={{ backgroundColor: p.color }}
               />
               <span>{p.name}</span>
-              {p.isHost && <span className="ml-auto text-xs text-muted-foreground">(host)</span>}
+              {p.isHost && <span className="text-muted-foreground ml-auto text-xs">(host)</span>}
             </div>
           ))}
         </div>
@@ -538,15 +538,15 @@ function Lobby({
         <button
           onClick={onStart}
           disabled={gameState.players.length < 2}
-          className="rounded-lg bg-primary px-8 py-2 font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-8 py-2 font-semibold transition disabled:opacity-50"
         >
           {gameState.players.length < 2 ? 'Need 2+ players' : 'Start Game'}
         </button>
       ) : (
-        <p className="text-sm text-muted-foreground">Waiting for host to start...</p>
+        <p className="text-muted-foreground text-sm">Waiting for host to start...</p>
       )}
 
-      <p className="max-w-xs text-center text-xs text-muted-foreground">
+      <p className="text-muted-foreground max-w-xs text-center text-xs">
         Steer with your mouse. Hold click or spacebar to boost. Avoid crashing into other snakes!
       </p>
     </div>
@@ -581,8 +581,8 @@ function FinishedScreen({
             <div
               key={s.id}
               className={cn(
-                'flex items-center gap-2 rounded bg-muted px-3 py-2 text-sm',
-                s.id === myId && 'ring-1 ring-primary',
+                'bg-muted flex items-center gap-2 rounded px-3 py-2 text-sm',
+                s.id === myId && 'ring-primary ring-1',
                 i === 0 && 'bg-yellow-100 dark:bg-yellow-900/30'
               )}
             >
@@ -602,14 +602,14 @@ function FinishedScreen({
         {isHost && (
           <button
             onClick={onPlayAgain}
-            className="rounded-lg bg-primary px-6 py-2 font-semibold text-primary-foreground transition hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-6 py-2 font-semibold transition"
           >
             Play Again
           </button>
         )}
         <button
           onClick={onLeave}
-          className="rounded-lg bg-muted px-6 py-2 font-semibold transition hover:bg-muted/80"
+          className="bg-muted hover:bg-muted/80 rounded-lg px-6 py-2 font-semibold transition"
         >
           Leave
         </button>
@@ -995,7 +995,7 @@ export function AgarioGame() {
   if (!isSupabaseConfigured) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="max-w-md rounded-lg bg-destructive/10 p-6 text-center text-destructive">
+        <div className="bg-destructive/10 text-destructive max-w-md rounded-lg p-6 text-center">
           <h3 className="mb-2 font-semibold">Supabase not configured</h3>
           <p className="text-sm">
             Copy <code>.env.local.example</code> to <code>.env.local</code> and fill in your
@@ -1059,7 +1059,7 @@ export function AgarioGame() {
   if (status === 'creating' || status === 'joining' || status === 'restoring') {
     return (
       <div className="flex items-center justify-center p-12">
-        <p className="animate-pulse text-muted-foreground">
+        <p className="text-muted-foreground animate-pulse">
           {status === 'creating' && 'Creating room...'}
           {status === 'joining' && 'Joining room...'}
           {status === 'restoring' && 'Restoring session...'}
@@ -1070,19 +1070,19 @@ export function AgarioGame() {
 
   return (
     <div className="flex flex-col items-center gap-6 p-4">
-      <p className="max-w-md text-center text-sm text-muted-foreground">
+      <p className="text-muted-foreground max-w-md text-center text-sm">
         Slither around, eat food to grow longer, and make other snakes crash into you! Hold click or
         spacebar to boost.
       </p>
 
       {error && (
-        <div className="rounded bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>
+        <div className="bg-destructive/10 text-destructive rounded px-4 py-2 text-sm">{error}</div>
       )}
 
       {savedSession && (
         <button
           onClick={restoreSession}
-          className="w-full max-w-xs rounded-lg bg-primary px-4 py-2 font-semibold text-primary-foreground transition hover:bg-primary/90"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 w-full max-w-xs rounded-lg px-4 py-2 font-semibold transition"
         >
           Rejoin as {savedSession.playerName}
         </button>
@@ -1092,13 +1092,13 @@ export function AgarioGame() {
         <div className="flex w-full max-w-xs flex-col gap-3">
           <button
             onClick={() => setMode('create')}
-            className="rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground transition hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-4 py-3 font-semibold transition"
           >
             Create Room
           </button>
           <button
             onClick={() => setMode('join')}
-            className="rounded-lg bg-muted px-4 py-3 font-semibold transition hover:bg-muted/80"
+            className="bg-muted hover:bg-muted/80 rounded-lg px-4 py-3 font-semibold transition"
           >
             Join Room
           </button>
@@ -1122,21 +1122,21 @@ export function AgarioGame() {
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             maxLength={16}
-            className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+            className="border-input bg-background rounded-lg border px-3 py-2 text-sm"
             autoFocus
           />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setMode('menu')}
-              className="flex-1 rounded-lg bg-muted px-4 py-2 text-sm transition hover:bg-muted/80"
+              className="bg-muted hover:bg-muted/80 flex-1 rounded-lg px-4 py-2 text-sm transition"
             >
               Back
             </button>
             <button
               type="submit"
               disabled={!nameInput.trim()}
-              className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
             >
               Create
             </button>
@@ -1161,7 +1161,7 @@ export function AgarioGame() {
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             maxLength={16}
-            className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+            className="border-input bg-background rounded-lg border px-3 py-2 text-sm"
             autoFocus
           />
           <input
@@ -1170,20 +1170,20 @@ export function AgarioGame() {
             value={codeInput}
             onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
             maxLength={4}
-            className="rounded-lg border border-input bg-background px-3 py-2 text-center font-mono text-lg tracking-widest"
+            className="border-input bg-background rounded-lg border px-3 py-2 text-center font-mono text-lg tracking-widest"
           />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setMode('menu')}
-              className="flex-1 rounded-lg bg-muted px-4 py-2 text-sm transition hover:bg-muted/80"
+              className="bg-muted hover:bg-muted/80 flex-1 rounded-lg px-4 py-2 text-sm transition"
             >
               Back
             </button>
             <button
               type="submit"
               disabled={!nameInput.trim() || codeInput.length < 4}
-              className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
             >
               Join
             </button>

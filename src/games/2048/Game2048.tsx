@@ -120,18 +120,18 @@ export function Game2048() {
       {/* Score row */}
       <div className="flex w-full items-center justify-between">
         <div className="flex gap-3">
-          <div className="rounded-lg bg-secondary px-4 py-2 text-center">
-            <div className="text-xs text-muted-foreground">SCORE</div>
+          <div className="bg-secondary rounded-lg px-4 py-2 text-center">
+            <div className="text-muted-foreground text-xs">SCORE</div>
             <div className="text-xl font-bold">{score}</div>
           </div>
-          <div className="rounded-lg bg-secondary px-4 py-2 text-center">
-            <div className="text-xs text-muted-foreground">BEST</div>
+          <div className="bg-secondary rounded-lg px-4 py-2 text-center">
+            <div className="text-muted-foreground text-xs">BEST</div>
             <div className="text-xl font-bold">{best}</div>
           </div>
         </div>
         <button
           onClick={restart}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+          className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-semibold"
         >
           New Game
         </button>
@@ -185,31 +185,31 @@ export function Game2048() {
         <div />
         <button
           onClick={() => handleMove('up')}
-          className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
+          className="bg-secondary hover:bg-secondary/80 rounded-lg p-3 text-lg"
         >
           ↑
         </button>
         <div />
         <button
           onClick={() => handleMove('left')}
-          className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
+          className="bg-secondary hover:bg-secondary/80 rounded-lg p-3 text-lg"
         >
           ←
         </button>
         <button
           onClick={() => handleMove('down')}
-          className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
+          className="bg-secondary hover:bg-secondary/80 rounded-lg p-3 text-lg"
         >
           ↓
         </button>
         <button
           onClick={() => handleMove('right')}
-          className="rounded-lg bg-secondary p-3 text-lg hover:bg-secondary/80"
+          className="bg-secondary hover:bg-secondary/80 rounded-lg p-3 text-lg"
         >
           →
         </button>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         Use arrow keys, swipe on the grid, or tap the buttons to play
       </p>
     </div>
