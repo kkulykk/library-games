@@ -10,8 +10,10 @@ describe('getInviteLink', () => {
 })
 
 describe('useInviteCode', () => {
+  const originalHref = window.location.href
+
   afterEach(() => {
-    window.history.replaceState({}, '', '/')
+    window.history.replaceState({}, '', originalHref)
   })
 
   it('returns null when no code param is present', () => {
