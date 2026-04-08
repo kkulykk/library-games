@@ -74,6 +74,8 @@ export function BreakoutGame() {
     ctx.fill()
   }, [])
 
+  const gameLoopRef = useRef<() => void>(() => {})
+
   const gameLoop = useCallback(() => {
     const s = stateRef.current
     if (!s.running) return
@@ -123,8 +125,12 @@ export function BreakoutGame() {
     }
 
     draw()
-    rafRef.current = requestAnimationFrame(gameLoop)
+    rafRef.current = requestAnimationFrame(() => gameLoopRef.current())
   }, [draw])
+
+  useEffect(() => {
+    gameLoopRef.current = gameLoop
+  }, [gameLoop])
 
   // Mouse/touch paddle control
   useEffect(() => {
@@ -186,7 +192,7 @@ export function BreakoutGame() {
       </div>
 
       <div
-        className="relative overflow-hidden rounded-xl border-2 border-border"
+        className="border-border relative overflow-hidden rounded-xl border-2"
         style={{ maxWidth: CANVAS_WIDTH }}
       >
         <canvas
@@ -220,7 +226,7 @@ export function BreakoutGame() {
           </div>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         Move your mouse over the game to control the paddle
       </p>
     </div>

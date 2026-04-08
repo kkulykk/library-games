@@ -15,19 +15,19 @@ export function GameLayout({ title, slug, children, score }: GameLayoutProps) {
   const game = games.find((g) => g.slug === slug)
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
+    <div className="bg-background flex min-h-screen flex-col">
+      <header className="bg-background/80 sticky top-0 z-10 border-b backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
               Back
             </Link>
             <span className="text-muted-foreground">/</span>
-            <h1 className="text-sm font-semibold text-foreground">{title}</h1>
+            <h1 className="text-foreground text-sm font-semibold">{title}</h1>
           </div>
           {score && <div className="text-sm font-medium">{score}</div>}
         </div>

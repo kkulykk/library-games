@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -127,16 +127,16 @@ function BlackCardDisplay({ text, pick, className }: BlackCardDisplayProps) {
       )}
     >
       {/* CAH-style corner flourish */}
-      <div className="absolute right-4 top-4 text-[10px] font-bold uppercase tracking-[0.2em] text-white/20">
+      <div className="absolute top-4 right-4 text-[10px] font-bold tracking-[0.2em] text-white/20 uppercase">
         CAH
       </div>
-      <p className="text-lg font-extrabold leading-relaxed tracking-tight sm:text-xl">
+      <p className="text-lg leading-relaxed font-extrabold tracking-tight sm:text-xl">
         {text.split('___').map((part, i, arr) => (
           <span key={i}>
             {part}
             {i < arr.length - 1 && (
               <span className="relative mx-1 inline-block w-20 sm:w-24">
-                <span className="absolute bottom-0.5 left-0 right-0 border-b-[3px] border-white/60" />
+                <span className="absolute right-0 bottom-0.5 left-0 border-b-[3px] border-white/60" />
               </span>
             )}
           </span>
@@ -190,15 +190,15 @@ function WhiteCard({
         className
       )}
     >
-      <span className="text-sm font-bold leading-snug text-foreground sm:text-base">{text}</span>
+      <span className="text-foreground text-sm leading-snug font-bold sm:text-base">{text}</span>
       {/* Card bottom edge detail */}
       <div className="mt-3 flex items-end justify-between">
-        <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground/30">
+        <span className="text-muted-foreground/30 text-[9px] font-bold tracking-[0.15em] uppercase">
           Cards Against Humanity
         </span>
       </div>
       {selected && selectionIndex !== undefined && (
-        <span className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-black text-white shadow-md dark:bg-white dark:text-black">
+        <span className="absolute -top-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-black text-white shadow-md dark:bg-white dark:text-black">
           {selectionIndex + 1}
         </span>
       )}
@@ -212,16 +212,16 @@ function FaceDownCard({ onClick, clickable }: { onClick?: () => void; clickable?
     <button
       onClick={clickable ? onClick : undefined}
       className={cn(
-        'flex min-h-[80px] items-center justify-center rounded-xl border-2 border-dashed border-border/60 bg-secondary/40 transition-all sm:rounded-2xl',
-        clickable ? 'cursor-pointer hover:border-border hover:bg-secondary/60' : 'cursor-default'
+        'border-border/60 bg-secondary/40 flex min-h-[80px] items-center justify-center rounded-xl border-2 border-dashed transition-all sm:rounded-2xl',
+        clickable ? 'hover:border-border hover:bg-secondary/60 cursor-pointer' : 'cursor-default'
       )}
     >
       <div className="flex flex-col items-center gap-1 py-4">
         <div className="flex gap-0.5">
-          <div className="h-6 w-4 rounded-sm bg-muted-foreground/15" />
-          <div className="h-6 w-4 -rotate-3 rounded-sm bg-muted-foreground/10" />
+          <div className="bg-muted-foreground/15 h-6 w-4 rounded-sm" />
+          <div className="bg-muted-foreground/10 h-6 w-4 -rotate-3 rounded-sm" />
         </div>
-        <span className="text-[10px] font-medium text-muted-foreground/50">Hidden</span>
+        <span className="text-muted-foreground/50 text-[10px] font-medium">Hidden</span>
       </div>
     </button>
   )
@@ -231,15 +231,15 @@ function FaceDownCard({ onClick, clickable }: { onClick?: () => void; clickable?
 
 function SetupRequired() {
   return (
-    <div className="mx-auto max-w-md rounded-2xl border bg-secondary/40 p-6 text-center">
+    <div className="bg-secondary/40 mx-auto max-w-md rounded-2xl border p-6 text-center">
       <div className="mb-3 text-4xl">🔧</div>
       <h2 className="mb-2 text-lg font-bold">Supabase setup required</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
+      <p className="text-muted-foreground mb-4 text-sm">
         Online multiplayer requires a Supabase project. Create a free project at{' '}
-        <span className="font-medium text-foreground">supabase.com</span>, run the schema from{' '}
-        <code className="rounded bg-secondary px-1 text-xs">supabase-schema.sql</code>, then set:
+        <span className="text-foreground font-medium">supabase.com</span>, run the schema from{' '}
+        <code className="bg-secondary rounded px-1 text-xs">supabase-schema.sql</code>, then set:
       </p>
-      <pre className="rounded-lg bg-secondary p-3 text-left text-xs">
+      <pre className="bg-secondary rounded-lg p-3 text-left text-xs">
         {`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
       </pre>
     </div>
@@ -278,24 +278,24 @@ function EntryScreen({
             <div className="cah-black-card flex h-20 w-14 items-center justify-center rounded-xl text-2xl font-black text-white shadow-xl">
               ?
             </div>
-            <div className="cah-white-card absolute -right-3 top-1 flex h-20 w-14 -rotate-6 items-center justify-center rounded-xl border text-2xl font-black shadow-xl">
+            <div className="cah-white-card absolute top-1 -right-3 flex h-20 w-14 -rotate-6 items-center justify-center rounded-xl border text-2xl font-black shadow-xl">
               !
             </div>
           </div>
           <div className="text-center">
             <h2 className="text-2xl font-black tracking-tight">Cards Against Humanity</h2>
-            <p className="mt-1 text-sm text-muted-foreground">A party game for horrible people</p>
-            <p className="text-xs text-muted-foreground/60">3–10 players</p>
+            <p className="text-muted-foreground mt-1 text-sm">A party game for horrible people</p>
+            <p className="text-muted-foreground/60 text-xs">3–10 players</p>
           </div>
         </div>
 
         {savedSession && (
           <button
             onClick={onRestore}
-            className="w-72 rounded-xl border-2 border-dashed border-primary/30 px-6 py-3.5 text-center transition-all hover:border-primary/50 hover:bg-secondary/50"
+            className="border-primary/30 hover:border-primary/50 hover:bg-secondary/50 w-72 rounded-xl border-2 border-dashed px-6 py-3.5 text-center transition-all"
           >
             <div className="text-sm font-semibold">Resume session</div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-muted-foreground text-xs">
               {savedSession.playerName} &middot; Room {savedSession.roomCode}
             </div>
           </button>
@@ -304,26 +304,26 @@ function EntryScreen({
         <div className="flex gap-4">
           <button
             onClick={() => setMode('create')}
-            className="group flex w-40 flex-col items-center gap-3 rounded-2xl border border-border/50 bg-card px-6 py-6 text-center transition-all hover:-translate-y-1 hover:border-border hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
+            className="group border-border/50 bg-card hover:border-border flex w-40 flex-col items-center gap-3 rounded-2xl border px-6 py-6 text-center transition-all hover:-translate-y-1 hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
           >
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-white transition-transform group-hover:scale-110 dark:bg-white dark:text-black">
               <span className="text-2xl font-black">+</span>
             </div>
             <div>
               <span className="block font-bold">Create Room</span>
-              <span className="text-xs text-muted-foreground">Host a game</span>
+              <span className="text-muted-foreground text-xs">Host a game</span>
             </div>
           </button>
           <button
             onClick={() => setMode('join')}
-            className="group flex w-40 flex-col items-center gap-3 rounded-2xl border border-border/50 bg-card px-6 py-6 text-center transition-all hover:-translate-y-1 hover:border-border hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
+            className="group border-border/50 bg-card hover:border-border flex w-40 flex-col items-center gap-3 rounded-2xl border px-6 py-6 text-center transition-all hover:-translate-y-1 hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
           >
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-white transition-transform group-hover:scale-110 dark:bg-white dark:text-black">
               <span className="text-2xl">&rarr;</span>
             </div>
             <div>
               <span className="block font-bold">Join Room</span>
-              <span className="text-xs text-muted-foreground">Enter a code</span>
+              <span className="text-muted-foreground text-xs">Enter a code</span>
             </div>
           </button>
         </div>
@@ -336,35 +336,35 @@ function EntryScreen({
     <div className="animate-cah-slide-up flex w-80 flex-col gap-5">
       <button
         onClick={() => setMode('choose')}
-        className="group flex items-center gap-1 self-start text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="group text-muted-foreground hover:text-foreground flex items-center gap-1 self-start text-sm transition-colors"
       >
         <span className="transition-transform group-hover:-translate-x-0.5">&larr;</span> Back
       </button>
       <h2 className="text-xl font-black">{isCreate ? 'Create Room' : 'Join Room'}</h2>
       {error && (
-        <p className="animate-cah-slide-down rounded-xl bg-destructive/10 px-4 py-2.5 text-sm font-medium text-destructive">
+        <p className="animate-cah-slide-down bg-destructive/10 text-destructive rounded-xl px-4 py-2.5 text-sm font-medium">
           {error}
         </p>
       )}
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-semibold text-muted-foreground">Your name</span>
+        <span className="text-muted-foreground text-xs font-semibold">Your name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your name"
           maxLength={16}
-          className="rounded-xl border bg-background px-4 py-2.5 text-sm font-medium outline-none transition-shadow focus:ring-2 focus:ring-primary/30"
+          className="bg-background focus:ring-primary/30 rounded-xl border px-4 py-2.5 text-sm font-medium transition-shadow outline-none focus:ring-2"
         />
       </label>
       {!isCreate && (
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold text-muted-foreground">Room code</span>
+          <span className="text-muted-foreground text-xs font-semibold">Room code</span>
           <input
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="e.g. AB12"
             maxLength={4}
-            className="rounded-xl border bg-background px-4 py-2.5 text-center text-lg font-black uppercase tracking-[0.3em] outline-none transition-shadow focus:ring-2 focus:ring-primary/30"
+            className="bg-background focus:ring-primary/30 rounded-xl border px-4 py-2.5 text-center text-lg font-black tracking-[0.3em] uppercase transition-shadow outline-none focus:ring-2"
           />
         </label>
       )}
@@ -419,7 +419,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
     <div className="animate-cah-fade-in flex w-full max-w-sm flex-col gap-5">
       {/* Room code card */}
       <div className="cah-black-card rounded-2xl p-6 text-center text-white">
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
+        <p className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
           Room code
         </p>
         <p className="mb-4 text-5xl font-black tracking-[0.3em]">{roomCode}</p>
@@ -441,7 +441,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
 
       {/* Players list */}
       <div className="flex flex-col gap-2">
-        <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+        <p className="text-muted-foreground flex items-center gap-2 text-xs font-bold tracking-wider uppercase">
           <span className="flex h-2 w-2 rounded-full bg-green-400">
             <span className="inline-flex h-2 w-2 animate-ping rounded-full bg-green-400 opacity-75" />
           </span>
@@ -450,7 +450,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
         {gameState.players.map((p, i) => (
           <div
             key={p.id}
-            className="animate-cah-slide-up flex items-center gap-3 rounded-xl border border-border/50 bg-card px-4 py-3 text-sm"
+            className="animate-cah-slide-up border-border/50 bg-card flex items-center gap-3 rounded-xl border px-4 py-3 text-sm"
             style={{ animationDelay: `${i * 60}ms` }}
           >
             <div
@@ -472,7 +472,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
               </span>
             )}
             {p.id === playerId && !p.isHost && (
-              <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+              <span className="bg-primary/10 text-primary rounded-md px-2 py-0.5 text-[10px] font-bold">
                 YOU
               </span>
             )}
@@ -481,11 +481,11 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
       </div>
 
       {isHost && gameState.players.length < 3 && (
-        <div className="rounded-xl border border-dashed border-border bg-secondary/30 p-3 text-center">
-          <p className="text-xs text-muted-foreground">
+        <div className="border-border bg-secondary/30 rounded-xl border border-dashed p-3 text-center">
+          <p className="text-muted-foreground text-xs">
             Need at least <span className="font-bold">3 players</span> to start
           </p>
-          <p className="mt-1 text-[10px] text-muted-foreground/60">
+          <p className="text-muted-foreground/60 mt-1 text-[10px]">
             Share the room code with friends
           </p>
         </div>
@@ -501,16 +501,16 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
             Start Game
           </button>
         ) : (
-          <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex flex-1 items-center justify-center gap-2 text-sm">
             <span className="animate-cah-float inline-block">
-              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+              <span className="bg-muted-foreground/40 inline-flex h-1.5 w-1.5 rounded-full" />
             </span>
             Waiting for host to start
           </div>
         )}
         <button
           onClick={onLeave}
-          className="rounded-xl border px-5 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          className="text-muted-foreground hover:bg-secondary hover:text-foreground rounded-xl border px-5 py-3 text-sm font-semibold transition-colors"
         >
           Leave
         </button>
@@ -590,7 +590,7 @@ function GameBoard({
               czar?.id === p.id
                 ? 'cah-black-card scale-105 text-white'
                 : p.id === playerId
-                  ? 'border border-primary/20 bg-primary/5 text-primary'
+                  ? 'border-primary/20 bg-primary/5 text-primary border'
                   : 'bg-secondary/60 text-secondary-foreground'
             )}
           >
@@ -604,7 +604,7 @@ function GameBoard({
               {gameState.scores[p.id] ?? 0}
             </span>
             {czar?.id === p.id && (
-              <span className="text-[9px] font-bold uppercase tracking-wider opacity-60">czar</span>
+              <span className="text-[9px] font-bold tracking-wider uppercase opacity-60">czar</span>
             )}
             {gameState.phase === 'playing' && !amCzar && p.id !== playerId && czar?.id !== p.id && (
               <span
@@ -668,7 +668,7 @@ function GameBoard({
                 )}
               >
                 {cards.map((cardIdx) => (
-                  <div key={cardIdx} className="flex-1 text-sm font-bold leading-snug sm:text-base">
+                  <div key={cardIdx} className="flex-1 text-sm leading-snug font-bold sm:text-base">
                     {getWhiteCardText(cardIdx)}
                   </div>
                 ))}
@@ -686,7 +686,7 @@ function GameBoard({
           )}
 
           {amCzar && allRevealed && (
-            <p className="animate-cah-slide-up text-center text-xs font-semibold text-muted-foreground">
+            <p className="animate-cah-slide-up text-muted-foreground text-center text-xs font-semibold">
               Tap the funniest answer to pick a winner!
             </p>
           )}
@@ -702,11 +702,11 @@ function GameBoard({
       {gameState.phase === 'playing' && !amCzar && !submitted && (
         <div className="w-full">
           <div className="mb-3 flex items-center justify-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">
+            <span className="text-muted-foreground text-xs font-semibold">
               Your hand ({myHand.length})
             </span>
             {selectedCards.length > 0 && (
-              <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+              <span className="bg-primary/10 text-primary rounded-md px-2 py-0.5 text-xs font-bold">
                 {selectedCards.length}/{pick} selected
               </span>
             )}
@@ -748,14 +748,14 @@ function GameBoard({
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/20">
                 <span className="text-lg">✓</span>
               </div>
-              <p className="text-sm font-semibold text-muted-foreground">
+              <p className="text-muted-foreground text-sm font-semibold">
                 Answer submitted! Waiting for others&hellip;
               </p>
             </div>
           )}
           {amCzar && !submitted && (
             <div className="animate-cah-fade-in flex flex-col items-center gap-2">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 You&apos;re the Card Czar this round. Sit back and wait for answers&hellip;
               </p>
             </div>
@@ -766,7 +766,7 @@ function GameBoard({
       {/* Leave button */}
       <button
         onClick={onLeave}
-        className="rounded-lg px-3 py-2 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+        className="text-muted-foreground/60 hover:text-muted-foreground rounded-lg px-3 py-2 text-xs transition-colors"
       >
         Leave game
       </button>
@@ -844,7 +844,7 @@ function RevealPhase({
   return (
     <div className="animate-cah-fade-in flex w-full flex-col items-center gap-5">
       {/* Winning card(s) */}
-      <div className="animate-cah-winner-glow w-full rounded-2xl border-2 border-amber-400 bg-card p-5 dark:border-amber-500/60">
+      <div className="animate-cah-winner-glow bg-card w-full rounded-2xl border-2 border-amber-400 p-5 dark:border-amber-500/60">
         <div className="mb-3 flex items-center gap-2">
           <span className="animate-cah-stamp text-2xl">🏆</span>
           <span className="text-sm font-black">{winner?.name ?? '?'}</span>
@@ -854,7 +854,7 @@ function RevealPhase({
         </div>
         <div className="flex gap-3">
           {(gameState.roundWinnerCards ?? []).map((cardIdx) => (
-            <div key={cardIdx} className="flex-1 text-base font-bold leading-snug">
+            <div key={cardIdx} className="flex-1 text-base leading-snug font-bold">
               {getWhiteCardText(cardIdx)}
             </div>
           ))}
@@ -869,7 +869,7 @@ function RevealPhase({
           Next round
         </button>
       ) : (
-        <p className="text-xs text-muted-foreground">Waiting for Card Czar to continue&hellip;</p>
+        <p className="text-muted-foreground text-xs">Waiting for Card Czar to continue&hellip;</p>
       )}
     </div>
   )
@@ -909,7 +909,7 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
         <h2 className="text-3xl font-black tracking-tight">
           {isWinner ? 'You win!' : `${winner?.name ?? '?'} wins!`}
         </h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           {isWinner
             ? 'The most horrible person at the table!'
             : 'Better luck next time, you decent human being.'}
@@ -923,7 +923,7 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
             key={p.id}
             className={cn(
               'animate-cah-slide-up flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm',
-              i === 0 ? 'cah-black-card text-white' : 'border border-border/50 bg-card'
+              i === 0 ? 'cah-black-card text-white' : 'border-border/50 bg-card border'
             )}
             style={{ animationDelay: `${i * 80}ms` }}
           >
@@ -938,7 +938,7 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
             <span className="flex-1 font-bold">{p.name}</span>
             <span className="text-lg font-black tabular-nums">{gameState.scores[p.id] ?? 0}</span>
             {p.id === playerId && i !== 0 && (
-              <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+              <span className="bg-primary/10 text-primary rounded-md px-1.5 py-0.5 text-[10px] font-bold">
                 YOU
               </span>
             )}
@@ -955,13 +955,13 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
             Play Again
           </button>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Waiting for host to start another game&hellip;
           </p>
         )}
         <button
           onClick={onLeave}
-          className="rounded-xl border px-6 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          className="text-muted-foreground hover:bg-secondary hover:text-foreground rounded-xl border px-6 py-3 text-sm font-semibold transition-colors"
         >
           Leave
         </button>
@@ -970,20 +970,20 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
   )
 }
 
+function generateCAHConfetti() {
+  return Array.from({ length: 40 }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.8,
+    duration: 1.5 + Math.random() * 2,
+    color: ['#000', '#fff', '#f59e0b', '#6b7280', '#d1d5db', '#1f2937'][i % 6],
+    size: 4 + Math.random() * 8,
+    rotation: Math.random() * 360,
+  }))
+}
+
 function ConfettiEffect() {
-  const particles = useMemo(
-    () =>
-      Array.from({ length: 40 }, (_, i) => ({
-        id: i,
-        left: Math.random() * 100,
-        delay: Math.random() * 0.8,
-        duration: 1.5 + Math.random() * 2,
-        color: ['#000', '#fff', '#f59e0b', '#6b7280', '#d1d5db', '#1f2937'][i % 6],
-        size: 4 + Math.random() * 8,
-        rotation: Math.random() * 360,
-      })),
-    []
-  )
+  const [particles] = useState(generateCAHConfetti)
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">

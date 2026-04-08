@@ -13,7 +13,7 @@ export function GameCard({ game }: GameCardProps) {
   const card = (
     <div
       className={cn(
-        'group relative flex h-full flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm transition-all duration-200',
+        'group bg-card relative flex h-full flex-col gap-4 rounded-2xl border p-5 shadow-sm transition-all duration-200',
         isComingSoon
           ? 'cursor-default opacity-60'
           : 'cursor-pointer hover:-translate-y-1 hover:shadow-lg',
@@ -40,7 +40,7 @@ export function GameCard({ game }: GameCardProps) {
         </div>
 
         {isComingSoon ? (
-          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
             Coming Soon
           </span>
         ) : (
@@ -59,8 +59,8 @@ export function GameCard({ game }: GameCardProps) {
 
       {/* Title + description */}
       <div>
-        <h2 className="text-base font-bold text-foreground">{game.title}</h2>
-        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{game.description}</p>
+        <h2 className="text-foreground text-base font-bold">{game.title}</h2>
+        <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">{game.description}</p>
       </div>
 
       {/* Tags */}
@@ -68,7 +68,7 @@ export function GameCard({ game }: GameCardProps) {
         {game.tags.map((tag) => (
           <span
             key={tag}
-            className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium capitalize text-accent-foreground"
+            className="bg-accent text-accent-foreground rounded-full px-2 py-0.5 text-xs font-medium capitalize"
           >
             {tag}
           </span>
@@ -77,7 +77,7 @@ export function GameCard({ game }: GameCardProps) {
 
       {/* Play hint */}
       {!isComingSoon && (
-        <div className="flex items-center text-xs font-semibold text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <div className="text-primary flex items-center text-xs font-semibold opacity-0 transition-opacity duration-150 group-hover:opacity-100">
           Play now →
         </div>
       )}

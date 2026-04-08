@@ -140,7 +140,7 @@ function UnoCard({
       onClick={onClick}
       disabled={!playable && !faceDown && onClick !== undefined}
       className={cn(
-        'relative select-none overflow-hidden shadow-md transition-all duration-200',
+        'relative overflow-hidden shadow-md transition-all duration-200 select-none',
         sizeClasses[size],
         playable &&
           !selected &&
@@ -206,7 +206,7 @@ function ColorPicker({ onPick }: ColorPickerProps) {
               )}
               title={color}
             >
-              <span className="text-sm font-bold capitalize text-white drop-shadow sm:text-base">
+              <span className="text-sm font-bold text-white capitalize drop-shadow sm:text-base">
                 {color}
               </span>
             </button>
@@ -221,15 +221,15 @@ function ColorPicker({ onPick }: ColorPickerProps) {
 
 function SetupRequired() {
   return (
-    <div className="mx-auto max-w-md rounded-2xl border bg-secondary/40 p-6 text-center">
+    <div className="bg-secondary/40 mx-auto max-w-md rounded-2xl border p-6 text-center">
       <div className="mb-3 text-4xl">🔧</div>
       <h2 className="mb-2 text-lg font-bold">Supabase setup required</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
+      <p className="text-muted-foreground mb-4 text-sm">
         Online multiplayer requires a Supabase project. Create a free project at{' '}
-        <span className="font-medium text-foreground">supabase.com</span>, run the schema from{' '}
-        <code className="rounded bg-secondary px-1 text-xs">supabase-schema.sql</code>, then set:
+        <span className="text-foreground font-medium">supabase.com</span>, run the schema from{' '}
+        <code className="bg-secondary rounded px-1 text-xs">supabase-schema.sql</code>, then set:
       </p>
-      <pre className="rounded-lg bg-secondary p-3 text-left text-xs">
+      <pre className="bg-secondary rounded-lg p-3 text-left text-xs">
         {`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
       </pre>
     </div>
@@ -277,15 +277,15 @@ function EntryScreen({
             ))}
           </div>
           <h2 className="text-xl font-black tracking-tight">UNO Online</h2>
-          <p className="text-sm text-muted-foreground">2-10 players</p>
+          <p className="text-muted-foreground text-sm">2-10 players</p>
         </div>
         {savedSession && (
           <button
             onClick={onRestore}
-            className="w-64 rounded-xl border-2 border-dashed border-primary/40 px-6 py-3 text-center text-sm transition-colors hover:bg-secondary"
+            className="border-primary/40 hover:bg-secondary w-64 rounded-xl border-2 border-dashed px-6 py-3 text-center text-sm transition-colors"
           >
             <div className="font-semibold">Resume session</div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-muted-foreground text-xs">
               {savedSession.playerName} · Room {savedSession.roomCode}
             </div>
           </button>
@@ -293,23 +293,23 @@ function EntryScreen({
         <div className="flex gap-3">
           <button
             onClick={() => setMode('create')}
-            className="flex w-36 flex-col items-center gap-2 rounded-2xl bg-secondary px-6 py-5 text-center font-semibold transition-all hover:bg-secondary/70 hover:shadow-lg active:scale-95"
+            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
               <span className="text-2xl">+</span>
             </div>
             <span>Create Room</span>
-            <span className="text-xs font-normal text-muted-foreground">Host a game</span>
+            <span className="text-muted-foreground text-xs font-normal">Host a game</span>
           </button>
           <button
             onClick={() => setMode('join')}
-            className="flex w-36 flex-col items-center gap-2 rounded-2xl bg-secondary px-6 py-5 text-center font-semibold transition-all hover:bg-secondary/70 hover:shadow-lg active:scale-95"
+            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
               <span className="text-2xl">&rarr;</span>
             </div>
             <span>Join Room</span>
-            <span className="text-xs font-normal text-muted-foreground">Enter a code</span>
+            <span className="text-muted-foreground text-xs font-normal">Enter a code</span>
           </button>
         </div>
       </div>
@@ -321,33 +321,33 @@ function EntryScreen({
     <div className="animate-uno-slide-up flex w-72 flex-col gap-4">
       <button
         onClick={() => setMode('choose')}
-        className="self-start text-sm text-muted-foreground hover:text-foreground"
+        className="text-muted-foreground hover:text-foreground self-start text-sm"
       >
         &larr; Back
       </button>
       <h2 className="text-lg font-bold">{isCreate ? 'Create Room' : 'Join Room'}</h2>
       {error && (
-        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+        <p className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm">{error}</p>
       )}
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Your name</span>
+        <span className="text-muted-foreground text-xs font-medium">Your name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your name"
           maxLength={16}
-          className="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+          className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"
         />
       </label>
       {!isCreate && (
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Room code</span>
+          <span className="text-muted-foreground text-xs font-medium">Room code</span>
           <input
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="e.g. AB12"
             maxLength={4}
-            className="rounded-lg border bg-background px-3 py-2 text-sm uppercase tracking-widest outline-none focus:ring-2 focus:ring-primary/40"
+            className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm tracking-widest uppercase outline-none focus:ring-2"
           />
         </label>
       )}
@@ -358,7 +358,7 @@ function EntryScreen({
           if (isCreate) onCreate(name.trim())
           else onJoin(joinCode, name.trim())
         }}
-        className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-50"
+        className="bg-primary text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
       >
         {loading ? 'Connecting\u2026' : isCreate ? 'Create Room' : 'Join Room'}
       </button>
@@ -408,21 +408,21 @@ function LobbyScreen({
 
   return (
     <div className="animate-uno-fade-in flex w-80 flex-col gap-5">
-      <div className="rounded-2xl bg-secondary p-5 text-center">
-        <p className="mb-1 text-xs font-medium text-muted-foreground">
+      <div className="bg-secondary rounded-2xl p-5 text-center">
+        <p className="text-muted-foreground mb-1 text-xs font-medium">
           Room code &mdash; share with friends
         </p>
         <p className="mb-3 text-4xl font-black tracking-widest">{roomCode}</p>
         <div className="flex justify-center gap-2">
           <button
             onClick={copyCode}
-            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
           >
             {copied === 'code' ? 'Copied!' : 'Copy code'}
           </button>
           <button
             onClick={copyInviteLink}
-            className="rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
           >
             {copied === 'link' ? 'Copied!' : 'Copy invite link'}
           </button>
@@ -430,7 +430,7 @@ function LobbyScreen({
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium text-muted-foreground">
+        <p className="text-muted-foreground text-xs font-medium">
           Players ({gameState.players.length}/10)
         </p>
         {gameState.players.map((p, i) => {
@@ -438,7 +438,7 @@ function LobbyScreen({
           return (
             <div
               key={p.id}
-              className="animate-uno-slide-up flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm"
+              className="animate-uno-slide-up bg-secondary flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
               style={{ animationDelay: `${i * 50}ms` }}
             >
               <span
@@ -449,9 +449,9 @@ function LobbyScreen({
                 title={isOnline ? 'Online' : 'Offline'}
               />
               <span className={cn('font-medium', !isOnline && 'opacity-60')}>{p.name}</span>
-              {p.isHost && <span className="ml-auto text-xs text-muted-foreground">host</span>}
+              {p.isHost && <span className="text-muted-foreground ml-auto text-xs">host</span>}
               {p.id === playerId && !p.isHost && (
-                <span className="ml-auto text-xs text-muted-foreground">you</span>
+                <span className="text-muted-foreground ml-auto text-xs">you</span>
               )}
             </div>
           )
@@ -459,7 +459,7 @@ function LobbyScreen({
       </div>
 
       {isHost && gameState.players.length < 2 && (
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-center text-xs">
           Waiting for at least one more player&hellip;
         </p>
       )}
@@ -469,19 +469,19 @@ function LobbyScreen({
           <button
             disabled={gameState.players.length < 2}
             onClick={onStart}
-            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-40"
+            className="bg-primary text-primary-foreground flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
           >
             Start Game
           </button>
         )}
         {!isHost && (
-          <p className="flex-1 text-center text-sm text-muted-foreground">
+          <p className="text-muted-foreground flex-1 text-center text-sm">
             Waiting for host to start&hellip;
           </p>
         )}
         <button
           onClick={onLeave}
-          className="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-secondary"
+          className="hover:bg-secondary rounded-lg border px-4 py-2.5 text-sm font-semibold"
         >
           Leave
         </button>
@@ -670,7 +670,7 @@ function GameBoard({
       {/* Play area */}
       <div className="relative flex w-full items-center justify-center gap-4 rounded-2xl bg-emerald-100 px-4 py-6 shadow-inner sm:gap-8 sm:px-8 sm:py-8 dark:bg-emerald-950/40">
         {/* Direction indicator */}
-        <div className="absolute right-3 top-2 flex items-center gap-1 text-xs text-emerald-600/60 sm:right-4 sm:top-3 dark:text-emerald-400/60">
+        <div className="absolute top-2 right-3 flex items-center gap-1 text-xs text-emerald-600/60 sm:top-3 sm:right-4 dark:text-emerald-400/60">
           <span
             className="inline-block transition-transform duration-500"
             style={{
@@ -688,7 +688,7 @@ function GameBoard({
         <div className="flex flex-col items-center gap-1.5">
           <div className="relative">
             {/* Stacked card effect */}
-            <div className="absolute -right-0.5 -top-0.5 h-full w-full rounded-xl border-2 border-gray-300 bg-gray-200 dark:border-gray-800 dark:bg-gray-900/50" />
+            <div className="absolute -top-0.5 -right-0.5 h-full w-full rounded-xl border-2 border-gray-300 bg-gray-200 dark:border-gray-800 dark:bg-gray-900/50" />
             <div className="relative">
               <UnoCard
                 card={{ id: 'draw', color: 'wild', value: 'wild' }}
@@ -702,7 +702,7 @@ function GameBoard({
               />
             </div>
           </div>
-          <span className="text-[10px] tabular-nums text-emerald-700/70 sm:text-xs dark:text-emerald-400/50">
+          <span className="text-[10px] text-emerald-700/70 tabular-nums sm:text-xs dark:text-emerald-400/50">
             {gameState.drawPile.length}
           </span>
         </div>
@@ -716,7 +716,7 @@ function GameBoard({
               ACTIVE_COLOR_RING[gameState.currentColor]
             )}
           />
-          <span className="text-[10px] capitalize text-emerald-700/70 sm:text-xs dark:text-emerald-400/50">
+          <span className="text-[10px] text-emerald-700/70 capitalize sm:text-xs dark:text-emerald-400/50">
             {gameState.currentColor}
           </span>
         </div>
@@ -753,7 +753,7 @@ function GameBoard({
         {hasDrawnCard && (
           <button
             onClick={onPassAfterDraw}
-            className="rounded-xl bg-secondary px-4 py-2 text-sm font-semibold shadow transition-all hover:bg-secondary/80 active:scale-95"
+            className="bg-secondary hover:bg-secondary/80 rounded-xl px-4 py-2 text-sm font-semibold shadow transition-all active:scale-95"
           >
             Pass
           </button>
@@ -770,7 +770,7 @@ function GameBoard({
 
         <button
           onClick={onLeave}
-          className="rounded-xl border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-secondary sm:text-sm"
+          className="text-muted-foreground hover:bg-secondary rounded-xl border px-3 py-2 text-xs transition-colors sm:text-sm"
         >
           Leave
         </button>
@@ -778,7 +778,7 @@ function GameBoard({
 
       {/* Player's hand */}
       <div className="w-full">
-        <p className="mb-1.5 text-center text-xs text-muted-foreground">
+        <p className="text-muted-foreground mb-1.5 text-center text-xs">
           Your hand ({myHand.length})
           {hasDrawnCard && (
             <span className="ml-1 font-semibold text-amber-600 dark:text-amber-400">
@@ -857,19 +857,19 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
         {isHost && (
           <button
             onClick={onPlayAgain}
-            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-all active:scale-95"
+            className="bg-primary text-primary-foreground rounded-lg px-5 py-2.5 text-sm font-semibold transition-all active:scale-95"
           >
             Play Again
           </button>
         )}
         {!isHost && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Waiting for host to start another game&hellip;
           </p>
         )}
         <button
           onClick={onLeave}
-          className="rounded-lg border px-5 py-2.5 text-sm font-semibold hover:bg-secondary"
+          className="hover:bg-secondary rounded-lg border px-5 py-2.5 text-sm font-semibold"
         >
           Leave
         </button>
@@ -878,8 +878,8 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
   )
 }
 
-function ConfettiEffect() {
-  const particles = Array.from({ length: 30 }, (_, i) => ({
+function generateConfettiParticles() {
+  return Array.from({ length: 30 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
     delay: Math.random() * 0.5,
@@ -887,6 +887,10 @@ function ConfettiEffect() {
     color: ['#ef4444', '#eab308', '#22c55e', '#3b82f6'][i % 4],
     size: 4 + Math.random() * 6,
   }))
+}
+
+function ConfettiEffect() {
+  const [particles] = useState(generateConfettiParticles)
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">

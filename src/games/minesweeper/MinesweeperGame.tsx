@@ -120,7 +120,7 @@ export function MinesweeperGame() {
         <span>💣 {config.mines - flagsUsed}</span>
         <button
           onClick={() => startGame(difficulty)}
-          className="rounded-lg bg-secondary px-3 py-1 text-secondary-foreground hover:bg-secondary/80"
+          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-lg px-3 py-1"
         >
           {gameState === 'won' ? '😎' : gameState === 'lost' ? '😵' : '🙂'} Reset
         </button>
@@ -140,7 +140,7 @@ export function MinesweeperGame() {
 
       {/* Board */}
       <div
-        className="inline-grid gap-px overflow-hidden rounded border bg-border"
+        className="bg-border inline-grid gap-px overflow-hidden rounded border"
         style={{ gridTemplateColumns: `repeat(${config.cols}, minmax(0, 1fr))` }}
       >
         {board.map((row, ri) =>
@@ -154,7 +154,7 @@ export function MinesweeperGame() {
                 onContextMenu={(e) => handleRightClick(e, ri, ci)}
                 className={cn(
                   cellSize,
-                  'flex select-none items-center justify-center font-bold transition-colors',
+                  'flex items-center justify-center font-bold transition-colors select-none',
                   isRevealed
                     ? cell.isMine
                       ? 'bg-red-400'
