@@ -274,6 +274,23 @@ export const games: GameMeta[] = [
     ],
   },
   {
+    slug: 'frequency',
+    title: 'Frequency',
+    description:
+      'Read the clue and tune the dial to guess where it lands on the spectrum. Wavelength-style mind reading.',
+    tags: ['puzzle', 'word', 'party'],
+    status: 'live',
+    category: 'single-player',
+    emoji: '🎯',
+    rules: [
+      'Each round shows a spectrum (e.g. Cold ↔ Hot) and a clue word',
+      'Move the dial to where you think the clue belongs on the 0–100 spectrum',
+      'Use ← → arrow keys for fine control, then press Lock in (or Enter)',
+      'Bullseye (within 3) = 4 points, close (within 7) = 3 points, warm (within 12) = 2 points',
+      'Play 10 rounds and try to top up your telepathic score',
+    ],
+  },
+  {
     slug: 'chess',
     title: 'Chess',
     description: 'The timeless strategy game. Play local or challenge friends online.',
