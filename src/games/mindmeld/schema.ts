@@ -18,6 +18,8 @@ const RoundSchema = z.object({
   spectrum: SpectrumSchema,
   target: z.number().int().min(-1).max(100),
   clue: z.string().nullable(),
+  teamGuess: z.number().int().min(0).max(100).nullable().default(null),
+  guessLockedBy: z.string().nullable().default(null),
   guesses: z.record(z.string(), z.number().int().min(0).max(100)),
   roundScores: z.record(z.string(), z.number().int().min(0)),
   phase: z.enum(['clue', 'guessing', 'reveal']),
