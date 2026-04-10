@@ -1,8 +1,6 @@
 import type { GameState } from './schema'
 export type { GameState }
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
 export interface Spectrum {
   left: string
   right: string
@@ -10,7 +8,7 @@ export interface Spectrum {
 
 export interface Puzzle {
   spectrum: Spectrum
-  target: number // 0-100
+  target: number
 }
 
 export interface Player {
@@ -24,13 +22,15 @@ export type GamePhase = 'lobby' | 'playing' | 'finished'
 export type RoundPhase = 'clue' | 'guessing' | 'reveal'
 
 export interface Round {
-  number: number // 1-indexed
+  number: number
   psychicId: string
   spectrum: Spectrum
-  target: number // 0-100, or HIDDEN_TARGET (-1) when redacted for non-psychics
+  target: number
   clue: string | null
-  guesses: Record<string, number> // playerId → 0-100 guess
-  roundScores: Record<string, number> // filled on reveal
+  teamGuess: number | null
+  guessLockedBy: string | null
+  guesses: Record<string, number>
+  roundScores: Record<string, number>
   phase: RoundPhase
 }
 
@@ -43,15 +43,12 @@ export type GameAction =
   | { type: 'PLAY_AGAIN'; playerId: string }
   | { type: 'REMOVE_PLAYER'; playerId: string }
 
-// ─── Constants ──────────────────────────────────────────────────────────────
-
 export const MIN_PLAYERS = 2
 export const MAX_PLAYERS = 10
 export const TOTAL_ROUNDS = 8
 
 export const MAX_CLUE_LENGTH = 32
 
-/** Scoring thresholds (absolute distance on the 0-100 scale). */
 export const BULLSEYE_RADIUS = 3
 export const CLOSE_RADIUS = 7
 export const MEDIUM_RADIUS = 12
@@ -62,16 +59,11 @@ export const MEDIUM_POINTS = 2
 export const MISS_POINTS = 0
 
 export const MAX_POINTS_PER_ROUND = BULLSEYE_POINTS
-
-/** Sentinel value used when the target is hidden from a player. */
 export const HIDDEN_TARGET = -1
-
-// ─── Puzzle bank ────────────────────────────────────────────────────────────
 
 const SPECTRA: Array<{
   left: string
   right: string
-  /** Creative example clues the UI surfaces to the Psychic to help inspire them. */
   hints: string[]
 }> = [
   {
@@ -176,7 +168,6 @@ const SPECTRA: Array<{
   },
 ]
 
-/** Return the full list of spectra (with creative example hints) for the UI. */
 export function getSpectra(): ReadonlyArray<{
   readonly left: string
   readonly right: string
@@ -184,8 +175,6 @@ export function getSpectra(): ReadonlyArray<{
 }> {
   return SPECTRA
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 export function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
   const result = [...arr]
@@ -196,7 +185,6 @@ export function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
   return result
 }
 
-/** Pick a fresh random puzzle: a spectrum + a target position on it. */
 export function pickPuzzle(rng: () => number = Math.random): Puzzle {
   const spectrum = SPECTRA[Math.floor(rng() * SPECTRA.length)]
   const target = Math.floor(rng() * 101)
@@ -206,7 +194,6 @@ export function pickPuzzle(rng: () => number = Math.random): Puzzle {
   }
 }
 
-/** Score a single guess against the round's target. */
 export function scoreGuess(guess: number, target: number): number {
   const distance = Math.abs(guess - target)
   if (distance <= BULLSEYE_RADIUS) return BULLSEYE_POINTS
@@ -215,12 +202,9 @@ export function scoreGuess(guess: number, target: number): number {
   return MISS_POINTS
 }
 
-/** Absolute distance between a guess and the target. */
 export function distanceFromTarget(guess: number, target: number): number {
   return Math.abs(guess - target)
 }
-
-// ─── State queries ──────────────────────────────────────────────────────────
 
 export function getPsychic(state: GameState): Player | undefined {
   if (!state.currentRound) return undefined
@@ -237,13 +221,13 @@ export function getGuessers(state: GameState): Player[] {
 }
 
 export function hasPlayerGuessed(state: GameState, playerId: string): boolean {
-  if (!state.currentRound) return false
-  return playerId in state.currentRound.guesses
+  if (!state.currentRound || state.currentRound.psychicId === playerId) return false
+  return state.currentRound.guessLockedBy !== null
 }
 
 export function allGuessersSubmitted(state: GameState): boolean {
   if (!state.currentRound) return false
-  return getGuessers(state).every((p) => p.id in state.currentRound!.guesses)
+  return state.currentRound.guessLockedBy !== null
 }
 
 export function canStartGame(state: GameState): boolean {
@@ -260,10 +244,6 @@ export function getWinners(state: GameState): Player[] {
   return state.players.filter((p) => p.score === top)
 }
 
-/**
- * Redact the current round's target from a player who shouldn't see it yet.
- * The Psychic always sees it; non-psychics only see it during the reveal phase.
- */
 export function redactForPlayer(state: GameState, playerId: string): GameState {
   if (!state.currentRound) return state
   const round = state.currentRound
@@ -273,8 +253,6 @@ export function redactForPlayer(state: GameState, playerId: string): GameState {
     currentRound: { ...round, target: HIDDEN_TARGET },
   }
 }
-
-// ─── State machine ──────────────────────────────────────────────────────────
 
 export function createLobbyState(host: Player): GameState {
   return {
@@ -305,6 +283,8 @@ function buildRound(number: number, psychicId: string, rng: () => number = Math.
     spectrum: puzzle.spectrum,
     target: puzzle.target,
     clue: null,
+    teamGuess: null,
+    guessLockedBy: null,
     guesses: {},
     roundScores: {},
     phase: 'clue',
@@ -312,22 +292,11 @@ function buildRound(number: number, psychicId: string, rng: () => number = Math.
 }
 
 function computeReveal(round: Round, players: Player[]): Round {
-  const target = round.target
-  const roundScores: Record<string, number> = {}
-  const guesserScores: number[] = []
-  for (const player of players) {
-    if (player.id === round.psychicId) continue
-    const guess = round.guesses[player.id]
-    if (guess === undefined) {
-      roundScores[player.id] = 0
-      continue
-    }
-    const points = scoreGuess(guess, target)
-    roundScores[player.id] = points
-    guesserScores.push(points)
-  }
-  // Psychic earns the best guesser's points — rewards good clue-giving.
-  roundScores[round.psychicId] = guesserScores.length > 0 ? Math.max(...guesserScores) : 0
+  if (round.teamGuess === null) return round
+
+  const points = scoreGuess(round.teamGuess, round.target)
+  const roundScores = Object.fromEntries(players.map((player) => [player.id, points]))
+
   return { ...round, phase: 'reveal', roundScores }
 }
 
@@ -356,7 +325,6 @@ export function removePlayer(state: GameState, playerId: string): GameState {
     }
   }
 
-  // If the Psychic left mid-round, replace them and restart the round.
   if (state.currentRound.psychicId === playerId) {
     const log = [...state.log, `${player?.name ?? 'The Psychic'} left — skipping the round.`]
     const nextPsychicIndex = Math.floor(Math.random() * players.length)
@@ -369,22 +337,15 @@ export function removePlayer(state: GameState, playerId: string): GameState {
     }
   }
 
-  // A guesser left — drop their guess if any.
-  const nextGuesses = { ...state.currentRound.guesses }
-  delete nextGuesses[playerId]
-  let round: Round = { ...state.currentRound, guesses: nextGuesses }
+  const wasLocker = state.currentRound.guessLockedBy === playerId
 
-  const stillGuessers = players.filter((p) => p.id !== round.psychicId)
-  if (
-    round.phase === 'guessing' &&
-    stillGuessers.length > 0 &&
-    stillGuessers.every((p) => p.id in round.guesses)
-  ) {
-    round = computeReveal(round, players)
+  if (state.currentRound.phase === 'reveal') {
+    const nextRoundScores = { ...state.currentRound.roundScores }
+    delete nextRoundScores[playerId]
     return {
       ...state,
-      players: applyRoundScores(players, round),
-      currentRound: round,
+      players,
+      currentRound: { ...state.currentRound, roundScores: nextRoundScores },
       log: [...state.log, `${player?.name ?? 'A guesser'} left.`],
     }
   }
@@ -392,8 +353,17 @@ export function removePlayer(state: GameState, playerId: string): GameState {
   return {
     ...state,
     players,
-    currentRound: round,
-    log: [...state.log, `${player?.name ?? 'A guesser'} left.`],
+    currentRound: {
+      ...state.currentRound,
+      guessLockedBy: wasLocker ? null : state.currentRound.guessLockedBy,
+      teamGuess: wasLocker ? null : state.currentRound.teamGuess,
+    },
+    log: [
+      ...state.log,
+      wasLocker
+        ? `${player?.name ?? 'A guesser'} left — the shared dial was unlocked.`
+        : `${player?.name ?? 'A guesser'} left.`,
+    ],
   }
 }
 
@@ -428,7 +398,7 @@ function submitClue(state: GameState, playerId: string, clue: string): GameState
   return {
     ...state,
     currentRound: { ...state.currentRound, clue: trimmed, phase: 'guessing' },
-    log: [...state.log, `${psychic?.name ?? 'Psychic'}: "${trimmed}"`],
+    log: [...state.log, `${psychic?.name ?? 'Psychic'} transmitted: "${trimmed}"`],
   }
 }
 
@@ -440,25 +410,21 @@ function submitGuess(state: GameState, playerId: string, guess: number): GameSta
   const player = state.players.find((p) => p.id === playerId)
   if (!player) return state
 
-  const clamped = Math.max(0, Math.min(100, Math.round(guess)))
-  const newGuesses = { ...state.currentRound.guesses, [playerId]: clamped }
-  let round: Round = { ...state.currentRound, guesses: newGuesses }
-
-  const guessers = state.players.filter((p) => p.id !== round.psychicId)
-  if (guessers.length > 0 && guessers.every((g) => g.id in newGuesses)) {
-    round = computeReveal(round, state.players)
-    return {
-      ...state,
-      players: applyRoundScores(state.players, round),
-      currentRound: round,
-      log: [...state.log, `${player.name} locked in.`, `All guesses in — revealing target.`],
-    }
-  }
+  const teamGuess = Math.max(0, Math.min(100, Math.round(guess)))
+  const round = computeReveal(
+    {
+      ...state.currentRound,
+      teamGuess,
+      guessLockedBy: playerId,
+    },
+    state.players
+  )
 
   return {
     ...state,
+    players: applyRoundScores(state.players, round),
     currentRound: round,
-    log: [...state.log, `${player.name} locked in.`],
+    log: [...state.log, `${player.name} locked the team dial at ${teamGuess}.`],
   }
 }
 
@@ -467,14 +433,14 @@ function revealRound(state: GameState, playerId: string): GameState {
   if (state.currentRound.phase !== 'guessing') return state
   const host = state.players.find((p) => p.id === playerId)
   if (!host?.isHost) return state
-  if (Object.keys(state.currentRound.guesses).length === 0) return state
+  if (state.currentRound.teamGuess === null) return state
 
   const round = computeReveal(state.currentRound, state.players)
   return {
     ...state,
     players: applyRoundScores(state.players, round),
     currentRound: round,
-    log: [...state.log, 'Host revealed the target.'],
+    log: [...state.log, 'Host revealed the shared dial.'],
   }
 }
 
@@ -493,7 +459,6 @@ function nextRound(state: GameState, playerId: string, rng: () => number = Math.
     }
   }
 
-  // Rotate psychic by index — wraps around after the last player.
   const lastIndex = state.players.findIndex((p) => p.id === state.currentRound!.psychicId)
   const nextIndex = (lastIndex + 1) % state.players.length
   const nextPsychic = state.players[nextIndex]
@@ -519,8 +484,6 @@ function playAgain(state: GameState, playerId: string): GameState {
     log: [],
   }
 }
-
-// ─── Action dispatcher ──────────────────────────────────────────────────────
 
 export function applyAction(state: GameState, action: GameAction): GameState {
   switch (action.type) {
