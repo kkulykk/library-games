@@ -274,6 +274,24 @@ export const games: GameMeta[] = [
     ],
   },
   {
+    slug: 'mindmeld',
+    title: 'Mindmeld',
+    description:
+      'Wavelength-style party game: the Psychic gives a clue, everyone slides the dial to guess. Sync up!',
+    tags: ['multiplayer', 'party', 'word'],
+    status: 'live',
+    category: 'online-multiplayer',
+    emoji: '🧠',
+    rules: [
+      'Each round one player becomes the Psychic — they see a hidden target (0–100) on a spectrum like Cold ↔ Hot',
+      'The Psychic types a short clue that hints where on the spectrum the target sits',
+      'Everyone else slides their dial to where they think the clue lands and locks in',
+      'Closer to target = more points: bullseye (±3) = 4, close (±7) = 3, warm (±12) = 2',
+      'The Psychic earns the best guesser’s points — good clues win',
+      'Play 8 rounds, rotating the Psychic each round. Highest score wins!',
+    ],
+  },
+  {
     slug: 'chess',
     title: 'Chess',
     description: 'The timeless strategy game. Play local or challenge friends online.',
