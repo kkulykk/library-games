@@ -114,7 +114,7 @@ function PhaseBadge({ label }: { label: string }) {
   )
 }
 
-export function FrequencyGame() {
+export function MindmeldGame() {
   const [puzzles, setPuzzles] = useState<Puzzle[]>(() => pickRoundPuzzles(PUZZLES, ROUNDS_PER_GAME))
   const [roundIndex, setRoundIndex] = useState(0)
   const [guess, setGuess] = useState(50)

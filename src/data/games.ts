@@ -274,14 +274,14 @@ export const games: GameMeta[] = [
     ],
   },
   {
-    slug: 'frequency',
-    title: 'Frequency',
+    slug: 'mindmeld',
+    title: 'Mindmeld',
     description:
-      'Read the clue and tune the dial to guess where it lands on the spectrum. Wavelength-style mind reading.',
+      'Read the clue and slide the dial to where you think it lands on the spectrum. Wavelength-style telepathy.',
     tags: ['puzzle', 'word', 'party'],
     status: 'live',
     category: 'single-player',
-    emoji: '🎯',
+    emoji: '🧠',
     rules: [
       'Each round shows a spectrum (e.g. Cold ↔ Hot) and a clue word',
       'Move the dial to where you think the clue belongs on the 0–100 spectrum',
