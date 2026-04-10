@@ -1,10 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
+import { getInviteLink, useInviteCode } from '@/hooks/useInviteCode'
 import { useMindmeldRoom } from './useMindmeldRoom'
 import {
   BULLSEYE_RADIUS,
@@ -13,21 +13,38 @@ import {
   MAX_CLUE_LENGTH,
   MEDIUM_RADIUS,
   MIN_PLAYERS,
-  allGuessersSubmitted,
-  canStartGame,
   distanceFromTarget,
-  getGuessers,
   getLeaderboard,
   getPsychic,
+  getSpectra,
   getWinners,
-  hasPlayerGuessed,
   isPsychic,
   redactForPlayer,
   type GameState,
   type Player,
 } from './logic'
 
-// ─── Screens ────────────────────────────────────────────────────────────────
+function MindmeldStyles() {
+  return (
+    <style>{`
+      @keyframes mindmeld-float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-6px); }
+      }
+      @keyframes mindmeld-fade-up {
+        from { opacity: 0; transform: translateY(18px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes mindmeld-glow {
+        0%, 100% { box-shadow: 0 0 0 rgba(250, 204, 21, 0); }
+        50% { box-shadow: 0 0 28px rgba(250, 204, 21, 0.18); }
+      }
+      .animate-mindmeld-float { animation: mindmeld-float 4s ease-in-out infinite; }
+      .animate-mindmeld-fade-up { animation: mindmeld-fade-up 0.35s ease-out; }
+      .animate-mindmeld-glow { animation: mindmeld-glow 2.8s ease-in-out infinite; }
+    `}</style>
+  )
+}
 
 function SetupRequired() {
   return (
@@ -71,16 +88,53 @@ function EntryScreen({
 
   if (mode === 'choose') {
     return (
-      <div className="flex flex-col items-center gap-6">
-        <div className="text-center">
-          <div className="mb-3 text-5xl">🧠</div>
-          <h2 className="text-xl font-black tracking-tight">Mindmeld</h2>
-          <p className="text-muted-foreground text-sm">{MIN_PLAYERS}-10 players</p>
+      <div className="animate-mindmeld-fade-up flex max-w-3xl flex-col gap-8">
+        <div className="overflow-hidden rounded-[2rem] border border-amber-500/20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_35%),linear-gradient(160deg,rgba(24,24,27,0.96),rgba(39,39,42,0.92))] p-8 text-white shadow-2xl">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/8 px-3 py-1 text-[11px] font-semibold tracking-[0.28em] text-amber-200 uppercase">
+                <span className="animate-mindmeld-float">●</span>
+                Wavelength style
+              </div>
+              <h2 className="text-4xl font-black tracking-tight sm:text-5xl">Mindmeld</h2>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-white/70 sm:text-base">
+                One player sees the secret position. They give a clue. Everyone else talks it out
+                and locks a single shared guess on the dial.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
+              {MIN_PLAYERS}-10 players
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => setMode('create')}
+              className="rounded-[1.5rem] border border-white/10 bg-white/8 px-6 py-6 text-left transition hover:-translate-y-0.5 hover:bg-white/12"
+            >
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-300/18 text-2xl">
+                +
+              </div>
+              <div className="text-lg font-semibold">Create room</div>
+              <div className="mt-1 text-sm text-white/65">Host the psychic signal.</div>
+            </button>
+            <button
+              onClick={() => setMode('join')}
+              className="rounded-[1.5rem] border border-white/10 bg-white/8 px-6 py-6 text-left transition hover:-translate-y-0.5 hover:bg-white/12"
+            >
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-300/18 text-2xl">
+                →
+              </div>
+              <div className="text-lg font-semibold">Join room</div>
+              <div className="mt-1 text-sm text-white/65">Tune into an existing table.</div>
+            </button>
+          </div>
         </div>
+
         {savedSession && onRestore && (
           <button
             onClick={onRestore}
-            className="border-primary/40 hover:bg-secondary w-64 rounded-xl border-2 border-dashed px-6 py-3 text-center text-sm transition-colors"
+            className="border-primary/40 hover:bg-secondary mx-auto w-full max-w-md rounded-2xl border-2 border-dashed px-6 py-4 text-center text-sm transition-colors"
           >
             <div className="font-semibold">Resume session</div>
             <div className="text-muted-foreground text-xs">
@@ -88,64 +142,47 @@ function EntryScreen({
             </div>
           </button>
         )}
-        <div className="flex gap-3">
-          <button
-            onClick={() => setMode('create')}
-            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
-          >
-            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
-              <span className="text-2xl">+</span>
-            </div>
-            <span>Create Room</span>
-            <span className="text-muted-foreground text-xs font-normal">Host a game</span>
-          </button>
-          <button
-            onClick={() => setMode('join')}
-            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
-          >
-            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
-              <span className="text-2xl">&rarr;</span>
-            </div>
-            <span>Join Room</span>
-            <span className="text-muted-foreground text-xs font-normal">Enter a code</span>
-          </button>
-        </div>
       </div>
     )
   }
 
   const isCreate = mode === 'create'
   return (
-    <div className="flex w-72 flex-col gap-4">
+    <div className="animate-mindmeld-fade-up bg-background/95 flex w-full max-w-sm flex-col gap-4 rounded-[1.75rem] border p-6 shadow-xl">
       <button
         onClick={() => setMode('choose')}
         className="text-muted-foreground hover:text-foreground self-start text-sm"
       >
-        &larr; Back
+        ← Back
       </button>
-      <h2 className="text-lg font-bold">{isCreate ? 'Create Room' : 'Join Room'}</h2>
+      <div>
+        <h2 className="text-xl font-black">{isCreate ? 'Create Room' : 'Join Room'}</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          {isCreate ? 'Start a new psychic dial.' : 'Enter the room code to jump in.'}
+        </p>
+      </div>
       {error && (
         <p className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm">{error}</p>
       )}
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1.5">
         <span className="text-muted-foreground text-xs font-medium">Your name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your name"
           maxLength={16}
-          className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="bg-background focus:ring-primary/40 rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2"
         />
       </label>
       {!isCreate && (
-        <label className="flex flex-col gap-1">
+        <label className="flex flex-col gap-1.5">
           <span className="text-muted-foreground text-xs font-medium">Room code</span>
           <input
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="e.g. AB12"
             maxLength={4}
-            className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm tracking-widest uppercase outline-none focus:ring-2"
+            className="bg-background focus:ring-primary/40 rounded-xl border px-3 py-2.5 text-sm tracking-[0.35em] uppercase outline-none focus:ring-2"
           />
         </label>
       )}
@@ -156,15 +193,13 @@ function EntryScreen({
           if (isCreate) onCreate(name.trim())
           else onJoin(joinCode, name.trim())
         }}
-        className="bg-primary text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
+        className="bg-foreground text-background rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
       >
-        {loading ? 'Connecting\u2026' : isCreate ? 'Create Room' : 'Join Room'}
+        {loading ? 'Connecting…' : isCreate ? 'Create Room' : 'Join Room'}
       </button>
     </div>
   )
 }
-
-// ─── Lobby ──────────────────────────────────────────────────────────────────
 
 interface LobbyScreenProps {
   gameState: GameState
@@ -176,104 +211,113 @@ interface LobbyScreenProps {
 
 function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyScreenProps) {
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
-  const ready = canStartGame(gameState)
+  const ready = gameState.players.length >= MIN_PLAYERS
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
-  function copyCode() {
-    navigator.clipboard.writeText(roomCode).then(
-      () => {
-        setCopied('code')
-        setTimeout(() => setCopied(null), 2000)
-      },
-      () => {}
-    )
-  }
-
-  function copyInviteLink() {
-    navigator.clipboard.writeText(getInviteLink('mindmeld', roomCode)).then(
-      () => {
-        setCopied('link')
-        setTimeout(() => setCopied(null), 2000)
-      },
-      () => {}
-    )
+  function handleCopy(value: string, type: 'code' | 'link') {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(type)
+      setTimeout(() => setCopied(null), 1800)
+    })
   }
 
   return (
-    <div className="flex w-full max-w-md flex-col gap-4">
-      <div className="bg-secondary rounded-2xl p-4 text-center">
-        <p className="text-muted-foreground mb-1 text-xs font-medium">
-          Room code &mdash; share with friends
-        </p>
-        <p className="mb-2 text-3xl font-black tracking-widest">{roomCode}</p>
-        <div className="flex justify-center gap-2">
-          <button
-            onClick={copyCode}
-            className="hover:bg-background rounded-lg border px-3 py-1 text-xs font-medium transition-colors"
-          >
-            {copied === 'code' ? 'Copied!' : 'Copy code'}
-          </button>
-          <button
-            onClick={copyInviteLink}
-            className="hover:bg-background rounded-lg border px-3 py-1 text-xs font-medium transition-colors"
-          >
-            {copied === 'link' ? 'Copied!' : 'Copy invite link'}
-          </button>
+    <div className="animate-mindmeld-fade-up flex w-full max-w-4xl flex-col gap-5">
+      <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="overflow-hidden rounded-[2rem] border border-amber-500/20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_40%),linear-gradient(165deg,rgba(9,9,11,0.97),rgba(39,39,42,0.95))] p-6 text-white shadow-2xl">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <div className="text-[11px] font-semibold tracking-[0.28em] text-amber-200/90 uppercase">
+                Lobby frequency
+              </div>
+              <h2 className="mt-2 text-3xl font-black tracking-tight">Room {roomCode}</h2>
+              <p className="mt-2 max-w-lg text-sm leading-6 text-white/68">
+                Psychic gives the clue. The rest of the table discusses and submits one shared dial
+                position, then the target is revealed.
+              </p>
+            </div>
+            <div className="animate-mindmeld-float text-4xl">🧠</div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => handleCopy(roomCode, 'code')}
+              className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/12"
+            >
+              {copied === 'code' ? 'Copied code' : 'Copy code'}
+            </button>
+            <button
+              onClick={() => handleCopy(getInviteLink('mindmeld', roomCode), 'link')}
+              className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/12"
+            >
+              {copied === 'link' ? 'Copied invite link' : 'Copy invite link'}
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-secondary/35 rounded-[2rem] border p-6">
+          <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+            How it plays
+          </div>
+          <div className="mt-4 space-y-3 text-sm leading-6">
+            <p>
+              1. The <span className="font-semibold">Psychic</span> sees the hidden sweet spot.
+            </p>
+            <p>2. They send one clue for the whole scale.</p>
+            <p>3. Everyone else debates and locks one final guess.</p>
+            <p>4. The closer the guess, the more points the whole table earns.</p>
+          </div>
         </div>
       </div>
 
-      <div className="bg-secondary/60 rounded-2xl border p-4">
-        <p className="text-muted-foreground mb-2 text-xs font-medium">
-          Players ({gameState.players.length})
-        </p>
-        <ul className="flex flex-col gap-1.5">
-          {gameState.players.map((p) => (
-            <li
-              key={p.id}
-              className="bg-background flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+      <div className="bg-background/95 rounded-[1.75rem] border p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-semibold">Players ({gameState.players.length})</p>
+          {!ready && (
+            <span className="text-muted-foreground text-xs">
+              Need {MIN_PLAYERS - gameState.players.length} more to start
+            </span>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {gameState.players.map((player) => (
+            <div
+              key={player.id}
+              className="bg-secondary/45 flex items-center justify-between rounded-2xl border px-4 py-3"
             >
-              <span className="font-medium">{p.name}</span>
-              {p.isHost && (
-                <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase">
-                  Host
+              <div className="min-w-0">
+                <div className="truncate font-semibold">{player.name}</div>
+                <div className="text-muted-foreground text-xs">
+                  {player.isHost ? 'Host' : 'Player'}
+                </div>
+              </div>
+              {player.id === playerId && (
+                <span className="bg-primary/10 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase">
+                  You
                 </span>
               )}
-              {p.id === playerId && <span className="text-muted-foreground ml-auto">you</span>}
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
-
-      <div className="text-muted-foreground rounded-xl border border-dashed p-3 text-center text-xs leading-relaxed">
-        Each round, one player becomes the{' '}
-        <span className="text-foreground font-semibold">Psychic</span>. They see a target on a
-        spectrum (e.g. Cold ↔ Hot) and give a one-word clue. Everyone else slides a dial to where
-        they think the clue lands. Points for being close!
-      </div>
-
-      {!ready && (
-        <p className="text-muted-foreground text-center text-xs">
-          Need at least {MIN_PLAYERS} players to start
-        </p>
-      )}
 
       <div className="flex gap-3">
         {isHost ? (
           <button
             disabled={!ready}
             onClick={onStart}
-            className="bg-primary text-primary-foreground flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
+            className="bg-foreground text-background flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40"
           >
             Start Game
           </button>
         ) : (
-          <p className="text-muted-foreground flex-1 text-center text-sm">
-            Waiting for host to start&hellip;
-          </p>
+          <div className="text-muted-foreground flex flex-1 items-center justify-center rounded-xl border px-4 py-3 text-sm">
+            Waiting for host to start…
+          </div>
         )}
         <button
           onClick={onLeave}
-          className="hover:bg-secondary rounded-lg border px-4 py-2.5 text-sm font-semibold"
+          className="hover:bg-secondary rounded-xl border px-4 py-3 text-sm font-semibold transition"
         >
           Leave
         </button>
@@ -282,131 +326,180 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
   )
 }
 
-// ─── Spectrum bar ───────────────────────────────────────────────────────────
-
-interface SpectrumBarProps {
-  leftLabel: string
-  rightLabel: string
-  guess: number | null
-  targetVisible: boolean
-  target: number
-  /** Other guessers' markers to display in reveal phase. */
-  otherGuesses?: Array<{ name: string; guess: number; isYou: boolean }>
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
 }
 
-function SpectrumBar({
+function percentageToAngle(value: number) {
+  return 180 + value * 1.8
+}
+
+function polarToCartesian(cx: number, cy: number, radius: number, angle: number) {
+  const radians = ((angle - 90) * Math.PI) / 180
+  return {
+    x: cx + radius * Math.cos(radians),
+    y: cy + radius * Math.sin(radians),
+  }
+}
+
+function describeArc(cx: number, cy: number, radius: number, startAngle: number, endAngle: number) {
+  const start = polarToCartesian(cx, cy, radius, endAngle)
+  const end = polarToCartesian(cx, cy, radius, startAngle)
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1'
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`
+}
+
+interface PsychicDialProps {
+  leftLabel: string
+  rightLabel: string
+  previewGuess: number | null
+  finalGuess: number | null
+  targetVisible: boolean
+  target: number
+}
+
+function PsychicDial({
   leftLabel,
   rightLabel,
-  guess,
+  previewGuess,
+  finalGuess,
   targetVisible,
   target,
-  otherGuesses,
-}: SpectrumBarProps) {
-  const bands = targetVisible
-    ? [
-        {
-          radius: MEDIUM_RADIUS,
-          className: 'bg-emerald-300/30 dark:bg-emerald-700/30',
-        },
-        {
-          radius: CLOSE_RADIUS,
-          className: 'bg-emerald-400/50 dark:bg-emerald-600/50',
-        },
-        {
-          radius: BULLSEYE_RADIUS,
-          className: 'bg-emerald-500/80 dark:bg-emerald-500/80',
-        },
-      ]
-    : []
+}: PsychicDialProps) {
+  const centerX = 160
+  const centerY = 186
+  const radius = 126
+
+  const activeGuess = finalGuess ?? previewGuess
+  const targetAngle = percentageToAngle(clamp(target, 0, 100))
+  const guessAngle = activeGuess === null ? null : percentageToAngle(activeGuess)
+
+  function arcForWindow(radiusOffset: number, spread: number) {
+    const start = percentageToAngle(clamp(target - spread, 0, 100))
+    const end = percentageToAngle(clamp(target + spread, 0, 100))
+    return describeArc(centerX, centerY, radius + radiusOffset, start, end)
+  }
+
+  function needle(angle: number, color: string, length: number, width: number) {
+    const tip = polarToCartesian(centerX, centerY, length, angle)
+    return (
+      <g>
+        <line
+          x1={centerX}
+          y1={centerY}
+          x2={tip.x}
+          y2={tip.y}
+          stroke={color}
+          strokeWidth={width}
+          strokeLinecap="round"
+        />
+        <circle cx={centerX} cy={centerY} r="8" fill={color} />
+      </g>
+    )
+  }
 
   return (
-    <div className="flex w-full flex-col gap-2">
-      <div className="flex w-full items-center justify-between text-sm font-semibold">
-        <span className="text-sky-700 dark:text-sky-300">← {leftLabel}</span>
-        <span className="text-rose-700 dark:text-rose-300">{rightLabel} →</span>
-      </div>
-      <div className="relative h-20 w-full overflow-hidden rounded-xl border border-zinc-300 bg-gradient-to-r from-sky-200 via-zinc-100 to-rose-200 dark:border-zinc-700 dark:from-sky-900/40 dark:via-zinc-800 dark:to-rose-900/40">
-        {/* Tick marks */}
-        <div className="absolute inset-0">
-          {Array.from({ length: 11 }, (_, i) => (
-            <div
-              key={i}
-              className="absolute top-0 bottom-0 w-px bg-zinc-400/40 dark:bg-zinc-500/40"
-              style={{ left: `${i * 10}%` }}
-            />
-          ))}
+    <div className="overflow-hidden rounded-[2rem] border bg-[linear-gradient(180deg,rgba(24,24,27,1),rgba(10,10,12,0.98))] p-6 text-white shadow-2xl">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="text-[11px] font-semibold tracking-[0.28em] text-white/55 uppercase">
+          Psychic dial
         </div>
+        <div className="rounded-full border border-white/12 bg-white/7 px-3 py-1 text-xs text-white/70">
+          {targetVisible ? 'Target visible' : 'Target hidden'}
+        </div>
+      </div>
 
-        {bands.map((band, i) => {
-          const left = Math.max(0, target - band.radius)
-          const right = Math.min(100, target + band.radius)
-          return (
-            <div
-              key={i}
-              className={cn('absolute top-0 bottom-0', band.className)}
-              style={{ left: `${left}%`, width: `${right - left}%` }}
-            />
-          )
-        })}
+      <svg viewBox="0 0 320 220" className="w-full">
+        <defs>
+          <linearGradient id="mindmeld-track" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#38bdf8" />
+            <stop offset="50%" stopColor="#f8fafc" />
+            <stop offset="100%" stopColor="#fb7185" />
+          </linearGradient>
+        </defs>
 
-        {/* Target marker */}
+        <path
+          d={describeArc(centerX, centerY, radius, 180, 360)}
+          fill="none"
+          stroke="rgba(255,255,255,0.12)"
+          strokeWidth="28"
+          strokeLinecap="round"
+        />
+        <path
+          d={describeArc(centerX, centerY, radius, 180, 360)}
+          fill="none"
+          stroke="url(#mindmeld-track)"
+          strokeOpacity="0.28"
+          strokeWidth="24"
+          strokeLinecap="round"
+        />
+
         {targetVisible && (
-          <div
-            className="absolute top-0 bottom-0 flex -translate-x-1/2 items-center justify-center"
-            style={{ left: `${target}%` }}
-          >
-            <div className="h-full w-0.5 bg-emerald-700 dark:bg-emerald-300" />
-            <div className="absolute -top-1 h-3 w-3 -translate-y-full rotate-45 bg-emerald-700 dark:bg-emerald-300" />
-          </div>
-        )}
-
-        {/* Other players' guesses (reveal only) */}
-        {otherGuesses?.map((g, i) => (
-          <div
-            key={i}
-            className="absolute top-0 bottom-0 flex -translate-x-1/2 flex-col items-center justify-end pb-1"
-            style={{ left: `${g.guess}%` }}
-          >
-            <div
-              className={cn(
-                'h-1/2 w-0.5',
-                g.isYou ? 'bg-foreground' : 'bg-foreground/50 dark:bg-foreground/60'
-              )}
+          <>
+            <path
+              d={arcForWindow(0, MEDIUM_RADIUS)}
+              fill="none"
+              stroke="rgba(250,204,21,0.62)"
+              strokeWidth="24"
+              strokeLinecap="round"
             />
-            <span
-              className={cn(
-                'absolute top-1 rounded bg-black/60 px-1 text-[9px] font-semibold whitespace-nowrap text-white',
-                g.isYou && 'bg-foreground text-background'
-              )}
-            >
-              {g.name}
-            </span>
-          </div>
-        ))}
-
-        {/* Active (current) guess marker — shown when guess is set and no otherGuesses list */}
-        {guess !== null && !otherGuesses && (
-          <div
-            className="absolute top-0 bottom-0 flex -translate-x-1/2 items-center justify-center transition-[left] duration-75"
-            style={{ left: `${guess}%` }}
-          >
-            <div className="bg-foreground h-full w-1" />
-            <div className="bg-foreground absolute -bottom-1 h-3 w-3 translate-y-full rotate-45" />
-          </div>
+            <path
+              d={arcForWindow(0, CLOSE_RADIUS)}
+              fill="none"
+              stroke="rgba(251,146,60,0.82)"
+              strokeWidth="24"
+              strokeLinecap="round"
+            />
+            <path
+              d={arcForWindow(0, BULLSEYE_RADIUS)}
+              fill="none"
+              stroke="rgba(74,222,128,0.95)"
+              strokeWidth="24"
+              strokeLinecap="round"
+            />
+            {needle(targetAngle, '#fef3c7', radius - 8, 4)}
+          </>
         )}
+
+        {guessAngle !== null &&
+          needle(
+            guessAngle,
+            finalGuess !== null ? '#ffffff' : 'rgba(255,255,255,0.78)',
+            radius - 2,
+            6
+          )}
+
+        <circle cx={centerX} cy={centerY} r="22" fill="#111827" stroke="rgba(255,255,255,0.14)" />
+      </svg>
+
+      <div className="mt-3 flex items-start justify-between gap-4 text-sm font-semibold">
+        <span className="max-w-[42%] text-sky-200">← {leftLabel}</span>
+        <span className="max-w-[42%] text-right text-rose-200">{rightLabel} →</span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2">
+          <div className="text-white/50">Left</div>
+          <div className="mt-1 font-semibold">0</div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2">
+          <div className="text-white/50">Center</div>
+          <div className="mt-1 font-semibold">50</div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2">
+          <div className="text-white/50">Right</div>
+          <div className="mt-1 font-semibold">100</div>
+        </div>
       </div>
     </div>
   )
 }
-
-// ─── Playing screen ─────────────────────────────────────────────────────────
 
 interface PlayingScreenProps {
   gameState: GameState
   playerId: string
   onSubmitClue: (clue: string) => void
   onSubmitGuess: (guess: number) => void
-  onReveal: () => void
   onNextRound: () => void
   onLeave: () => void
 }
@@ -416,7 +509,6 @@ function PlayingScreen({
   playerId,
   onSubmitClue,
   onSubmitGuess,
-  onReveal,
   onNextRound,
   onLeave,
 }: PlayingScreenProps) {
@@ -424,233 +516,275 @@ function PlayingScreen({
   const psychic = getPsychic(gameState)
   const youArePsychic = isPsychic(gameState, playerId)
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
-  const youGuessed = hasPlayerGuessed(gameState, playerId)
-  const allIn = allGuessersSubmitted(gameState)
-  const guessers = getGuessers(gameState)
-
   const [clueInput, setClueInput] = useState('')
   const [guess, setGuess] = useState(50)
 
-  const targetVisible = round.phase === 'reveal' || youArePsychic
-  const targetForDisplay = targetVisible && round.target !== HIDDEN_TARGET ? round.target : 50
+  useEffect(() => {
+    setClueInput('')
+  }, [round.number, round.phase, round.psychicId])
 
-  const revealMarkers = useMemo(() => {
-    if (round.phase !== 'reveal') return undefined
-    return Object.entries(round.guesses).map(([pid, g]) => {
-      const p = gameState.players.find((pp) => pp.id === pid)
-      return {
-        name: p?.name ?? '?',
-        guess: g,
-        isYou: pid === playerId,
-      }
-    })
-  }, [round, gameState.players, playerId])
+  useEffect(() => {
+    setGuess(round.teamGuess ?? 50)
+  }, [round.number, round.phase, round.teamGuess])
+
+  const targetVisible = round.phase === 'reveal' || youArePsychic
+  const spectrumHints = getSpectra().find(
+    (s) => s.left === round.spectrum.left && s.right === round.spectrum.right
+  )?.hints
+
+  const roundPoints = round.phase === 'reveal' ? (round.roundScores[playerId] ?? 0) : null
+  const lockedBy = round.guessLockedBy
+    ? (gameState.players.find((player) => player.id === round.guessLockedBy)?.name ?? 'A player')
+    : null
 
   return (
-    <div className="flex w-full max-w-xl flex-col items-center gap-5">
-      {/* Header */}
-      <div className="flex w-full items-center justify-between">
-        <span className="bg-secondary rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase">
-          Round {round.number} / {gameState.totalRounds}
-        </span>
-        <div className="text-muted-foreground text-xs">
-          Psychic:{' '}
-          <span className="text-foreground font-semibold">
-            {psychic?.name ?? '?'}
-            {youArePsychic && ' (you)'}
-          </span>
-        </div>
-      </div>
-
-      {/* Leaderboard strip */}
-      <div className="flex w-full flex-wrap justify-center gap-1.5 text-xs">
-        {getLeaderboard(gameState).map((p) => (
-          <span
-            key={p.id}
-            className={cn(
-              'bg-secondary/60 flex items-center gap-1.5 rounded-full border px-2 py-1',
-              p.id === playerId && 'border-primary/40'
-            )}
-          >
-            <span className="font-medium">{p.name}</span>
-            <span className="text-muted-foreground tabular-nums">{p.score}</span>
-          </span>
-        ))}
-      </div>
-
-      {/* Clue card */}
-      {round.phase === 'clue' && youArePsychic && (
-        <div className="bg-secondary/60 flex w-full flex-col items-center gap-3 rounded-2xl border p-5 text-center">
-          <div className="text-muted-foreground text-xs tracking-widest uppercase">
-            You are the Psychic
+    <div className="animate-mindmeld-fade-up flex w-full max-w-6xl flex-col gap-5">
+      <div className="bg-background/95 flex flex-col gap-3 rounded-[1.75rem] border p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+            Round {round.number} of {gameState.totalRounds}
           </div>
-          <div className="text-foreground text-sm">
-            The hidden target is{' '}
-            <span className="font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
-              {round.target}
+          <h2 className="mt-1 text-2xl font-black tracking-tight">
+            {psychic?.name ?? 'Psychic'}
+            {youArePsychic ? ' · you are up' : ' is the Psychic'}
+          </h2>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {getLeaderboard(gameState).map((player) => (
+            <span
+              key={player.id}
+              className={cn(
+                'bg-secondary/45 rounded-full border px-3 py-1.5 text-xs font-semibold',
+                player.id === playerId && 'border-primary/40'
+              )}
+            >
+              {player.name} · {player.score}
             </span>
-            . Give a clue that hints where on the spectrum it sits.
-          </div>
+          ))}
         </div>
-      )}
-      {round.phase === 'clue' && !youArePsychic && (
-        <div className="bg-secondary/60 w-full rounded-2xl border p-5 text-center text-sm">
-          Waiting for{' '}
-          <span className="text-foreground font-semibold">{psychic?.name ?? 'the Psychic'}</span> to
-          write a clue&hellip;
-        </div>
-      )}
-      {round.phase !== 'clue' && round.clue && (
-        <div className="bg-secondary/60 flex w-full flex-col items-center gap-2 rounded-2xl border p-6 text-center">
-          <div className="text-muted-foreground text-xs tracking-widest uppercase">The clue is</div>
-          <div className="text-foreground text-3xl font-bold sm:text-4xl">{round.clue}</div>
-        </div>
-      )}
+      </div>
 
-      {/* Spectrum */}
-      <SpectrumBar
-        leftLabel={round.spectrum.left}
-        rightLabel={round.spectrum.right}
-        guess={
-          round.phase === 'guessing' && !youArePsychic && !youGuessed
-            ? guess
-            : round.phase === 'reveal'
-              ? null
-              : null
-        }
-        targetVisible={targetVisible}
-        target={targetForDisplay}
-        otherGuesses={revealMarkers}
-      />
+      <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+        <PsychicDial
+          leftLabel={round.spectrum.left}
+          rightLabel={round.spectrum.right}
+          previewGuess={round.phase === 'guessing' && !youArePsychic ? guess : null}
+          finalGuess={round.phase === 'reveal' ? round.teamGuess : null}
+          targetVisible={targetVisible}
+          target={targetVisible && round.target !== HIDDEN_TARGET ? round.target : 50}
+        />
 
-      {/* Phase-specific controls */}
-      {round.phase === 'clue' && youArePsychic && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            const trimmed = clueInput.trim()
-            if (trimmed) onSubmitClue(trimmed)
-          }}
-          className="flex w-full flex-col gap-2"
-        >
-          <input
-            value={clueInput}
-            onChange={(e) => setClueInput(e.target.value)}
-            placeholder="Type your clue…"
-            maxLength={MAX_CLUE_LENGTH}
-            autoFocus
-            className="bg-background focus:ring-primary/40 w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-2"
-          />
-          <button
-            type="submit"
-            disabled={!clueInput.trim()}
-            className="bg-foreground text-background rounded-lg px-6 py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            Send clue
-          </button>
-        </form>
-      )}
-
-      {round.phase === 'guessing' && !youArePsychic && !youGuessed && (
-        <div className="flex w-full flex-col items-center gap-3">
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={guess}
-            onChange={(e) => setGuess(Number(e.target.value))}
-            aria-label="Your guess on the spectrum"
-            className="accent-foreground w-full"
-          />
-          <button
-            onClick={() => onSubmitGuess(guess)}
-            className="bg-foreground text-background rounded-lg px-6 py-3 font-semibold transition-opacity hover:opacity-90"
-          >
-            Lock in
-          </button>
-        </div>
-      )}
-
-      {round.phase === 'guessing' && !youArePsychic && youGuessed && (
-        <div className="text-muted-foreground text-sm">
-          You&rsquo;re locked in. Waiting for others&hellip;
-        </div>
-      )}
-
-      {round.phase === 'guessing' && youArePsychic && (
-        <div className="bg-secondary/60 flex w-full flex-col items-center gap-2 rounded-xl border p-4 text-center text-sm">
-          <div>Guessers are locking in&hellip;</div>
-          <div className="text-muted-foreground text-xs">
-            {Object.keys(round.guesses).length} / {guessers.length} submitted
-          </div>
-          {isHost && !allIn && Object.keys(round.guesses).length > 0 && (
-            <button
-              onClick={onReveal}
-              className="bg-secondary hover:bg-secondary/80 mt-1 rounded-lg border px-3 py-1.5 text-xs font-semibold"
-            >
-              Reveal now
-            </button>
-          )}
-        </div>
-      )}
-
-      {round.phase === 'reveal' && (
-        <div className="bg-secondary/60 flex w-full flex-col items-center gap-3 rounded-xl border p-5 text-center">
-          <div className="text-muted-foreground text-xs tracking-widest uppercase">
-            Target revealed
-          </div>
-          <div className="text-foreground text-3xl font-bold tabular-nums">{round.target}</div>
-          <div className="grid w-full grid-cols-1 gap-1 text-sm sm:grid-cols-2">
-            {gameState.players.map((p) => {
-              const g = round.guesses[p.id]
-              const points = round.roundScores[p.id] ?? 0
-              const isThePsychic = p.id === round.psychicId
-              const dist = g === undefined ? null : distanceFromTarget(g, round.target)
-              return (
-                <div
-                  key={p.id}
-                  className="bg-background flex items-center justify-between rounded-lg border px-2 py-1"
-                >
-                  <span className="flex items-center gap-1 truncate font-medium">
-                    {p.name}
-                    {isThePsychic && <span className="text-[10px]">🧠</span>}
-                  </span>
-                  <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                    {isThePsychic
-                      ? `+${points} (best)`
-                      : g === undefined
-                        ? '—'
-                        : `${g} · off ${dist} · +${points}`}
-                  </span>
+        <div className="flex flex-col gap-4">
+          {round.phase === 'clue' && youArePsychic && (
+            <div className="animate-mindmeld-glow bg-secondary/35 rounded-[1.75rem] border p-5 shadow-sm">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+                Private target
+              </div>
+              <div className="bg-background mt-3 rounded-2xl border px-4 py-3">
+                <div className="text-muted-foreground text-xs">Secret position</div>
+                <div className="mt-1 text-4xl font-black text-amber-500 tabular-nums">
+                  {round.target}
                 </div>
-              )
-            })}
-          </div>
-          {isHost ? (
-            <button
-              onClick={onNextRound}
-              className="bg-foreground text-background mt-1 rounded-lg px-6 py-2.5 font-semibold transition-opacity hover:opacity-90"
-            >
-              {round.number >= gameState.totalRounds ? 'See results' : 'Next round'}
-            </button>
-          ) : (
-            <div className="text-muted-foreground text-xs">Waiting for host&hellip;</div>
+              </div>
+              <p className="mt-4 text-sm leading-6">
+                Give one clue that makes your table place the shared dial in the right zone.
+              </p>
+              {spectrumHints && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {spectrumHints.slice(0, 4).map((hint) => (
+                    <span
+                      key={hint}
+                      className="bg-background text-muted-foreground rounded-full border px-3 py-1 text-xs"
+                    >
+                      {hint}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (clueInput.trim()) onSubmitClue(clueInput.trim())
+                }}
+                className="mt-5 flex flex-col gap-3"
+              >
+                <input
+                  value={clueInput}
+                  onChange={(e) => setClueInput(e.target.value)}
+                  placeholder="Transmit your clue…"
+                  maxLength={MAX_CLUE_LENGTH}
+                  autoFocus
+                  className="bg-background focus:ring-primary/40 rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2"
+                />
+                <button
+                  type="submit"
+                  disabled={!clueInput.trim()}
+                  className="bg-foreground text-background rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40"
+                >
+                  Send clue
+                </button>
+              </form>
+            </div>
+          )}
+
+          {round.phase === 'clue' && !youArePsychic && (
+            <div className="bg-secondary/35 rounded-[1.75rem] border p-6 text-center shadow-sm">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+                Stand by
+              </div>
+              <div className="mt-4 text-2xl font-black">Waiting for the clue…</div>
+              <p className="text-muted-foreground mx-auto mt-2 max-w-sm text-sm leading-6">
+                {psychic?.name ?? 'The Psychic'} can see the target. As soon as the clue arrives,
+                talk it through and agree on one final guess.
+              </p>
+            </div>
+          )}
+
+          {round.phase !== 'clue' && round.clue && (
+            <div className="rounded-[1.75rem] border bg-[linear-gradient(145deg,rgba(250,204,21,0.12),rgba(14,165,233,0.06))] p-5 shadow-sm">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+                Current clue
+              </div>
+              <div className="mt-3 text-4xl font-black tracking-tight">{round.clue}</div>
+            </div>
+          )}
+
+          {round.phase === 'guessing' && !youArePsychic && (
+            <div className="bg-background/95 rounded-[1.75rem] border p-5 shadow-sm">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+                Team guess
+              </div>
+              <p className="text-muted-foreground mt-3 text-sm leading-6">
+                Match original Wavelength style: talk it out first, then one person locks the final
+                dial.
+              </p>
+              <div className="bg-secondary/45 mt-5 rounded-2xl border p-4">
+                <div className="text-muted-foreground flex items-center justify-between text-xs font-semibold uppercase">
+                  <span>{round.spectrum.left}</span>
+                  <span className="text-foreground text-base tabular-nums">{guess}</span>
+                  <span>{round.spectrum.right}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={guess}
+                  onChange={(e) => setGuess(Number(e.target.value))}
+                  aria-label="Team guess"
+                  className="mt-4 w-full accent-amber-500"
+                />
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => setGuess((current) => clamp(current - 5, 0, 100))}
+                    className="hover:bg-secondary flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                  >
+                    Nudge left
+                  </button>
+                  <button
+                    onClick={() => setGuess((current) => clamp(current + 5, 0, 100))}
+                    className="hover:bg-secondary flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                  >
+                    Nudge right
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={() => onSubmitGuess(guess)}
+                className="bg-foreground text-background mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90"
+              >
+                Lock team guess
+              </button>
+            </div>
+          )}
+
+          {round.phase === 'guessing' && youArePsychic && (
+            <div className="bg-secondary/35 rounded-[1.75rem] border p-6 text-center shadow-sm">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+                Reading the room
+              </div>
+              <div className="mt-4 text-2xl font-black">Your table is lining up the dial</div>
+              <p className="text-muted-foreground mt-2 text-sm leading-6">
+                Stay mysterious. They only get one team guess before the reveal.
+              </p>
+            </div>
+          )}
+
+          {round.phase === 'reveal' && (
+            <div className="bg-background/95 rounded-[1.75rem] border p-5 shadow-sm">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+                Reveal
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="bg-secondary/45 rounded-2xl border px-4 py-3">
+                  <div className="text-muted-foreground text-xs">Target</div>
+                  <div className="mt-1 text-2xl font-black tabular-nums">{round.target}</div>
+                </div>
+                <div className="bg-secondary/45 rounded-2xl border px-4 py-3">
+                  <div className="text-muted-foreground text-xs">Team guess</div>
+                  <div className="mt-1 text-2xl font-black tabular-nums">{round.teamGuess}</div>
+                </div>
+                <div className="bg-secondary/45 rounded-2xl border px-4 py-3">
+                  <div className="text-muted-foreground text-xs">Distance</div>
+                  <div className="mt-1 text-2xl font-black tabular-nums">
+                    {round.teamGuess === null
+                      ? '—'
+                      : distanceFromTarget(round.teamGuess, round.target)}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 rounded-2xl border bg-[linear-gradient(145deg,rgba(250,204,21,0.12),rgba(74,222,128,0.08))] px-4 py-4">
+                <div className="text-muted-foreground text-sm">
+                  {lockedBy ? `${lockedBy} locked the dial.` : 'The team locked the dial.'}
+                </div>
+                <div className="mt-1 text-3xl font-black">+{roundPoints ?? 0} for everyone</div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {gameState.players.map((player) => (
+                  <div
+                    key={player.id}
+                    className="bg-secondary/35 flex items-center justify-between rounded-2xl border px-4 py-3"
+                  >
+                    <span className="font-semibold">
+                      {player.name}
+                      {player.id === round.psychicId && ' · Psychic'}
+                    </span>
+                    <span className="text-sm font-semibold">
+                      +{round.roundScores[player.id] ?? 0}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {isHost ? (
+                <button
+                  onClick={onNextRound}
+                  className="bg-foreground text-background mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90"
+                >
+                  {round.number >= gameState.totalRounds ? 'See results' : 'Next round'}
+                </button>
+              ) : (
+                <div className="text-muted-foreground mt-4 text-center text-sm">
+                  Waiting for the host to continue…
+                </div>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
 
-      <button
-        onClick={onLeave}
-        className="text-muted-foreground hover:bg-secondary rounded-xl border px-3 py-1.5 text-xs transition-colors"
-      >
-        Leave
-      </button>
+      <div className="flex justify-end">
+        <button
+          onClick={onLeave}
+          className="hover:bg-secondary rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
+        >
+          Leave
+        </button>
+      </div>
     </div>
   )
 }
-
-// ─── Finished ───────────────────────────────────────────────────────────────
 
 interface FinishedScreenProps {
   gameState: GameState
@@ -663,57 +797,60 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const leaderboard = getLeaderboard(gameState)
   const winners = getWinners(gameState)
-  const youWon = winners.some((w: Player) => w.id === playerId)
-  const winnerNames = winners.map((w) => w.name).join(' & ')
+  const winnerNames = winners.map((winner) => winner.name).join(' & ')
+  const youWon = winners.some((winner: Player) => winner.id === playerId)
 
   return (
-    <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-      <div className="text-6xl">{youWon ? '🏆' : '🧠'}</div>
-      <div>
-        <h2 className="text-2xl font-black">{winnerNames} wins!</h2>
-        <p className="text-muted-foreground text-sm">
-          {youWon ? 'Your mind was in sync.' : 'Telepathy takes practice.'}
+    <div className="animate-mindmeld-fade-up flex w-full max-w-3xl flex-col gap-5">
+      <div className="overflow-hidden rounded-[2rem] border border-amber-500/20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_35%),linear-gradient(160deg,rgba(24,24,27,0.96),rgba(39,39,42,0.92))] p-8 text-white shadow-2xl">
+        <div className="text-5xl">{youWon ? '🏆' : '🧠'}</div>
+        <h2 className="mt-4 text-4xl font-black tracking-tight">{winnerNames} win!</h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70">
+          {youWon
+            ? 'The dial was on your wavelength.'
+            : 'Close calls, strange clues, and at least one truly unhinged interpretation.'}
         </p>
       </div>
 
-      <div className="w-full rounded-2xl border p-4">
-        <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
-          Final scores
-        </p>
-        <ul className="flex flex-col gap-1.5">
-          {leaderboard.map((p, i) => (
-            <li
-              key={p.id}
+      <div className="bg-background/95 rounded-[1.75rem] border p-5 shadow-sm">
+        <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+          Final leaderboard
+        </div>
+        <div className="mt-4 space-y-2">
+          {leaderboard.map((player, index) => (
+            <div
+              key={player.id}
               className={cn(
-                'flex items-center justify-between rounded-lg px-3 py-2 text-sm',
-                i === 0 ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-secondary/60'
+                'flex items-center justify-between rounded-2xl border px-4 py-3',
+                index === 0 ? 'bg-amber-500/10' : 'bg-secondary/35'
               )}
             >
-              <span className="flex items-center gap-2 truncate">
-                <span className="text-muted-foreground w-5 tabular-nums">{i + 1}.</span>
-                <span className="font-semibold">{p.name}</span>
-                {p.id === playerId && <span className="text-muted-foreground text-xs">you</span>}
+              <span className="font-semibold">
+                {index + 1}. {player.name}
+                {player.id === playerId && ' · you'}
               </span>
-              <span className="font-bold tabular-nums">{p.score}</span>
-            </li>
+              <span className="text-lg font-black tabular-nums">{player.score}</span>
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
 
       <div className="flex gap-3">
         {isHost ? (
           <button
             onClick={onPlayAgain}
-            className="bg-primary text-primary-foreground rounded-lg px-5 py-2.5 text-sm font-semibold"
+            className="bg-foreground text-background flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90"
           >
             Play again
           </button>
         ) : (
-          <p className="text-muted-foreground text-sm">Waiting for host to start another&hellip;</p>
+          <div className="text-muted-foreground flex flex-1 items-center justify-center rounded-xl border px-4 py-3 text-sm">
+            Waiting for host to restart…
+          </div>
         )}
         <button
           onClick={onLeave}
-          className="hover:bg-secondary rounded-lg border px-5 py-2.5 text-sm font-semibold"
+          className="hover:bg-secondary rounded-xl border px-4 py-3 text-sm font-semibold transition"
         >
           Leave
         </button>
@@ -721,8 +858,6 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
     </div>
   )
 }
-
-// ─── Main component ─────────────────────────────────────────────────────────
 
 export function MindmeldGame() {
   const inviteCode = useInviteCode()
@@ -740,7 +875,6 @@ export function MindmeldGame() {
     leaveRoom,
   } = useMindmeldRoom()
 
-  // Redaction is client-side only. Trusted-group play.
   const redactedState = useMemo(
     () => (gameState && playerId ? redactForPlayer(gameState, playerId) : gameState),
     [gameState, playerId]
@@ -752,50 +886,61 @@ export function MindmeldGame() {
 
   if (!redactedState || !playerId || !roomCode) {
     return (
-      <EntryScreen
-        onCreate={createRoom}
-        onJoin={joinRoom}
-        onRestore={savedSession ? restoreSession : undefined}
-        savedSession={savedSession}
-        loading={isLoading}
-        error={error}
-        initialCode={inviteCode}
-      />
+      <>
+        <MindmeldStyles />
+        <EntryScreen
+          onCreate={createRoom}
+          onJoin={joinRoom}
+          onRestore={savedSession ? restoreSession : undefined}
+          savedSession={savedSession}
+          loading={isLoading}
+          error={error}
+          initialCode={inviteCode}
+        />
+      </>
     )
   }
 
   if (redactedState.phase === 'lobby') {
     return (
-      <LobbyScreen
-        gameState={redactedState}
-        playerId={playerId}
-        roomCode={roomCode}
-        onStart={() => dispatch({ type: 'START_GAME', playerId })}
-        onLeave={leaveRoom}
-      />
+      <>
+        <MindmeldStyles />
+        <LobbyScreen
+          gameState={redactedState}
+          playerId={playerId}
+          roomCode={roomCode}
+          onStart={() => dispatch({ type: 'START_GAME', playerId })}
+          onLeave={leaveRoom}
+        />
+      </>
     )
   }
 
   if (redactedState.phase === 'finished') {
     return (
-      <FinishedScreen
-        gameState={redactedState}
-        playerId={playerId}
-        onPlayAgain={() => dispatch({ type: 'PLAY_AGAIN', playerId })}
-        onLeave={leaveRoom}
-      />
+      <>
+        <MindmeldStyles />
+        <FinishedScreen
+          gameState={redactedState}
+          playerId={playerId}
+          onPlayAgain={() => dispatch({ type: 'PLAY_AGAIN', playerId })}
+          onLeave={leaveRoom}
+        />
+      </>
     )
   }
 
   return (
-    <PlayingScreen
-      gameState={redactedState}
-      playerId={playerId}
-      onSubmitClue={(clue) => dispatch({ type: 'SUBMIT_CLUE', playerId, clue })}
-      onSubmitGuess={(guess) => dispatch({ type: 'SUBMIT_GUESS', playerId, guess })}
-      onReveal={() => dispatch({ type: 'REVEAL_ROUND', playerId })}
-      onNextRound={() => dispatch({ type: 'NEXT_ROUND', playerId })}
-      onLeave={leaveRoom}
-    />
+    <>
+      <MindmeldStyles />
+      <PlayingScreen
+        gameState={redactedState}
+        playerId={playerId}
+        onSubmitClue={(clue) => dispatch({ type: 'SUBMIT_CLUE', playerId, clue })}
+        onSubmitGuess={(guess) => dispatch({ type: 'SUBMIT_GUESS', playerId, guess })}
+        onNextRound={() => dispatch({ type: 'NEXT_ROUND', playerId })}
+        onLeave={leaveRoom}
+      />
+    </>
   )
 }
