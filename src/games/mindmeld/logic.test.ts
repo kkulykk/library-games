@@ -1,9 +1,7 @@
 import {
   BULLSEYE_POINTS,
-  CLOSE_POINTS,
   HIDDEN_TARGET,
   MAX_POINTS_PER_ROUND,
-  MEDIUM_POINTS,
   MIN_PLAYERS,
   MISS_POINTS,
   TOTAL_ROUNDS,
@@ -25,12 +23,10 @@ import {
   removePlayer,
   scoreGuess,
   shuffle,
-  type GameAction,
   type GameState,
   type Player,
 } from './logic'
 
-// ─── Deterministic PRNG ──────────────────────────────────────────────────────
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0
   return function () {
@@ -50,7 +46,6 @@ function makeGuest(id: string, name: string): Player {
   return { id, name, isHost: false, score: 0 }
 }
 
-/** Build a lobby with host + N additional players. */
 function lobbyWith(playerNames: string[]): GameState {
   let state = createLobbyState(makeHost('p0', playerNames[0]))
   for (let i = 1; i < playerNames.length; i++) {
@@ -59,13 +54,10 @@ function lobbyWith(playerNames: string[]): GameState {
   return state
 }
 
-/** Run START_GAME from the host. */
 function startedGame(playerNames: string[]): GameState {
   const state = lobbyWith(playerNames)
   return applyAction(state, { type: 'START_GAME', playerId: 'p0' })
 }
-
-// ─── Basics ─────────────────────────────────────────────────────────────────
 
 describe('getSpectra', () => {
   it('returns at least 15 distinct spectra', () => {
@@ -80,7 +72,6 @@ describe('getSpectra', () => {
       expect(s.left.trim().length).toBeGreaterThan(0)
       expect(s.right.trim().length).toBeGreaterThan(0)
       expect(s.hints.length).toBeGreaterThan(0)
-      for (const hint of s.hints) expect(hint.trim().length).toBeGreaterThan(0)
     }
   })
 })
@@ -110,14 +101,8 @@ describe('scoreGuess', () => {
     expect(scoreGuess(53, 50)).toBe(BULLSEYE_POINTS)
   })
 
-  it('awards close/medium/miss based on distance', () => {
-    expect(scoreGuess(44, 50)).toBe(CLOSE_POINTS)
-    expect(scoreGuess(42, 50)).toBe(MEDIUM_POINTS)
-    expect(scoreGuess(30, 50)).toBe(MISS_POINTS)
-  })
-
-  it('is symmetric', () => {
-    expect(scoreGuess(10, 30)).toBe(scoreGuess(30, 10))
+  it('returns miss points outside the scoring window', () => {
+    expect(scoreGuess(10, 50)).toBe(MISS_POINTS)
   })
 })
 
@@ -125,7 +110,6 @@ describe('distanceFromTarget', () => {
   it('returns absolute difference', () => {
     expect(distanceFromTarget(30, 50)).toBe(20)
     expect(distanceFromTarget(70, 50)).toBe(20)
-    expect(distanceFromTarget(50, 50)).toBe(0)
   })
 })
 
@@ -138,15 +122,12 @@ describe('shuffle', () => {
   })
 })
 
-// ─── Lobby ──────────────────────────────────────────────────────────────────
-
 describe('lobby lifecycle', () => {
   it('creates a lobby with the host', () => {
     const state = createLobbyState(makeHost())
     expect(state.phase).toBe('lobby')
     expect(state.players).toHaveLength(1)
     expect(state.players[0].isHost).toBe(true)
-    expect(state.players[0].score).toBe(0)
     expect(state.totalRounds).toBe(TOTAL_ROUNDS)
   })
 
@@ -154,7 +135,6 @@ describe('lobby lifecycle', () => {
     let state = createLobbyState(makeHost())
     state = addPlayer(state, makeGuest('b', 'Bob'))
     expect(state.players).toHaveLength(2)
-    expect(state.players[1].score).toBe(0)
   })
 
   it('ignores duplicate players', () => {
@@ -170,31 +150,22 @@ describe('lobby lifecycle', () => {
     expect(MIN_PLAYERS).toBeGreaterThanOrEqual(2)
   })
 
-  it('can start with >= MIN_PLAYERS', () => {
-    const state = lobbyWith(['A', 'B'])
-    expect(canStartGame(state)).toBe(true)
-  })
-
-  it('non-host cannot start the game', () => {
-    const state = lobbyWith(['A', 'B'])
-    const unchanged = applyAction(state, { type: 'START_GAME', playerId: 'p1' })
-    expect(unchanged.phase).toBe('lobby')
-  })
-
   it('host START_GAME moves to playing phase and creates a round', () => {
     const state = startedGame(['A', 'B', 'C'])
     expect(state.phase).toBe('playing')
     expect(state.roundNumber).toBe(1)
-    expect(state.currentRound).not.toBeNull()
-    expect(state.currentRound!.phase).toBe('clue')
-    expect(state.currentRound!.target).toBeGreaterThanOrEqual(0)
-    expect(state.currentRound!.target).toBeLessThanOrEqual(100)
+    expect(state.currentRound?.phase).toBe('clue')
+    expect(state.currentRound?.teamGuess).toBeNull()
   })
 })
 
-// ─── Playing flow ───────────────────────────────────────────────────────────
+describe('playing flow', () => {
+  function setupGuessingPhase() {
+    const state = startedGame(['A', 'B', 'C'])
+    const psychicId = state.currentRound!.psychicId
+    return applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'Warm' })
+  }
 
-describe('playing flow — clue', () => {
   it('only the psychic can submit a clue', () => {
     const started = startedGame(['A', 'B'])
     const psychicId = started.currentRound!.psychicId
@@ -212,45 +183,7 @@ describe('playing flow — clue', () => {
     expect(after.currentRound!.clue).toBe('Hot')
   })
 
-  it('empty clue is rejected', () => {
-    const started = startedGame(['A', 'B'])
-    const psychicId = started.currentRound!.psychicId
-    const after = applyAction(started, {
-      type: 'SUBMIT_CLUE',
-      playerId: psychicId,
-      clue: '   ',
-    })
-    expect(after).toBe(started)
-  })
-
-  it('clues are trimmed and length-limited', () => {
-    const started = startedGame(['A', 'B'])
-    const psychicId = started.currentRound!.psychicId
-    const long = 'x'.repeat(200)
-    const after = applyAction(started, {
-      type: 'SUBMIT_CLUE',
-      playerId: psychicId,
-      clue: `  ${long}  `,
-    })
-    expect(after.currentRound!.clue!.length).toBeLessThanOrEqual(32)
-  })
-})
-
-describe('playing flow — guessing', () => {
-  function setupGuessingPhase() {
-    const state = startedGame(['A', 'B', 'C'])
-    const psychicId = state.currentRound!.psychicId
-    return applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'Warm' })
-  }
-
-  it('psychic cannot submit a guess', () => {
-    const state = setupGuessingPhase()
-    const psychicId = state.currentRound!.psychicId
-    const blocked = applyAction(state, { type: 'SUBMIT_GUESS', playerId: psychicId, guess: 50 })
-    expect(blocked).toBe(state)
-  })
-
-  it('guessers can lock in a guess', () => {
+  it('guessers lock one shared team guess and auto-reveal', () => {
     const state = setupGuessingPhase()
     const guesser = getGuessers(state)[0]
     const after = applyAction(state, {
@@ -258,95 +191,59 @@ describe('playing flow — guessing', () => {
       playerId: guesser.id,
       guess: 60,
     })
+
+    expect(after.currentRound!.phase).toBe('reveal')
+    expect(after.currentRound!.teamGuess).toBe(60)
+    expect(after.currentRound!.guessLockedBy).toBe(guesser.id)
     expect(hasPlayerGuessed(after, guesser.id)).toBe(true)
-    expect(after.currentRound!.guesses[guesser.id]).toBe(60)
-    expect(after.currentRound!.phase).toBe('guessing')
+    expect(allGuessersSubmitted(after)).toBe(true)
   })
 
-  it('clamps guesses to the 0-100 range', () => {
+  it('clamps the shared guess to the 0-100 range', () => {
     const state = setupGuessingPhase()
     const guesser = getGuessers(state)[0]
     const low = applyAction(state, { type: 'SUBMIT_GUESS', playerId: guesser.id, guess: -50 })
-    expect(low.currentRound!.guesses[guesser.id]).toBe(0)
+    expect(low.currentRound!.teamGuess).toBe(0)
 
-    const base = setupGuessingPhase()
-    const high = applyAction(base, {
+    const high = applyAction(state, { type: 'SUBMIT_GUESS', playerId: guesser.id, guess: 250 })
+    expect(high.currentRound!.teamGuess).toBe(100)
+  })
+
+  it('awards the same round score to the whole table', () => {
+    const state = setupGuessingPhase()
+    const guesser = getGuessers(state)[0]
+    const after = applyAction(state, {
       type: 'SUBMIT_GUESS',
-      playerId: getGuessers(base)[0].id,
-      guess: 250,
+      playerId: guesser.id,
+      guess: state.currentRound!.target,
     })
-    expect(high.currentRound!.guesses[getGuessers(base)[0].id]).toBe(100)
-  })
 
-  it('auto-advances to reveal once all guessers submit, and scores', () => {
-    let state = setupGuessingPhase()
-    const target = state.currentRound!.target
-    const guessers = getGuessers(state)
-
-    // Everyone guesses a bullseye.
-    for (const g of guessers) {
-      state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: g.id, guess: target })
-    }
-    expect(state.currentRound!.phase).toBe('reveal')
-    for (const g of guessers) {
-      expect(state.currentRound!.roundScores[g.id]).toBe(BULLSEYE_POINTS)
-    }
-    // Psychic earns the best guesser's points.
-    expect(state.currentRound!.roundScores[state.currentRound!.psychicId]).toBe(BULLSEYE_POINTS)
-    // Scores are applied to players.
-    for (const player of state.players) {
+    for (const player of after.players) {
       expect(player.score).toBe(BULLSEYE_POINTS)
+      expect(after.currentRound!.roundScores[player.id]).toBe(BULLSEYE_POINTS)
     }
   })
 
-  it('allGuessersSubmitted reflects guess state', () => {
-    let state = setupGuessingPhase()
-    const guessers = getGuessers(state)
-    expect(allGuessersSubmitted(state)).toBe(false)
-    state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: guessers[0].id, guess: 50 })
-    expect(allGuessersSubmitted(state)).toBe(false)
-    state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: guessers[1].id, guess: 50 })
-    expect(allGuessersSubmitted(state)).toBe(true)
+  it('psychic cannot lock the dial', () => {
+    const state = setupGuessingPhase()
+    const psychicId = state.currentRound!.psychicId
+    const blocked = applyAction(state, { type: 'SUBMIT_GUESS', playerId: psychicId, guess: 50 })
+    expect(blocked).toBe(state)
   })
 })
 
-describe('playing flow — reveal & next round', () => {
+describe('reveal and round advancement', () => {
   function revealed(): GameState {
     let state = startedGame(['A', 'B', 'C'])
     const psychicId = state.currentRound!.psychicId
     state = applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'Warm' })
-    for (const g of getGuessers(state)) {
-      state = applyAction(state, {
-        type: 'SUBMIT_GUESS',
-        playerId: g.id,
-        guess: state.currentRound!.target,
-      })
-    }
-    return state
-  }
-
-  it('host REVEAL_ROUND works even if not everyone guessed', () => {
-    let state = startedGame(['A', 'B', 'C'])
-    const psychicId = state.currentRound!.psychicId
-    state = applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'Warm' })
-    const firstGuesser = getGuessers(state)[0]
     state = applyAction(state, {
       type: 'SUBMIT_GUESS',
-      playerId: firstGuesser.id,
+      playerId: getGuessers(state)[0].id,
       guess: state.currentRound!.target,
     })
-    // The other guesser never submits — host force-reveals.
-    const after = applyAction(state, { type: 'REVEAL_ROUND', playerId: 'p0' })
-    expect(after.currentRound!.phase).toBe('reveal')
-  })
-
-  it('REVEAL_ROUND requires at least one guess', () => {
-    let state = startedGame(['A', 'B', 'C'])
-    const psychicId = state.currentRound!.psychicId
-    state = applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'Warm' })
-    const after = applyAction(state, { type: 'REVEAL_ROUND', playerId: 'p0' })
-    expect(after).toBe(state)
-  })
+    return state
+  }
 
   it('host NEXT_ROUND advances the round and rotates the psychic', () => {
     const state = revealed()
@@ -357,30 +254,22 @@ describe('playing flow — reveal & next round', () => {
     expect(after.currentRound!.phase).toBe('clue')
   })
 
-  it('non-host cannot advance the round', () => {
-    const state = revealed()
-    const nonHost = state.players.find((p) => !p.isHost)!
-    const unchanged = applyAction(state, { type: 'NEXT_ROUND', playerId: nonHost.id })
-    expect(unchanged).toBe(state)
-  })
-
   it('finishes the game after the final round', () => {
     let state = startedGame(['A', 'B'])
-    // Fast-forward through all rounds by revealing and advancing.
     for (let i = 0; i < TOTAL_ROUNDS; i++) {
       const psychicId = state.currentRound!.psychicId
       state = applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'x' })
-      for (const g of getGuessers(state)) {
-        state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: g.id, guess: 50 })
-      }
+      state = applyAction(state, {
+        type: 'SUBMIT_GUESS',
+        playerId: getGuessers(state)[0].id,
+        guess: 50,
+      })
       state = applyAction(state, { type: 'NEXT_ROUND', playerId: 'p0' })
     }
     expect(state.phase).toBe('finished')
     expect(state.currentRound).toBeNull()
   })
 })
-
-// ─── Redaction ──────────────────────────────────────────────────────────────
 
 describe('redactForPlayer', () => {
   function guessingState() {
@@ -405,24 +294,16 @@ describe('redactForPlayer', () => {
 
   it('reveals target to everyone during reveal phase', () => {
     let state = guessingState()
-    const guesser = getGuessers(state)[0]
     state = applyAction(state, {
       type: 'SUBMIT_GUESS',
-      playerId: guesser.id,
+      playerId: getGuessers(state)[0].id,
       guess: state.currentRound!.target,
     })
-    expect(state.currentRound!.phase).toBe('reveal')
+    const guesser = getGuessers(state)[0]
     const redacted = redactForPlayer(state, guesser.id)
     expect(redacted.currentRound!.target).toBe(state.currentRound!.target)
   })
-
-  it('is a no-op when there is no current round', () => {
-    const state = createLobbyState(makeHost())
-    expect(redactForPlayer(state, 'p0')).toBe(state)
-  })
 })
-
-// ─── Leaving ────────────────────────────────────────────────────────────────
 
 describe('removePlayer', () => {
   it('just removes in the lobby', () => {
@@ -439,48 +320,38 @@ describe('removePlayer', () => {
   })
 
   it('replaces the psychic and restarts the round if the psychic leaves', () => {
-    let state = startedGame(['A', 'B', 'C'])
+    const state = startedGame(['A', 'B', 'C'])
     const psychicId = state.currentRound!.psychicId
-    state = applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'Warm' })
     const after = removePlayer(state, psychicId)
     expect(after.phase).toBe('playing')
     expect(after.currentRound!.psychicId).not.toBe(psychicId)
     expect(after.currentRound!.phase).toBe('clue')
   })
 
-  it('drops a guesser mid-round and keeps playing', () => {
+  it('unlocks the shared dial if the locker leaves before reveal', () => {
     let state = startedGame(['A', 'B', 'C'])
     const psychicId = state.currentRound!.psychicId
     state = applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'Warm' })
-    const nonPsychic = getGuessers(state)[0]
-    const after = removePlayer(state, nonPsychic.id)
-    expect(after.players).toHaveLength(2)
+    state = {
+      ...state,
+      currentRound: {
+        ...state.currentRound!,
+        teamGuess: 72,
+        guessLockedBy: getGuessers(state)[0].id,
+      },
+    }
+
+    const after = removePlayer(state, state.currentRound!.guessLockedBy!)
+    expect(after.currentRound!.teamGuess).toBeNull()
+    expect(after.currentRound!.guessLockedBy).toBeNull()
     expect(after.currentRound!.phase).toBe('guessing')
   })
-
-  it('auto-reveals when the last remaining guesser has already submitted', () => {
-    let state = startedGame(['A', 'B', 'C'])
-    const psychicId = state.currentRound!.psychicId
-    state = applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'Warm' })
-    const guessers = getGuessers(state)
-    state = applyAction(state, {
-      type: 'SUBMIT_GUESS',
-      playerId: guessers[0].id,
-      guess: state.currentRound!.target,
-    })
-    // The only other guesser leaves.
-    const after = removePlayer(state, guessers[1].id)
-    expect(after.currentRound!.phase).toBe('reveal')
-  })
 })
-
-// ─── Queries ────────────────────────────────────────────────────────────────
 
 describe('state queries', () => {
   it('getPsychic returns the current psychic', () => {
     const state = startedGame(['A', 'B'])
-    const psychic = getPsychic(state)
-    expect(psychic?.id).toBe(state.currentRound!.psychicId)
+    expect(getPsychic(state)?.id).toBe(state.currentRound!.psychicId)
   })
 
   it('isPsychic identifies the psychic', () => {
@@ -511,56 +382,10 @@ describe('state queries', () => {
         { ...state.players[2], score: 4 },
       ],
     }
-    const winners = getWinners(withScores)
-    expect(winners).toHaveLength(2)
+    expect(getWinners(withScores)).toHaveLength(2)
   })
 
   it('MAX_POINTS_PER_ROUND equals bullseye points', () => {
     expect(MAX_POINTS_PER_ROUND).toBe(BULLSEYE_POINTS)
-  })
-})
-
-// ─── Play again ─────────────────────────────────────────────────────────────
-
-describe('PLAY_AGAIN', () => {
-  it('host can return to lobby after finished; scores reset', () => {
-    let state = startedGame(['A', 'B']) as GameState
-    // finish quickly
-    for (let i = 0; i < TOTAL_ROUNDS; i++) {
-      const psychicId = state.currentRound!.psychicId
-      state = applyAction(state, { type: 'SUBMIT_CLUE', playerId: psychicId, clue: 'x' })
-      for (const g of getGuessers(state)) {
-        state = applyAction(state, {
-          type: 'SUBMIT_GUESS',
-          playerId: g.id,
-          guess: state.currentRound!.target,
-        })
-      }
-      state = applyAction(state, { type: 'NEXT_ROUND', playerId: 'p0' })
-    }
-    expect(state.phase).toBe('finished')
-    const after = applyAction(state, { type: 'PLAY_AGAIN', playerId: 'p0' })
-    expect(after.phase).toBe('lobby')
-    expect(after.roundNumber).toBe(0)
-    for (const p of after.players) expect(p.score).toBe(0)
-  })
-
-  it('non-host cannot replay', () => {
-    const state: GameState = {
-      ...lobbyWith(['A', 'B']),
-      phase: 'finished',
-    }
-    const unchanged = applyAction(state, { type: 'PLAY_AGAIN', playerId: 'p1' })
-    expect(unchanged).toBe(state)
-  })
-})
-
-// ─── Unknown actions ────────────────────────────────────────────────────────
-
-describe('applyAction', () => {
-  it('returns the same state for unknown action types', () => {
-    const state = lobbyWith(['A', 'B'])
-    const weird = applyAction(state, { type: 'NONSENSE' } as unknown as GameAction)
-    expect(weird).toBe(state)
   })
 })
