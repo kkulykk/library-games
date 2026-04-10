@@ -207,6 +207,40 @@ create policy "update codenames rooms" on codenames_rooms for update using (true
 
 -- delete from codenames_rooms where updated_at < now() - interval '24 hours';
 
+-- ─── Mindmeld rooms table ───────────────────────────────────────────────────
+
+create table if not exists mindmeld_rooms (
+  id         uuid        default gen_random_uuid() primary key,
+  code       text        unique not null,
+  state      jsonb       not null,
+  version    integer     not null default 1,
+  updated_at timestamptz default now()
+);
+
+create or replace trigger mindmeld_rooms_updated_at
+  before update on mindmeld_rooms
+  for each row execute function update_updated_at();
+
+create or replace trigger mindmeld_rooms_protect_immutable
+  before update on mindmeld_rooms
+  for each row execute function protect_immutable_columns();
+
+alter publication supabase_realtime add table mindmeld_rooms;
+
+alter table mindmeld_rooms enable row level security;
+
+create policy "select mindmeld rooms" on mindmeld_rooms for select using (true);
+
+create policy "insert mindmeld rooms" on mindmeld_rooms
+  for insert with check (
+    code ~ '^[A-Z0-9]{4}$'
+    and state is not null
+  );
+
+create policy "update mindmeld rooms" on mindmeld_rooms for update using (true);
+
+-- delete from mindmeld_rooms where updated_at < now() - interval '24 hours';
+
 -- ─── Migration: add version column to existing tables ───────────────────────
 -- Run this once if your tables already exist (the CREATE TABLE statements above
 -- include the column for fresh installs).

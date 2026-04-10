@@ -1,0 +1,86 @@
+'use client'
+
+import { supabase } from '@/lib/supabase'
+import { useGameRoom, type UseGameRoomReturn } from '@/hooks/useGameRoom'
+import {
+  addPlayer,
+  applyAction,
+  createLobbyState,
+  type GameAction,
+  type GameState,
+  type Player,
+} from './logic'
+import { GameStateSchema } from './schema'
+
+export type { RoomStatus } from '@/hooks/useGameRoom'
+
+export type UseMindmeldRoomReturn = Omit<
+  UseGameRoomReturn<GameState, GameAction>,
+  'broadcast' | 'onBroadcast'
+>
+
+export function useMindmeldRoom(): UseMindmeldRoomReturn {
+  return useGameRoom<GameState, GameAction>({
+    tableName: 'mindmeld_rooms',
+    channelPrefix: 'mindmeld',
+    sessionKey: 'mindmeld_session',
+    stateSchema: GameStateSchema,
+    applyAction,
+    createLobbyState: (host) => createLobbyState({ ...host, score: 0 } as Player),
+    createPlayer: ({ id, name, isHost }) => ({ id, name, isHost, score: 0 }) as Player,
+    addPlayer,
+    onBeforeLeave: async ({
+      gameState,
+      roomCode,
+      playerId,
+      tableName,
+      applyAction: apply,
+      stateSchema,
+    }) => {
+      if (!gameState || !roomCode || !playerId || !supabase) return
+
+      const MAX_RETRIES = 3
+      let currentState: GameState | null = gameState
+      let currentVersion = 0
+
+      const { data: initial } = await supabase
+        .from(tableName)
+        .select('version')
+        .eq('code', roomCode)
+        .single()
+      if (!initial) return
+      currentVersion = initial.version as number
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (!currentState) break
+        const newState = apply(currentState, { type: 'REMOVE_PLAYER', playerId } as GameAction)
+        if (newState === currentState) break
+
+        const { data } = await supabase
+          .from(tableName)
+          .update({ state: newState, version: currentVersion + 1 })
+          .eq('code', roomCode)
+          .eq('version', currentVersion)
+          .select('version')
+
+        if (data && data.length > 0) break
+
+        if (attempt < MAX_RETRIES) {
+          const { data: fresh } = await supabase
+            .from(tableName)
+            .select('state, version')
+            .eq('code', roomCode)
+            .single()
+          if (!fresh) break
+          const parsedFresh = stateSchema.safeParse(fresh.state)
+          if (!parsedFresh.success) {
+            console.error('[mindmeld] Invalid GameState in leaveRoom retry:', parsedFresh.error)
+            break
+          }
+          currentState = parsedFresh.data
+          currentVersion = fresh.version as number
+        }
+      }
+    },
+  })
+}
