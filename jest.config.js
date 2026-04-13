@@ -21,6 +21,9 @@ const config = {
       branches: 80,
       statements: 80,
     },
+    'src/games/**/logic.ts': {
+      lines: 80,
+    },
   },
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
 }

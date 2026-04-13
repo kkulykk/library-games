@@ -5,6 +5,7 @@ import {
   moveBall,
   bounceWalls,
   checkPaddleCollision,
+  checkBrickCollisions,
   isBallLost,
   isLevelComplete,
   BRICK_ROWS,
@@ -83,6 +84,57 @@ describe('checkPaddleCollision', () => {
     // Ball is in the middle, far from paddle
     expect(result.vx).toBe(ball.vx)
     expect(result.vy).toBe(ball.vy)
+  })
+})
+
+describe('checkBrickCollisions', () => {
+  it('destroys a brick, awards points, and bounces vertically on top/bottom hit', () => {
+    const [brick] = createBricks()
+    const ball = {
+      x: brick.x + brick.width / 2,
+      y: brick.y - 6,
+      vx: 1,
+      vy: 4,
+      radius: 8,
+    }
+
+    const result = checkBrickCollisions(ball, [brick])
+
+    expect(result.points).toBe(10)
+    expect(result.bricks[0].alive).toBe(false)
+    expect(result.ball.vx).toBe(ball.vx)
+    expect(result.ball.vy).toBe(-ball.vy)
+  })
+
+  it('destroys a brick and bounces horizontally on side hit', () => {
+    const [brick] = createBricks()
+    const ball = {
+      x: brick.x - 4,
+      y: brick.y + brick.height / 2,
+      vx: 4,
+      vy: 1,
+      radius: 8,
+    }
+
+    const result = checkBrickCollisions(ball, [brick])
+
+    expect(result.points).toBe(10)
+    expect(result.bricks[0].alive).toBe(false)
+    expect(result.ball.vx).toBe(-ball.vx)
+    expect(result.ball.vy).toBe(ball.vy)
+  })
+
+  it('ignores dead bricks and does not change score/velocity', () => {
+    const [brick] = createBricks()
+    const deadBrick = { ...brick, alive: false }
+    const ball = createBall()
+
+    const result = checkBrickCollisions(ball, [deadBrick])
+
+    expect(result.points).toBe(0)
+    expect(result.bricks[0].alive).toBe(false)
+    expect(result.ball.vx).toBe(ball.vx)
+    expect(result.ball.vy).toBe(ball.vy)
   })
 })
 
