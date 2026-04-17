@@ -1,5 +1,5 @@
 import { games } from '@/data/games'
-import { GameGrid } from '@/components/GameGrid'
+import { HomeExperience } from '@/components/home/HomeExperience'
 
 export default function HomePage() {
   const liveCount = games.filter((g) => g.status === 'live').length
@@ -12,7 +12,6 @@ export default function HomePage() {
 
   return (
     <div className="bg-background min-h-screen">
-      {/* Hero */}
       <header className="from-accent/60 to-background border-b bg-gradient-to-b">
         <div className="mx-auto max-w-5xl px-4 pt-16 pb-12 text-center">
           <div className="mb-4 text-6xl">🎮</div>
@@ -20,10 +19,9 @@ export default function HomePage() {
             Library Games
           </h1>
           <p className="text-muted-foreground mx-auto mt-4 max-w-xl text-lg">
-            A collection of classic and modern games — no downloads, no accounts, just play.
+            Discover what to play next, then jump into your library instantly.
           </p>
 
-          {/* Stats row */}
           <div className="mt-8 inline-flex flex-wrap justify-center gap-3">
             <div className="bg-card flex items-center gap-2 rounded-full border px-4 py-2 text-sm shadow-sm">
               <span className="text-foreground font-bold">{liveCount}</span>
@@ -43,8 +41,8 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-12">
-        <GameGrid games={games} />
+      <main className="mx-auto max-w-5xl px-4 py-10">
+        <HomeExperience games={games} />
       </main>
 
       <footer className="mt-20 border-t">
