@@ -5,6 +5,10 @@ import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
+import {
+  ResumeSessionButton,
+  type SavedSessionSummary,
+} from '@/components/multiplayer/ResumeSessionButton'
 import { useSkribblRoom } from './useSkribblRoom'
 import {
   getCurrentDrawer,
@@ -478,7 +482,7 @@ interface EntryScreenProps {
   onCreate: (name: string) => void
   onJoin: (code: string, name: string) => void
   onRestore?: () => void
-  savedSession: { roomCode: string; playerName: string } | null
+  savedSession: SavedSessionSummary | null
   loading: boolean
   error: string | null
   initialCode?: string | null
@@ -506,15 +510,11 @@ function EntryScreen({
           <p className="text-muted-foreground text-sm">2-8 players &middot; Draw & Guess</p>
         </div>
         {savedSession && (
-          <button
-            onClick={onRestore}
-            className="border-primary/40 hover:bg-secondary w-64 rounded-xl border-2 border-dashed px-6 py-3 text-center text-sm transition-colors"
-          >
-            <div className="font-semibold">Resume session</div>
-            <div className="text-muted-foreground text-xs">
-              {savedSession.playerName} &middot; Room {savedSession.roomCode}
-            </div>
-          </button>
+          <ResumeSessionButton
+            session={savedSession}
+            onClick={() => onRestore?.()}
+            className="w-64"
+          />
         )}
         <div className="flex gap-3">
           <button
