@@ -331,7 +331,9 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function percentageToAngle(value: number) {
-  return 180 + value * 1.8
+  // Map 0..100 from left-to-right across the TOP arc of the dial.
+  // 0 -> 270° (left), 50 -> 360° (top), 100 -> 450° (right)
+  return 270 + value * 1.8
 }
 
 function polarToCartesian(cx: number, cy: number, radius: number, angle: number) {
@@ -419,14 +421,14 @@ function PsychicDial({
         </defs>
 
         <path
-          d={describeArc(centerX, centerY, radius, 180, 360)}
+          d={describeArc(centerX, centerY, radius, 270, 450)}
           fill="none"
           stroke="rgba(255,255,255,0.12)"
           strokeWidth="28"
           strokeLinecap="round"
         />
         <path
-          d={describeArc(centerX, centerY, radius, 180, 360)}
+          d={describeArc(centerX, centerY, radius, 270, 450)}
           fill="none"
           stroke="url(#mindmeld-track)"
           strokeOpacity="0.28"
