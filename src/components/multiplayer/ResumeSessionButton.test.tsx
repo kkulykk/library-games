@@ -11,18 +11,18 @@ describe('ResumeSessionButton', () => {
     expect(screen.getByText('Roman · Room AB12')).toBeInTheDocument()
   })
 
-  it('uses custom title and html separator entities', () => {
+  it('uses custom title and separator as-is', () => {
     render(
       <ResumeSessionButton
         session={{ playerName: 'Roman', roomCode: 'AB12' }}
         onClick={() => {}}
         title="Continue game"
-        separator=" &middot; "
+        separator=" | "
       />
     )
 
     expect(screen.getByText('Continue game')).toBeInTheDocument()
-    expect(screen.getByText('Roman · Room AB12')).toBeInTheDocument()
+    expect(screen.getByText('Roman | Room AB12')).toBeInTheDocument()
   })
 
   it('invokes onClick when tapped', () => {

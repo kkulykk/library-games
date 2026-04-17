@@ -15,12 +15,8 @@ interface ResumeSessionButtonProps {
   detailsClassName?: string
 }
 
-function normalizeSeparator(separator: string): string {
-  return separator.replaceAll('&middot;', '·')
-}
-
 export function formatSessionSummary(session: SavedSessionSummary, separator = ' · '): string {
-  return `${session.playerName}${normalizeSeparator(separator)}Room ${session.roomCode}`
+  return `${session.playerName}${separator}Room ${session.roomCode}`
 }
 
 export function ResumeSessionButton({
