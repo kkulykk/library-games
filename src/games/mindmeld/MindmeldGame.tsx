@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { getInviteLink, useInviteCode } from '@/hooks/useInviteCode'
+import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
+import {
+  ResumeSessionButton,
+  type SavedSessionSummary,
+} from '@/components/multiplayer/ResumeSessionButton'
 import { useMindmeldRoom } from './useMindmeldRoom'
 import {
   BULLSEYE_RADIUS,
@@ -67,7 +71,7 @@ interface EntryScreenProps {
   onCreate: (name: string) => void
   onJoin: (code: string, name: string) => void
   onRestore?: () => void
-  savedSession: { roomCode: string; playerName: string } | null
+  savedSession: SavedSessionSummary | null
   loading: boolean
   error: string | null
   initialCode?: string | null
@@ -132,15 +136,11 @@ function EntryScreen({
         </div>
 
         {savedSession && onRestore && (
-          <button
+          <ResumeSessionButton
+            session={savedSession}
             onClick={onRestore}
-            className="border-primary/40 hover:bg-secondary mx-auto w-full max-w-md rounded-2xl border-2 border-dashed px-6 py-4 text-center text-sm transition-colors"
-          >
-            <div className="font-semibold">Resume session</div>
-            <div className="text-muted-foreground text-xs">
-              {savedSession.playerName} · Room {savedSession.roomCode}
-            </div>
-          </button>
+            className="mx-auto w-full max-w-md rounded-2xl px-6 py-4"
+          />
         )}
       </div>
     )
