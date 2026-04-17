@@ -514,7 +514,6 @@ function EntryScreen({
             session={savedSession}
             onClick={() => onRestore?.()}
             className="w-64"
-            separator=" &middot; "
           />
         )}
         <div className="flex gap-3">

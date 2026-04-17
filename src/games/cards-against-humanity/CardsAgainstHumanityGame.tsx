@@ -297,9 +297,8 @@ function EntryScreen({
           <ResumeSessionButton
             session={savedSession}
             onClick={() => onRestore?.()}
-            className="border-primary/30 hover:border-primary/50 hover:bg-secondary/50 w-72 rounded-xl border-2 border-dashed px-6 py-3.5 text-center transition-all"
+            className="border-primary/30 hover:border-primary/50 hover:bg-secondary/50 w-72 py-3.5 transition-all"
             titleClassName="text-sm"
-            separator=" &middot; "
           />
         )}
 
