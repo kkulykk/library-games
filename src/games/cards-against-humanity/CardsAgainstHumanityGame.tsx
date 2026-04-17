@@ -5,6 +5,10 @@ import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
+import {
+  ResumeSessionButton,
+  type SavedSessionSummary,
+} from '@/components/multiplayer/ResumeSessionButton'
 import { useCAHRoom } from './useCAHRoom'
 import {
   getCzar,
@@ -250,7 +254,7 @@ interface EntryScreenProps {
   onCreate: (name: string) => void
   onJoin: (code: string, name: string) => void
   onRestore?: () => void
-  savedSession: { roomCode: string; playerName: string } | null
+  savedSession: SavedSessionSummary | null
   loading: boolean
   error: string | null
   initialCode?: string | null
@@ -290,15 +294,12 @@ function EntryScreen({
         </div>
 
         {savedSession && (
-          <button
-            onClick={onRestore}
-            className="border-primary/30 hover:border-primary/50 hover:bg-secondary/50 w-72 rounded-xl border-2 border-dashed px-6 py-3.5 text-center transition-all"
-          >
-            <div className="text-sm font-semibold">Resume session</div>
-            <div className="text-muted-foreground text-xs">
-              {savedSession.playerName} &middot; Room {savedSession.roomCode}
-            </div>
-          </button>
+          <ResumeSessionButton
+            session={savedSession}
+            onClick={() => onRestore?.()}
+            className="border-primary/30 hover:border-primary/50 hover:bg-secondary/50 w-72 py-3.5 transition-all"
+            titleClassName="text-sm"
+          />
         )}
 
         <div className="flex gap-4">
