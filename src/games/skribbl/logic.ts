@@ -18,6 +18,7 @@ export interface Player {
   name: string
   isHost: boolean
   score: number
+  avatar: number
 }
 
 export interface ChatMessage {
@@ -27,6 +28,7 @@ export interface ChatMessage {
   text: string
   isCorrect?: boolean
   isSystem?: boolean
+  isClose?: boolean
 }
 
 export interface DrawPoint {
@@ -43,6 +45,8 @@ export interface DrawStroke {
 
 export type GameAction =
   | { type: 'START_GAME'; playerId: string }
+  | { type: 'UPDATE_SETTINGS'; playerId: string; totalRounds?: number; turnDuration?: number }
+  | { type: 'REMOVE_PLAYER'; playerId: string; targetPlayerId: string }
   | { type: 'PICK_WORD'; playerId: string; word: string }
   | { type: 'ADD_STROKE'; playerId: string; stroke: DrawStroke }
   | { type: 'CLEAR_CANVAS'; playerId: string }
@@ -141,6 +145,29 @@ export function calculateDrawerScore(guessedCount: number, totalGuessers: number
   return Math.round(100 * (guessedCount / totalGuessers))
 }
 
+export function isCloseGuess(guess: string, answer: string): boolean {
+  const normalizedGuess = guess.trim().toLowerCase()
+  const normalizedAnswer = answer.trim().toLowerCase()
+
+  if (!normalizedGuess || normalizedGuess === normalizedAnswer) return false
+  if (normalizedGuess.length < 3) return false
+
+  if (normalizedAnswer.includes(normalizedGuess) || normalizedGuess.includes(normalizedAnswer)) {
+    return true
+  }
+
+  if (Math.abs(normalizedGuess.length - normalizedAnswer.length) > 1) return false
+
+  let diff = 0
+  const maxLength = Math.max(normalizedGuess.length, normalizedAnswer.length)
+  for (let i = 0; i < maxLength; i++) {
+    if (normalizedGuess[i] !== normalizedAnswer[i]) diff++
+    if (diff > 2) return false
+  }
+
+  return diff <= 2
+}
+
 // ─── State helpers ────────────────────────────────────────────────────────────
 
 export function createLobbyState(host: Player): GameState {
@@ -159,6 +186,7 @@ export function createLobbyState(host: Player): GameState {
     drawStartTime: null,
     turnDuration: 80,
     turnEndTime: null,
+    scoreDeltas: {},
   }
 }
 
@@ -192,9 +220,11 @@ function startPickingPhase(state: GameState): GameState {
     word: null,
     hint: '',
     strokes: [],
+    messages: [],
     guessedPlayers: [],
     drawStartTime: null,
     turnEndTime: null,
+    scoreDeltas: {},
   }
 }
 
@@ -232,6 +262,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       round: 1,
       currentDrawerIndex: 0,
       messages: [],
+      scoreDeltas: {},
     })
   }
 
@@ -244,7 +275,39 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       round: 1,
       currentDrawerIndex: 0,
       messages: [],
+      scoreDeltas: {},
     })
+  }
+
+  if (action.type === 'UPDATE_SETTINGS') {
+    if (state.phase !== 'lobby') return state
+    if (host?.id !== action.playerId) return state
+
+    const nextTotalRounds =
+      action.totalRounds && [2, 3, 5].includes(action.totalRounds) ? action.totalRounds : undefined
+    const nextTurnDuration =
+      action.turnDuration && [60, 80, 120].includes(action.turnDuration)
+        ? action.turnDuration
+        : undefined
+
+    if (nextTotalRounds === undefined && nextTurnDuration === undefined) return state
+
+    return {
+      ...state,
+      totalRounds: nextTotalRounds ?? state.totalRounds,
+      turnDuration: nextTurnDuration ?? state.turnDuration,
+    }
+  }
+
+  if (action.type === 'REMOVE_PLAYER') {
+    if (state.phase !== 'lobby') return state
+    if (host?.id !== action.playerId) return state
+    if (action.targetPlayerId === action.playerId) return state
+
+    const target = state.players.find((player) => player.id === action.targetPlayerId)
+    if (!target || target.isHost) return state
+
+    return removePlayer(state, action.targetPlayerId)
   }
 
   if (action.type === 'PICK_WORD') {
@@ -337,6 +400,11 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         players,
         guessedPlayers: newGuessedPlayers,
         messages: [...state.messages, msg],
+        scoreDeltas: {
+          ...state.scoreDeltas,
+          [action.playerId]: guessScore,
+          ...(drawer ? { [drawer.id]: drawerBonus } : {}),
+        },
       }
 
       if (allGuessed) {
@@ -356,6 +424,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       playerId: action.playerId,
       playerName: player.name,
       text: action.text.trim(),
+      isClose: isCloseGuess(guess, answer),
     }
     return { ...state, messages: [...state.messages, msg] }
   }
