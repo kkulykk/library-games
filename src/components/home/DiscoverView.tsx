@@ -67,7 +67,8 @@ interface HeroSlideProps {
 function HeroSlide({ game, active }: HeroSlideProps) {
   const hue = game.hue
   const bg = `oklch(0.22 0.06 ${hue})`
-  const tint = `oklch(0.88 0.22 ${hue})`
+  const tint = `oklch(0.58 0.2 ${hue})`
+  const tintSoft = `oklch(0.7 0.18 ${hue})`
   return (
     <div className={`hero-slide ${active ? 'is-active' : ''}`} aria-hidden={!active}>
       <div className="hero-bg" style={{ background: bg }}>
@@ -75,7 +76,7 @@ function HeroSlide({ game, active }: HeroSlideProps) {
         <div
           className="hero-gradient"
           style={{
-            background: `radial-gradient(60% 80% at 30% 40%, ${tint}22, transparent 60%)`,
+            background: `radial-gradient(60% 80% at 30% 40%, ${tintSoft}33, transparent 60%)`,
           }}
         />
       </div>
@@ -123,7 +124,7 @@ function HeroSlide({ game, active }: HeroSlideProps) {
           <Link
             href={`/games/${game.slug}`}
             className="btn btn-primary"
-            style={{ background: tint, color: '#0a0a08' }}
+            style={{ background: tintSoft, color: '#0a0a08' }}
           >
             <span className="btn-arrow">▶</span> PLAY NOW
           </Link>
@@ -174,8 +175,7 @@ export function DiscoverView({ games, onOpenLibrary }: DiscoverViewProps) {
     return picked.length > 0 ? picked : live.slice(0, 5)
   }, [games])
 
-  const [paused, setPaused] = useState(false)
-  const [i, progress, go] = useAutoplay(featured.length, HERO_INTERVAL_MS, paused)
+  const [i, progress, go] = useAutoplay(featured.length, HERO_INTERVAL_MS, false)
 
   const trending = useMemo(
     () =>
@@ -196,39 +196,11 @@ export function DiscoverView({ games, onOpenLibrary }: DiscoverViewProps) {
 
   return (
     <div className="discover">
-      <section
-        className="hero"
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-      >
+      <section className="hero">
         <div className="hero-slides">
           {featured.map((g, idx) => (
             <HeroSlide key={g.slug} game={g} active={idx === i} />
           ))}
-        </div>
-
-        <div className="hero-controls">
-          <button
-            className="ctrl-btn"
-            onClick={() => go((i - 1 + featured.length) % featured.length)}
-            aria-label="Previous"
-          >
-            ←
-          </button>
-          <button
-            className="ctrl-btn"
-            onClick={() => setPaused((p) => !p)}
-            aria-label={paused ? 'Play' : 'Pause'}
-          >
-            {paused ? '▶' : '❚❚'}
-          </button>
-          <button
-            className="ctrl-btn"
-            onClick={() => go((i + 1) % featured.length)}
-            aria-label="Next"
-          >
-            →
-          </button>
         </div>
 
         <div className="hero-ticker">
@@ -250,15 +222,6 @@ export function DiscoverView({ games, onOpenLibrary }: DiscoverViewProps) {
               </span>
             </button>
           ))}
-        </div>
-
-        <div className="hero-corners mono">
-          <span className="corner tl">LIBRARY / DISCOVER</span>
-          <span className="corner tr">EST. 2026 · v0.7</span>
-          <span className="corner bl">
-            REEL {String(i + 1).padStart(2, '0')}/{String(featured.length).padStart(2, '0')}
-          </span>
-          <span className="corner br">AUTOPLAY {paused ? 'OFF' : 'ON'}</span>
         </div>
       </section>
 

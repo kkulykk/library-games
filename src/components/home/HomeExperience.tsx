@@ -37,7 +37,6 @@ export function HomeExperience({ games }: HomeExperienceProps) {
         <div className="brand">
           <span className="brand-mark">L</span>
           <span>LIBRARY GAMES</span>
-          <span className="brand-suffix">v0.7</span>
         </div>
         <div className="tabs">
           <button
