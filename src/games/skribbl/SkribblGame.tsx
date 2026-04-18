@@ -1,162 +1,308 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { cn } from '@/lib/utils'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Copy, Eraser, Link2, PencilLine, Trash2, Undo2 } from 'lucide-react'
+import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
+import { cn } from '@/lib/utils'
+import { ArcadeAvatar } from '@/components/multiplayer/ArcadeAvatar'
+import { ArcadeShell, arcadeShellStyles } from '@/components/multiplayer/ArcadeShell'
+import { useSkribblRoom, type UseSkribblRoomReturn } from './useSkribblRoom'
 import {
-  ResumeSessionButton,
-  type SavedSessionSummary,
-} from '@/components/multiplayer/ResumeSessionButton'
-import { useSkribblRoom } from './useSkribblRoom'
-import {
-  getCurrentDrawer,
   decodeWord,
-  type DrawStroke,
+  getCurrentDrawer,
   type DrawPoint,
+  type DrawStroke,
+  type GameAction,
   type GameState,
 } from './logic'
-
-// ─── Drawing Canvas ───────────────────────────────────────────────────────────
+import styles from './SkribblGame.module.css'
 
 const COLORS = [
   '#000000',
-  '#FFFFFF',
-  '#808080',
-  '#C0C0C0',
-  '#800000',
-  '#FF0000',
-  '#FF6600',
-  '#FFCC00',
-  '#FFFF00',
-  '#00FF00',
-  '#008000',
-  '#00FFFF',
-  '#0000FF',
-  '#800080',
-  '#FF00FF',
-  '#FF69B4',
+  '#555555',
+  '#888888',
+  '#c5c5c5',
+  '#ffffff',
+  '#7a1b1b',
+  '#e53935',
+  '#fb8c00',
+  '#fdd835',
+  '#ffee58',
+  '#2e7d32',
+  '#66bb6a',
+  '#00acc1',
+  '#1e88e5',
+  '#3949ab',
+  '#8e24aa',
+  '#d81b60',
+  '#f06292',
+  '#8d6e63',
+  '#5d4037',
 ]
 
-const BRUSH_SIZES = [3, 6, 12, 24]
+const BRUSH_SIZES = [3, 6, 12, 22]
+const WORD_PICKER_SECONDS = 15
+const ROUND_END_DELAY = 5
+const AVATAR_STORAGE_KEY = 'library-games:skribbl-avatar'
 
-interface CanvasProps {
-  strokes: DrawStroke[]
-  isDrawer: boolean
-  onStrokeComplete: (stroke: DrawStroke) => void
-  onClear: () => void
-  onUndo: () => void
+function getSavedAvatar(): number {
+  if (typeof window === 'undefined') return 0
+  try {
+    const raw = Number(localStorage.getItem(AVATAR_STORAGE_KEY) ?? '0')
+    if (Number.isInteger(raw) && raw >= 0 && raw <= 7) return raw
+  } catch {}
+  return 0
 }
 
-function DrawingCanvas({ strokes, isDrawer, onStrokeComplete, onClear, onUndo }: CanvasProps) {
+function saveAvatar(index: number) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(AVATAR_STORAGE_KEY, String(index))
+  } catch {}
+}
+
+function makeCrumb(
+  gameState: GameState | null,
+  roomCode: string | null,
+  playerId: string | null,
+  inviteCode: string | null | undefined
+) {
+  if (!gameState) {
+    return (
+      <>
+        /{' '}
+        <span className={arcadeShellStyles.crumbAccent}>
+          {inviteCode === undefined ? 'Loading' : inviteCode ? 'Join a game' : 'How to play'}
+        </span>
+      </>
+    )
+  }
+
+  const drawer = getCurrentDrawer(gameState)
+  const isMyTurn = drawer?.id === playerId
+
+  if (gameState.phase === 'lobby') {
+    return (
+      <>
+        / Lobby · <span className={arcadeShellStyles.crumbAccent}>{roomCode}</span>
+      </>
+    )
+  }
+
+  if (gameState.phase === 'picking') {
+    return (
+      <>
+        / Round {gameState.round} ·{' '}
+        <span className={arcadeShellStyles.crumbAccent}>
+          {isMyTurn ? 'Your turn' : `${drawer?.name ?? 'Player'} picking`}
+        </span>
+      </>
+    )
+  }
+
+  if (gameState.phase === 'drawing') {
+    return (
+      <>
+        / Round {gameState.round} · <span className={arcadeShellStyles.crumbAccent}>Drawing</span>
+      </>
+    )
+  }
+
+  if (gameState.phase === 'round-end') {
+    return (
+      <>
+        / Round {gameState.round} · <span className={arcadeShellStyles.crumbAccent}>Reveal</span>
+      </>
+    )
+  }
+
+  return (
+    <>
+      / <span className={arcadeShellStyles.crumbAccent}>Game over</span>
+    </>
+  )
+}
+
+function TimerRing({
+  startTime,
+  duration,
+  onTimeUp,
+}: {
+  startTime: number
+  duration: number
+  onTimeUp: () => void
+}) {
+  const [remaining, setRemaining] = useState(duration)
+  const firedRef = useRef(false)
+
+  useEffect(() => {
+    firedRef.current = false
+
+    const tick = () => {
+      const left = Math.max(0, duration - (Date.now() - startTime) / 1000)
+      setRemaining(Math.ceil(left))
+      if (left <= 0 && !firedRef.current) {
+        firedRef.current = true
+        onTimeUp()
+      }
+    }
+
+    tick()
+    const interval = window.setInterval(tick, 250)
+    return () => window.clearInterval(interval)
+  }, [duration, onTimeUp, startTime])
+
+  const progress = Math.max(0, Math.min(1, remaining / duration))
+  const circumference = 2 * Math.PI * 18
+  const dashOffset = circumference * (1 - progress)
+  const numberClassName = cn(
+    styles.timerNumber,
+    remaining <= 10 && styles.timerCrit,
+    remaining > 10 && remaining <= 25 && styles.timerWarn
+  )
+  const strokeColor =
+    remaining <= 10
+      ? 'var(--arcade-danger)'
+      : remaining <= 25
+        ? 'var(--arcade-amber)'
+        : 'var(--arcade-accent)'
+
+  return (
+    <div className={styles.timer}>
+      <svg viewBox="0 0 44 44" className={styles.timerRing}>
+        <circle cx="22" cy="22" r="18" fill="none" stroke="var(--arcade-line)" strokeWidth="3" />
+        <circle
+          cx="22"
+          cy="22"
+          r="18"
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth="3"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          transform="rotate(-90 22 22)"
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 250ms linear' }}
+        />
+      </svg>
+      <span className={numberClassName}>{remaining}</span>
+      <span className={arcadeShellStyles.mono}>s</span>
+    </div>
+  )
+}
+
+function DrawingCanvas({
+  strokes,
+  isDrawer,
+  color,
+  size,
+  tool,
+  onStrokeComplete,
+}: {
+  strokes: DrawStroke[]
+  isDrawer: boolean
+  color: string
+  size: number
+  tool: 'pen' | 'eraser'
+  onStrokeComplete: (stroke: DrawStroke) => void
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [color, setColor] = useState('#000000')
-  const [brushSize, setBrushSize] = useState(6)
-  const [tool, setTool] = useState<'pen' | 'eraser'>('pen')
-  const [isDrawing, setIsDrawing] = useState(false)
+  const drawingRef = useRef(false)
   const currentStrokeRef = useRef<DrawPoint[]>([])
 
-  const drawAll = useCallback(
-    (ctx: CanvasRenderingContext2D, allStrokes: DrawStroke[], currentPoints?: DrawPoint[]) => {
-      ctx.fillStyle = '#FFFFFF'
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  const redraw = useCallback(
+    (preview?: DrawPoint[]) => {
+      const canvas = canvasRef.current
+      if (!canvas) return
 
-      const toDraw = [...allStrokes]
-      if (currentPoints && currentPoints.length > 0) {
-        toDraw.push({ points: currentPoints })
-      }
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
 
-      for (const stroke of toDraw) {
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      const allStrokes = preview && preview.length > 0 ? [...strokes, { points: preview }] : strokes
+
+      for (const stroke of allStrokes) {
         if (stroke.points.length === 0) continue
+
         ctx.beginPath()
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
 
         const first = stroke.points[0]
-        ctx.strokeStyle = first.tool === 'eraser' ? '#FFFFFF' : first.color
+        ctx.strokeStyle = first.tool === 'eraser' ? '#ffffff' : first.color
         ctx.lineWidth = first.size
-
         ctx.moveTo(first.x, first.y)
-        for (let i = 1; i < stroke.points.length; i++) {
-          ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
+
+        for (let index = 1; index < stroke.points.length; index += 1) {
+          ctx.lineTo(stroke.points[index].x, stroke.points[index].y)
         }
+
         if (stroke.points.length === 1) {
           ctx.lineTo(first.x + 0.1, first.y + 0.1)
         }
+
         ctx.stroke()
       }
     },
-    []
+    [strokes]
   )
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    drawAll(ctx, strokes)
-  }, [strokes, drawAll])
+    redraw()
+  }, [redraw])
 
-  function getPos(e: React.MouseEvent | React.TouchEvent): { x: number; y: number } | null {
+  function getPosition(
+    event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+  ) {
     const canvas = canvasRef.current
     if (!canvas) return null
+
     const rect = canvas.getBoundingClientRect()
     const scaleX = canvas.width / rect.width
     const scaleY = canvas.height / rect.height
-    if ('touches' in e) {
-      const touch = e.touches[0] || e.changedTouches[0]
-      return {
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top) * scaleY,
-      }
-    }
+    const point = 'touches' in event ? event.touches[0] || event.changedTouches[0] : event
+
     return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
+      x: (point.clientX - rect.left) * scaleX,
+      y: (point.clientY - rect.top) * scaleY,
     }
   }
 
-  function handleStart(e: React.MouseEvent | React.TouchEvent) {
+  function startStroke(
+    event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+  ) {
     if (!isDrawer) return
-    e.preventDefault()
-    const pos = getPos(e)
-    if (!pos) return
-    setIsDrawing(true)
-    const point: DrawPoint = {
-      x: pos.x,
-      y: pos.y,
-      color: tool === 'eraser' ? '#FFFFFF' : color,
-      size: brushSize,
-      tool,
-    }
-    currentStrokeRef.current = [point]
+    event.preventDefault()
 
-    const ctx = canvasRef.current?.getContext('2d')
-    if (ctx) drawAll(ctx, strokes, currentStrokeRef.current)
+    const position = getPosition(event)
+    if (!position) return
+
+    drawingRef.current = true
+    currentStrokeRef.current = [{ ...position, color, size, tool }]
+    redraw(currentStrokeRef.current)
   }
 
-  function handleMove(e: React.MouseEvent | React.TouchEvent) {
-    if (!isDrawing || !isDrawer) return
-    e.preventDefault()
-    const pos = getPos(e)
-    if (!pos) return
-    const point: DrawPoint = {
-      x: pos.x,
-      y: pos.y,
-      color: tool === 'eraser' ? '#FFFFFF' : color,
-      size: brushSize,
-      tool,
-    }
-    currentStrokeRef.current.push(point)
+  function moveStroke(
+    event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+  ) {
+    if (!isDrawer || !drawingRef.current) return
+    event.preventDefault()
 
-    const ctx = canvasRef.current?.getContext('2d')
-    if (ctx) drawAll(ctx, strokes, currentStrokeRef.current)
+    const position = getPosition(event)
+    if (!position) return
+
+    currentStrokeRef.current.push({ ...position, color, size, tool })
+    redraw(currentStrokeRef.current)
   }
 
-  function handleEnd() {
-    if (!isDrawing || !isDrawer) return
-    setIsDrawing(false)
+  function endStroke() {
+    if (!isDrawer || !drawingRef.current) return
+
+    drawingRef.current = false
     if (currentStrokeRef.current.length > 0) {
       onStrokeComplete({ points: currentStrokeRef.current })
       currentStrokeRef.current = []
@@ -164,186 +310,24 @@ function DrawingCanvas({ strokes, isDrawer, onStrokeComplete, onClear, onUndo }:
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="border-border overflow-hidden rounded-xl border-2 bg-white shadow-inner">
-        <canvas
-          ref={canvasRef}
-          width={600}
-          height={400}
-          className={cn(
-            'h-auto w-full touch-none',
-            isDrawer ? 'cursor-crosshair' : 'cursor-default'
-          )}
-          onMouseDown={handleStart}
-          onMouseMove={handleMove}
-          onMouseUp={handleEnd}
-          onMouseLeave={handleEnd}
-          onTouchStart={handleStart}
-          onTouchMove={handleMove}
-          onTouchEnd={handleEnd}
-        />
-      </div>
-
-      {isDrawer && (
-        <div className="bg-secondary/60 flex flex-wrap items-center justify-center gap-2 rounded-xl p-2">
-          {/* Colors */}
-          <div className="flex flex-wrap gap-1">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                onClick={() => {
-                  setColor(c)
-                  setTool('pen')
-                }}
-                className={cn(
-                  'h-6 w-6 rounded-full border-2 transition-transform hover:scale-110',
-                  color === c && tool === 'pen'
-                    ? 'border-foreground scale-110'
-                    : 'border-transparent'
-                )}
-                style={{ backgroundColor: c }}
-                title={c}
-              />
-            ))}
-          </div>
-
-          <div className="bg-border mx-1 h-6 w-px" />
-
-          {/* Brush sizes */}
-          <div className="flex items-center gap-1">
-            {BRUSH_SIZES.map((s) => (
-              <button
-                key={s}
-                onClick={() => setBrushSize(s)}
-                className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
-                  brushSize === s ? 'bg-foreground/20' : 'hover:bg-foreground/10'
-                )}
-                title={`Size ${s}`}
-              >
-                <div
-                  className="bg-foreground rounded-full"
-                  style={{ width: Math.min(s, 20), height: Math.min(s, 20) }}
-                />
-              </button>
-            ))}
-          </div>
-
-          <div className="bg-border mx-1 h-6 w-px" />
-
-          {/* Tools */}
-          <button
-            onClick={() => setTool(tool === 'eraser' ? 'pen' : 'eraser')}
-            className={cn(
-              'rounded-lg px-2 py-1 text-xs font-medium transition-colors',
-              tool === 'eraser' ? 'bg-foreground/20 text-foreground' : 'hover:bg-foreground/10'
-            )}
-          >
-            {tool === 'eraser' ? 'Eraser' : 'Eraser'}
-          </button>
-          <button
-            onClick={onUndo}
-            className="hover:bg-foreground/10 rounded-lg px-2 py-1 text-xs font-medium"
-          >
-            Undo
-          </button>
-          <button
-            onClick={onClear}
-            className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-500/10"
-          >
-            Clear
-          </button>
-        </div>
-      )}
+    <div className={cn(styles.canvasSurface, !isDrawer && styles.canvasReadOnly)}>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={560}
+        onMouseDown={startStroke}
+        onMouseMove={moveStroke}
+        onMouseUp={endStroke}
+        onMouseLeave={endStroke}
+        onTouchStart={startStroke}
+        onTouchMove={moveStroke}
+        onTouchEnd={endStroke}
+      />
+      <span className={cn(styles.canvasWatermark, arcadeShellStyles.mono)}>
+        Library Games · Skribbl
+      </span>
     </div>
   )
-}
-
-// ─── Chat / Guess Panel ───────────────────────────────────────────────────────
-
-interface ChatPanelProps {
-  messages: GameState['messages']
-  isDrawer: boolean
-  hasGuessed: boolean
-  onGuess: (text: string) => void
-}
-
-function ChatPanel({ messages, isDrawer, hasGuessed, onGuess }: ChatPanelProps) {
-  const [input, setInput] = useState('')
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages.length])
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!input.trim()) return
-    onGuess(input)
-    setInput('')
-  }
-
-  const canGuess = !isDrawer && !hasGuessed
-
-  return (
-    <div className="bg-background flex max-h-[400px] flex-col rounded-xl border">
-      <div className="text-muted-foreground border-b px-3 py-2 text-xs font-semibold">Chat</div>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-2">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={cn(
-              'mb-1 rounded-lg px-2 py-1 text-xs',
-              msg.isCorrect &&
-                'bg-emerald-100 font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-              msg.isSystem && !msg.isCorrect && 'text-muted-foreground italic'
-            )}
-          >
-            {!msg.isSystem && <span className="mr-1 font-semibold">{msg.playerName}:</span>}
-            {msg.text}
-          </div>
-        ))}
-        {messages.length === 0 && (
-          <p className="text-muted-foreground py-4 text-center text-xs">
-            {isDrawer ? 'Players will guess here' : 'Type your guesses below'}
-          </p>
-        )}
-      </div>
-      <form onSubmit={handleSubmit} className="border-t p-2">
-        <div className="flex gap-1">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              isDrawer ? "You're drawing!" : hasGuessed ? 'Already guessed!' : 'Type your guess...'
-            }
-            disabled={!canGuess}
-            maxLength={50}
-            className="bg-background focus:ring-primary/40 flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none focus:ring-2 disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={!canGuess || !input.trim()}
-            className="bg-primary text-primary-foreground rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
-          >
-            Send
-          </button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
-// ─── Scoreboard ───────────────────────────────────────────────────────────────
-
-interface ScoreboardProps {
-  players: GameState['players']
-  currentDrawerId: string | null
-  guessedPlayers: string[]
-  playerId: string
-  onlinePlayerIds?: string[]
 }
 
 function Scoreboard({
@@ -352,782 +336,1272 @@ function Scoreboard({
   guessedPlayers,
   playerId,
   onlinePlayerIds,
-}: ScoreboardProps) {
-  const sorted = [...players].sort((a, b) => b.score - a.score)
+  scoreDeltas,
+}: {
+  players: GameState['players']
+  currentDrawerId: string | null
+  guessedPlayers: string[]
+  playerId: string
+  onlinePlayerIds: string[]
+  scoreDeltas: GameState['scoreDeltas']
+}) {
+  const sortedPlayers = [...players].sort((left, right) => right.score - left.score)
+
   return (
-    <div className="bg-background rounded-xl border">
-      <div className="text-muted-foreground border-b px-3 py-2 text-xs font-semibold">
-        Scoreboard
+    <aside className={styles.scoreboard}>
+      <div className={cn(styles.scoreHead, arcadeShellStyles.mono)}>
+        <span>Scoreboard</span>
+        <span>{players.length} players</span>
       </div>
-      <div className="p-2">
-        {sorted.map((p, i) => {
-          const isOnline = !onlinePlayerIds || onlinePlayerIds.includes(p.id)
+      <div className={styles.scoreRows}>
+        {sortedPlayers.map((player, index) => {
+          const isDrawer = player.id === currentDrawerId
+          const hasGuessed = guessedPlayers.includes(player.id)
+          const isYou = player.id === playerId
+          const isOnline = onlinePlayerIds.includes(player.id)
+          const delta = scoreDeltas[player.id]
+
           return (
             <div
-              key={p.id}
+              key={player.id}
               className={cn(
-                'flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs',
-                p.id === playerId && 'bg-primary/10'
+                styles.scoreRow,
+                isYou && styles.scoreRowYou,
+                isDrawer && styles.scoreRowDrawer,
+                hasGuessed && styles.scoreRowGuessed
               )}
             >
-              <span className="text-muted-foreground w-4 text-center font-bold">{i + 1}</span>
-              <span
-                className={cn(
-                  'h-2 w-2 rounded-full',
-                  p.id === currentDrawerId
-                    ? 'bg-amber-400'
-                    : guessedPlayers.includes(p.id)
-                      ? 'bg-emerald-400'
-                      : isOnline
-                        ? 'bg-green-400'
-                        : 'bg-gray-300 opacity-50'
-                )}
-                title={
-                  p.id === currentDrawerId
-                    ? 'Drawing'
-                    : guessedPlayers.includes(p.id)
-                      ? 'Guessed'
-                      : isOnline
-                        ? 'Online'
-                        : 'Offline'
-                }
-              />
-              <span className={cn('flex-1 truncate font-medium', !isOnline && 'opacity-60')}>
-                {p.name}
-                {p.id === playerId && <span className="text-muted-foreground ml-1">(you)</span>}
-              </span>
-              {p.id === currentDrawerId && (
-                <span className="text-[10px] text-amber-600 dark:text-amber-400">drawing</span>
+              <span className={cn(styles.scoreRank, arcadeShellStyles.mono)}>{index + 1}</span>
+              <div className={styles.playerAvatar}>
+                <ArcadeAvatar index={player.avatar} size={24} />
+              </div>
+              <div className={styles.scoreName}>
+                <span>{player.name}</span>
+                {player.isHost && <span className={styles.scoreBadge}>host</span>}
+                {isDrawer && <span className={styles.scoreBadge}>draw</span>}
+                {hasGuessed && !isDrawer && <span className={styles.scoreBadge}>guessed</span>}
+                {!isOnline && <span className={styles.scoreBadge}>away</span>}
+              </div>
+              <span className={styles.scoreValue}>{player.score}</span>
+              {typeof delta === 'number' && delta > 0 && (
+                <span className={styles.scoreDelta}>+{delta}</span>
               )}
-              <span className="font-bold tabular-nums">{p.score}</span>
             </div>
           )
         })}
       </div>
-    </div>
+    </aside>
   )
 }
 
-// ─── Timer ────────────────────────────────────────────────────────────────────
-
-interface TimerProps {
-  startTime: number
-  duration: number
-  onTimeUp: () => void
-}
-
-function Timer({ startTime, duration, onTimeUp }: TimerProps) {
-  const [remaining, setRemaining] = useState(duration)
-  const calledRef = useRef(false)
+function ChatPanel({
+  messages,
+  isDrawer,
+  hasGuessed,
+  onGuess,
+}: {
+  messages: GameState['messages']
+  isDrawer: boolean
+  hasGuessed: boolean
+  onGuess: (text: string) => void
+}) {
+  const [input, setInput] = useState('')
+  const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    calledRef.current = false
-    const interval = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000
-      const left = Math.max(0, duration - elapsed)
-      setRemaining(Math.ceil(left))
-      if (left <= 0 && !calledRef.current) {
-        calledRef.current = true
-        onTimeUp()
-      }
-    }, 250)
-    return () => clearInterval(interval)
-  }, [startTime, duration, onTimeUp])
+    if (!logRef.current) return
+    logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [messages.length])
 
-  const pct = (remaining / duration) * 100
+  const canGuess = !isDrawer && !hasGuessed
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!canGuess || !input.trim()) return
+    onGuess(input.trim())
+    setInput('')
+  }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="bg-secondary h-2 flex-1 overflow-hidden rounded-full">
-        <div
-          className={cn(
-            'h-full rounded-full transition-all duration-300',
-            pct > 50 ? 'bg-emerald-500' : pct > 20 ? 'bg-amber-500' : 'bg-red-500'
-          )}
-          style={{ width: `${pct}%` }}
-        />
+    <section className={styles.chat}>
+      <div className={cn(styles.scoreHead, arcadeShellStyles.mono)}>
+        <span>Guesses</span>
+        <span>live</span>
       </div>
-      <span
-        className={cn(
-          'min-w-[2rem] text-center text-sm font-bold tabular-nums',
-          remaining <= 10 && 'text-red-500'
+
+      <div ref={logRef} className={styles.chatLog}>
+        {messages.length === 0 && (
+          <div className={cn(styles.message, styles.messageSystem)}>
+            {isDrawer ? 'Players will guess here' : 'Type your guess below'}
+          </div>
         )}
-      >
-        {remaining}s
-      </span>
-    </div>
+
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={cn(
+              styles.message,
+              message.isSystem && styles.messageSystem,
+              message.isCorrect && styles.messageCorrect,
+              message.isClose && !message.isSystem && styles.messageClose
+            )}
+          >
+            {!message.isSystem && <span className={styles.messageName}>{message.playerName}:</span>}
+            <span>{message.text}</span>
+          </div>
+        ))}
+      </div>
+
+      <form className={styles.chatForm} onSubmit={handleSubmit}>
+        <input
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          disabled={!canGuess}
+          maxLength={50}
+          placeholder={
+            isDrawer ? "You're drawing!" : hasGuessed ? 'Already guessed ✓' : 'Your guess...'
+          }
+          className={styles.chatInput}
+        />
+        <button type="submit" disabled={!canGuess || !input.trim()} className={styles.chatSend}>
+          Send
+        </button>
+      </form>
+    </section>
   )
 }
-
-// ─── Screens ──────────────────────────────────────────────────────────────────
 
 function SetupRequired() {
   return (
-    <div className="bg-secondary/40 mx-auto max-w-md rounded-2xl border p-6 text-center">
-      <div className="mb-3 text-4xl">🔧</div>
-      <h2 className="mb-2 text-lg font-bold">Supabase setup required</h2>
-      <p className="text-muted-foreground mb-4 text-sm">
-        Online multiplayer requires a Supabase project. Create a free project at{' '}
-        <span className="text-foreground font-medium">supabase.com</span>, run the schema from{' '}
-        <code className="bg-secondary rounded px-1 text-xs">supabase-schema.sql</code>, then set:
+    <div className={styles.setup}>
+      <div className="mb-4 text-5xl">🔧</div>
+      <h2 className="text-3xl font-extrabold tracking-tight">Supabase setup required</h2>
+      <p className="mt-3">
+        Online multiplayer rooms still run through Supabase. The redesign is ready, but the game
+        needs the same backend wiring as before.
       </p>
-      <pre className="bg-secondary rounded-lg p-3 text-left text-xs">
-        {`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
-      </pre>
+      <pre>{`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}</pre>
     </div>
   )
 }
 
-interface EntryScreenProps {
-  onCreate: (name: string) => void
-  onJoin: (code: string, name: string) => void
-  onRestore?: () => void
-  savedSession: SavedSessionSummary | null
-  loading: boolean
-  error: string | null
-  initialCode?: string | null
-}
-
-function EntryScreen({
-  onCreate,
-  onJoin,
-  onRestore,
-  savedSession,
-  loading,
-  error,
-  initialCode,
-}: EntryScreenProps) {
-  const [name, setName] = useState(getSavedPlayerName)
-  const [joinCode, setJoinCode] = useState(initialCode ?? '')
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
-
-  if (mode === 'choose') {
-    return (
-      <div className="flex flex-col items-center gap-6">
-        <div className="text-center">
-          <div className="mb-3 text-5xl">🎨</div>
-          <h2 className="text-xl font-black tracking-tight">Skribbl Online</h2>
-          <p className="text-muted-foreground text-sm">2-8 players &middot; Draw & Guess</p>
-        </div>
-        {savedSession && (
-          <ResumeSessionButton
-            session={savedSession}
-            onClick={() => onRestore?.()}
-            className="w-64"
-          />
-        )}
-        <div className="flex gap-3">
-          <button
-            onClick={() => setMode('create')}
-            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
-          >
-            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
-              <span className="text-2xl">+</span>
-            </div>
-            <span>Create Room</span>
-            <span className="text-muted-foreground text-xs font-normal">Host a game</span>
-          </button>
-          <button
-            onClick={() => setMode('join')}
-            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
-          >
-            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
-              <span className="text-2xl">&rarr;</span>
-            </div>
-            <span>Join Room</span>
-            <span className="text-muted-foreground text-xs font-normal">Enter a code</span>
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const isCreate = mode === 'create'
+function InviteResolvingScreen() {
   return (
-    <div className="flex w-72 flex-col gap-4">
-      <button
-        onClick={() => setMode('choose')}
-        className="text-muted-foreground hover:text-foreground self-start text-sm"
-      >
-        &larr; Back
-      </button>
-      <h2 className="text-lg font-bold">{isCreate ? 'Create Room' : 'Join Room'}</h2>
-      {error && (
-        <p className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm">{error}</p>
-      )}
-      <label className="flex flex-col gap-1">
-        <span className="text-muted-foreground text-xs font-medium">Your name</span>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Enter your name"
-          maxLength={16}
-          className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"
-        />
-      </label>
-      {!isCreate && (
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-xs font-medium">Room code</span>
-          <input
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            placeholder="e.g. AB12"
-            maxLength={4}
-            className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm tracking-widest uppercase outline-none focus:ring-2"
-          />
-        </label>
-      )}
-      <button
-        disabled={loading || !name.trim() || (!isCreate && joinCode.length < 4)}
-        onClick={() => {
-          savePlayerName(name.trim())
-          if (isCreate) onCreate(name.trim())
-          else onJoin(joinCode, name.trim())
-        }}
-        className="bg-primary text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
-      >
-        {loading ? 'Connecting\u2026' : isCreate ? 'Create Room' : 'Join Room'}
-      </button>
-    </div>
-  )
-}
-
-interface LobbyScreenProps {
-  gameState: GameState
-  playerId: string
-  roomCode: string
-  onlinePlayerIds: string[]
-  onStart: () => void
-  onLeave: () => void
-}
-
-function LobbyScreen({
-  gameState,
-  playerId,
-  roomCode,
-  onlinePlayerIds,
-  onStart,
-  onLeave,
-}: LobbyScreenProps) {
-  const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
-  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
-
-  function copyCode() {
-    navigator.clipboard.writeText(roomCode).then(
-      () => {
-        setCopied('code')
-        setTimeout(() => setCopied(null), 2000)
-      },
-      () => {}
-    )
-  }
-
-  function copyInviteLink() {
-    navigator.clipboard.writeText(getInviteLink('skribbl', roomCode)).then(
-      () => {
-        setCopied('link')
-        setTimeout(() => setCopied(null), 2000)
-      },
-      () => {}
-    )
-  }
-
-  return (
-    <div className="flex w-80 flex-col gap-5">
-      <div className="bg-secondary rounded-2xl p-5 text-center">
-        <p className="text-muted-foreground mb-1 text-xs font-medium">
-          Room code &mdash; share with friends
-        </p>
-        <p className="mb-3 text-4xl font-black tracking-widest">{roomCode}</p>
-        <div className="flex justify-center gap-2">
-          <button
-            onClick={copyCode}
-            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
-          >
-            {copied === 'code' ? 'Copied!' : 'Copy code'}
-          </button>
-          <button
-            onClick={copyInviteLink}
-            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
-          >
-            {copied === 'link' ? 'Copied!' : 'Copy invite link'}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <p className="text-muted-foreground text-xs font-medium">
-          Players ({gameState.players.length}/8)
-        </p>
-        {gameState.players.map((p, i) => {
-          const isOnline = onlinePlayerIds.includes(p.id)
-          return (
-            <div
-              key={p.id}
-              className="bg-secondary flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-              style={{ animationDelay: `${i * 50}ms` }}
-            >
-              <span
-                className={cn(
-                  'h-2 w-2 rounded-full',
-                  isOnline ? 'bg-green-400' : 'bg-gray-400 opacity-50'
-                )}
-                title={isOnline ? 'Online' : 'Offline'}
-              />
-              <span className={cn('font-medium', !isOnline && 'opacity-60')}>{p.name}</span>
-              {p.isHost && <span className="text-muted-foreground ml-auto text-xs">host</span>}
-              {p.id === playerId && !p.isHost && (
-                <span className="text-muted-foreground ml-auto text-xs">you</span>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {isHost && gameState.players.length < 2 && (
-        <p className="text-muted-foreground text-center text-xs">
-          Waiting for at least one more player&hellip;
-        </p>
-      )}
-
-      <div className="flex gap-3">
-        {isHost && (
-          <button
-            disabled={gameState.players.length < 2}
-            onClick={onStart}
-            className="bg-primary text-primary-foreground flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
-          >
-            Start Game
-          </button>
-        )}
-        {!isHost && (
-          <p className="text-muted-foreground flex-1 text-center text-sm">
-            Waiting for host to start&hellip;
-          </p>
-        )}
-        <button
-          onClick={onLeave}
-          className="hover:bg-secondary rounded-lg border px-4 py-2.5 text-sm font-semibold"
-        >
-          Leave
-        </button>
+    <div className={styles.entryShell}>
+      <div className={styles.entryHead}>
+        <h2>Loading room…</h2>
+        <p>Checking your invite link and preparing the right entry screen.</p>
       </div>
     </div>
   )
 }
 
-// ─── Word Picker ──────────────────────────────────────────────────────────────
-
-interface WordPickerProps {
-  words: string[]
-  onPick: (word: string) => void
-}
-
-function WordPicker({ words, onPick }: WordPickerProps) {
+function HowToScreen({ onStart }: { onStart: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-4">
-      <div className="text-center">
-        <h2 className="text-lg font-bold">Choose a word to draw</h2>
-        <p className="text-muted-foreground text-sm">Pick one of the three options</p>
-      </div>
-      <div className="flex gap-3">
-        {words.map((word) => (
-          <button
-            key={word}
-            onClick={() => onPick(word)}
-            className="bg-secondary hover:bg-primary hover:text-primary-foreground rounded-xl px-6 py-4 text-sm font-bold transition-all hover:shadow-lg active:scale-95"
-          >
-            {decodeWord(word)}
+    <div className={styles.hero}>
+      <div className={styles.heroLeft}>
+        <span className={cn(styles.tag, arcadeShellStyles.mono)}>Multiplayer · 2-8 players</span>
+        <h1 className={styles.heroTitle}>
+          Draw it.
+          <br />
+          Guess it.
+          <br />
+          <span className={styles.heroTitleAccent}>Lose it.</span>
+        </h1>
+        <p className={styles.heroCopy}>
+          One player sketches a word against the clock while everyone else races to guess it in
+          chat. Faster guesses, more points. Three rounds, one winner.
+        </p>
+        <div className={styles.heroActions}>
+          <button type="button" onClick={onStart} className={arcadeShellStyles.button}>
+            Play now →
           </button>
+          <span className={cn(styles.heroMeta, arcadeShellStyles.mono)}>
+            80s · 3 rounds · avg game ~8 min
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.steps}>
+        {[
+          {
+            number: '01 · Join',
+            title: 'Grab a room',
+            copy: 'Host a private room or drop into an invite code from a friend.',
+            icon: (
+              <svg
+                viewBox="0 0 32 32"
+                width="24"
+                height="24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect x="4" y="8" width="24" height="18" rx="1" />
+                <path d="M 10 4 L 10 12 M 22 4 L 22 12" />
+              </svg>
+            ),
+          },
+          {
+            number: '02 · Draw',
+            title: 'Pick & sketch',
+            copy: 'Choose from three words. You get 80 seconds. No letters, no numbers.',
+            accent: true,
+            icon: (
+              <svg
+                viewBox="0 0 32 32"
+                width="24"
+                height="24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M 4 26 L 10 24 L 24 10 L 22 8 L 8 22 Z" />
+                <path d="M 18 12 L 20 14" />
+              </svg>
+            ),
+          },
+          {
+            number: '03 · Guess',
+            title: 'Type in chat',
+            copy: 'Early guesses score more. Hints reveal as the clock drops.',
+            icon: (
+              <svg
+                viewBox="0 0 32 32"
+                width="24"
+                height="24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M 6 10 L 26 10 L 24 22 L 12 22 L 6 26 Z" />
+              </svg>
+            ),
+          },
+          {
+            number: '04 · Win',
+            title: 'Rack up points',
+            copy: 'After 3 rounds, top scorer takes the crown. Drawers earn on every guess too.',
+            icon: (
+              <svg
+                viewBox="0 0 32 32"
+                width="24"
+                height="24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M 10 6 L 22 6 L 22 14 Q 22 20 16 20 Q 10 20 10 14 Z" />
+                <path d="M 13 22 L 19 22 L 20 26 L 12 26 Z" />
+                <path d="M 10 8 L 6 8 L 6 12 Q 6 14 10 14 M 22 8 L 26 8 L 26 12 Q 26 14 22 14" />
+              </svg>
+            ),
+          },
+        ].map((step) => (
+          <article key={step.number} className={cn(styles.step, step.accent && styles.stepAccent)}>
+            <span className={cn(styles.stepNumber, arcadeShellStyles.mono)}>{step.number}</span>
+            <div className={styles.stepIcon}>{step.icon}</div>
+            <div className={styles.stepTitle}>{step.title}</div>
+            <div className={styles.stepDescription}>{step.copy}</div>
+          </article>
         ))}
       </div>
     </div>
   )
 }
 
-// ─── Round End Screen ─────────────────────────────────────────────────────────
-
-const ROUND_END_DELAY = 5
-
-interface RoundEndProps {
-  gameState: GameState
-  playerId: string
-  onNext: () => void
-  onLeave: () => void
-}
-
-function RoundEndScreen({ gameState, playerId, onNext, onLeave }: RoundEndProps) {
-  const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
-  const drawer = getCurrentDrawer(gameState)
-  const [countdown, setCountdown] = useState(ROUND_END_DELAY)
-  const advancedRef = useRef(false)
+function EntryScreen({
+  error,
+  initialCode,
+  loading,
+  onBackToHowTo,
+  onCreate,
+  onJoin,
+  onRestore,
+  savedSession,
+}: {
+  error: string | null
+  initialCode: string | null
+  loading: boolean
+  onBackToHowTo?: () => void
+  onCreate: (name: string, avatar: number) => void
+  onJoin: (code: string, name: string, avatar: number) => void
+  onRestore: () => void
+  savedSession: UseSkribblRoomReturn['savedSession']
+}) {
+  const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
+  const [name, setName] = useState(getSavedPlayerName)
+  const [avatar, setAvatar] = useState(getSavedAvatar)
+  const [code, setCode] = useState(initialCode ?? '')
 
   useEffect(() => {
-    advancedRef.current = false
-    setCountdown(ROUND_END_DELAY)
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        const next = prev - 1
-        if (next <= 0 && isHost && !advancedRef.current) {
-          advancedRef.current = true
-          onNext()
-        }
-        return Math.max(0, next)
-      })
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [isHost, onNext])
+    if (!initialCode) return
+    setMode('join')
+    setCode(initialCode)
+  }, [initialCode])
 
-  const allGuessed =
-    gameState.guessedPlayers.length >= gameState.players.length - 1 && gameState.players.length > 1
+  const canSubmit = name.trim().length >= 2 && (mode === 'create' || code.trim().length >= 4)
+
+  function submit() {
+    if (!canSubmit) return
+
+    const trimmedName = name.trim()
+    savePlayerName(trimmedName)
+    saveAvatar(avatar)
+
+    if (mode === 'create') {
+      onCreate(trimmedName, avatar)
+      return
+    }
+
+    onJoin(code.trim().toUpperCase(), trimmedName, avatar)
+  }
+
+  if (mode === 'choose') {
+    return (
+      <div className={styles.entryShell}>
+        <div className={styles.entryHead}>
+          <h2>Ready to play?</h2>
+          <p>Host a new room or jump into a friend&apos;s game with a code.</p>
+        </div>
+
+        {savedSession && (
+          <div className={styles.resumeCard}>
+            <div>
+              <div className={styles.resumeTitle}>Resume your last room</div>
+              <div className={styles.resumeCopy}>
+                Room {savedSession.roomCode} as {savedSession.playerName}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onRestore}
+              className={cn(arcadeShellStyles.button, arcadeShellStyles.buttonSmall)}
+            >
+              Resume →
+            </button>
+          </div>
+        )}
+
+        <div className={styles.entryChoiceGrid}>
+          <button
+            type="button"
+            className={cn(styles.entryCard, styles.entryCardAccent)}
+            onClick={() => setMode('create')}
+          >
+            <div className={styles.entryCardTitle}>Create Room</div>
+            <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
+              Host a private game
+            </div>
+          </button>
+
+          <button type="button" className={styles.entryCard} onClick={() => setMode('join')}>
+            <div className={styles.entryCardTitle}>Join Room</div>
+            <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
+              Enter a 4-char code
+            </div>
+          </button>
+        </div>
+
+        {onBackToHowTo && (
+          <div className={styles.entryActions}>
+            <button
+              type="button"
+              className={cn(
+                arcadeShellStyles.button,
+                arcadeShellStyles.buttonGhost,
+                arcadeShellStyles.buttonSmall
+              )}
+              onClick={onBackToHowTo}
+            >
+              ← Back to how it works
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <div className="flex flex-col items-center gap-5">
-      <div className="text-center">
-        <h2 className="text-xl font-bold">
-          {allGuessed ? 'Everyone guessed it!' : 'Time\u2019s up!'}
-        </h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          The word was:{' '}
-          <span className="text-foreground font-bold">{decodeWord(gameState.word ?? '')}</span>
-        </p>
-        <p className="text-muted-foreground text-xs">
-          {drawer?.name} was drawing &middot; Round {gameState.round}/{gameState.totalRounds}
-        </p>
+    <div className={styles.entryShell}>
+      <div className={styles.entryHead}>
+        <h2>{mode === 'create' ? 'Create a room' : 'Join a room'}</h2>
+        <p>{mode === 'create' ? "You'll be the host." : 'Ask the host for the room code.'}</p>
       </div>
 
-      <Scoreboard
-        players={gameState.players}
-        currentDrawerId={null}
-        guessedPlayers={[]}
-        playerId={playerId}
-      />
+      <div className={styles.entryForm}>
+        {error && <div className={styles.error}>{error}</div>}
 
-      <div className="flex flex-col items-center gap-2">
-        <div className="flex gap-3">
-          {isHost ? (
+        <label className={styles.field}>
+          <span className={cn(styles.label, arcadeShellStyles.mono)}>Your name</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            maxLength={16}
+            placeholder="e.g. Marble"
+            className={arcadeShellStyles.input}
+          />
+        </label>
+
+        <div className={styles.field}>
+          <span className={cn(styles.label, arcadeShellStyles.mono)}>Pick an avatar</span>
+          <div className={styles.avatarGrid}>
+            {Array.from({ length: 8 }, (_, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => setAvatar(index)}
+                className={cn(styles.avatarButton, avatar === index && styles.avatarButtonActive)}
+              >
+                <ArcadeAvatar index={index} size={42} />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {mode === 'join' && (
+          <label className={styles.field}>
+            <span className={cn(styles.label, arcadeShellStyles.mono)}>Room code</span>
+            <input
+              value={code}
+              onChange={(event) =>
+                setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+              }
+              maxLength={4}
+              placeholder="AB23"
+              className={cn(arcadeShellStyles.input, styles.codeInput)}
+            />
+          </label>
+        )}
+
+        <div className={styles.entryActions}>
+          <button
+            type="button"
+            className={cn(
+              arcadeShellStyles.button,
+              arcadeShellStyles.buttonGhost,
+              arcadeShellStyles.buttonSmall
+            )}
+            onClick={() => setMode('choose')}
+          >
+            ← Back
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={loading || !canSubmit}
+            className={arcadeShellStyles.button}
+          >
+            {loading ? 'Connecting...' : mode === 'create' ? 'Create room' : 'Join room'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LobbyScreen({
+  gameState,
+  onlinePlayerIds,
+  playerId,
+  roomCode,
+  onLeave,
+  onRemovePlayer,
+  onStart,
+  onUpdateSettings,
+}: {
+  gameState: GameState
+  onlinePlayerIds: string[]
+  playerId: string
+  roomCode: string
+  onLeave: () => void
+  onRemovePlayer: (targetPlayerId: string) => void
+  onStart: () => void
+  onUpdateSettings: (settings: { totalRounds?: number; turnDuration?: number }) => void
+}) {
+  const isHost = gameState.players.find((player) => player.id === playerId)?.isHost ?? false
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
+
+  function copyValue(value: string, kind: 'code' | 'link') {
+    navigator.clipboard?.writeText(value).then(
+      () => {
+        setCopied(kind)
+        window.setTimeout(() => setCopied(null), 1800)
+      },
+      () => {}
+    )
+  }
+
+  return (
+    <div className={styles.lobby}>
+      <section className={styles.roomCard}>
+        <span className={cn(styles.roomLabel, arcadeShellStyles.mono)}>Room · share this code</span>
+        <div className={styles.roomCode}>{roomCode}</div>
+        <div className={styles.roomActions}>
+          <button
+            type="button"
+            className={cn(styles.roomAction, arcadeShellStyles.mono)}
+            onClick={() => copyValue(roomCode, 'code')}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {copied === 'code' ? 'Copied' : 'Copy code'}
+          </button>
+          <button
+            type="button"
+            className={cn(styles.roomAction, arcadeShellStyles.mono)}
+            onClick={() => copyValue(getInviteLink('skribbl', roomCode), 'link')}
+          >
+            <Link2 className="h-3.5 w-3.5" />
+            {copied === 'link' ? 'Copied' : 'Copy link'}
+          </button>
+        </div>
+        <div className={cn(styles.roomMeta, arcadeShellStyles.mono)}>
+          / lobby · waiting for players
+        </div>
+      </section>
+
+      <div className={styles.lobbySide}>
+        <section className={styles.playersPanel}>
+          <div className={cn(styles.panelHead, arcadeShellStyles.mono)}>
+            <span>Players</span>
+            <span>{gameState.players.length} / 8</span>
+          </div>
+
+          <div className={styles.playerList}>
+            {gameState.players.map((player) => {
+              const isOnline = onlinePlayerIds.includes(player.id)
+              const canRemove = isHost && !isOnline && !player.isHost && player.id !== playerId
+
+              return (
+                <div
+                  key={player.id}
+                  className={cn(styles.playerRow, player.id === playerId && styles.playerRowYou)}
+                >
+                  <div className={styles.playerAvatar}>
+                    <ArcadeAvatar index={player.avatar} size={30} />
+                  </div>
+
+                  <div className={styles.playerInfo}>
+                    <div className={styles.playerName}>{player.name}</div>
+                    <div className={styles.playerMeta}>
+                      {player.id === playerId ? 'you' : isOnline ? 'online' : 'offline'}
+                    </div>
+                  </div>
+
+                  <div className={styles.playerTags}>
+                    {player.isHost && (
+                      <span className={cn(styles.playerTag, styles.playerTagHost)}>host</span>
+                    )}
+                    {!isOnline && <span className={styles.playerTag}>away</span>}
+                    {canRemove && (
+                      <button
+                        type="button"
+                        onClick={() => onRemovePlayer(player.id)}
+                        className={cn(styles.playerTag, styles.playerRemove)}
+                      >
+                        remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className={styles.settingsPanel}>
+          <div className={styles.settingsRow}>
+            <span className={cn(styles.label, arcadeShellStyles.mono)}>Rounds</span>
+            <div className={styles.pillGroup}>
+              {[2, 3, 5].map((roundCount) => (
+                <button
+                  key={roundCount}
+                  type="button"
+                  disabled={!isHost}
+                  onClick={() => onUpdateSettings({ totalRounds: roundCount })}
+                  className={cn(
+                    styles.pill,
+                    gameState.totalRounds === roundCount && styles.pillActive
+                  )}
+                >
+                  {roundCount}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.settingsRow}>
+            <span className={cn(styles.label, arcadeShellStyles.mono)}>Turn</span>
+            <div className={styles.pillGroup}>
+              {[60, 80, 120].map((turnDuration) => (
+                <button
+                  key={turnDuration}
+                  type="button"
+                  disabled={!isHost}
+                  onClick={() => onUpdateSettings({ turnDuration })}
+                  className={cn(
+                    styles.pill,
+                    gameState.turnDuration === turnDuration && styles.pillActive
+                  )}
+                >
+                  {turnDuration}s
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer className={styles.lobbyFooter}>
+        <span className={cn(styles.waiting, arcadeShellStyles.mono)}>
+          {isHost ? "You're the host" : 'Waiting for host to start'}
+        </span>
+        <div className={styles.entryActions}>
+          <button
+            type="button"
+            onClick={onLeave}
+            className={cn(
+              arcadeShellStyles.button,
+              arcadeShellStyles.buttonGhost,
+              arcadeShellStyles.buttonSmall
+            )}
+          >
+            Leave
+          </button>
+          {isHost && (
             <button
-              onClick={() => {
-                if (!advancedRef.current) {
-                  advancedRef.current = true
-                  onNext()
-                }
-              }}
-              className="bg-primary text-primary-foreground rounded-lg px-5 py-2.5 text-sm font-semibold active:scale-95"
+              type="button"
+              disabled={gameState.players.length < 2}
+              onClick={onStart}
+              className={arcadeShellStyles.button}
             >
-              Next Turn ({countdown}s)
+              Start game →
             </button>
+          )}
+        </div>
+      </footer>
+    </div>
+  )
+}
+
+function WordPickerScreen({ words, onPick }: { words: string[]; onPick: (word: string) => void }) {
+  const [remaining, setRemaining] = useState(WORD_PICKER_SECONDS)
+  const firedRef = useRef(false)
+
+  useEffect(() => {
+    firedRef.current = false
+    const startedAt = Date.now()
+
+    const interval = window.setInterval(() => {
+      const left = Math.max(0, WORD_PICKER_SECONDS - (Date.now() - startedAt) / 1000)
+      setRemaining(Math.ceil(left))
+
+      if (left <= 0 && !firedRef.current) {
+        firedRef.current = true
+        const randomWord = words[Math.floor(Math.random() * words.length)]
+        onPick(randomWord)
+      }
+    }, 120)
+
+    return () => window.clearInterval(interval)
+  }, [onPick, words])
+
+  const progress = Math.max(0, (remaining / WORD_PICKER_SECONDS) * 100)
+
+  return (
+    <div className={styles.pickerShell}>
+      <div className={styles.pickerHead}>
+        <p className={cn(styles.label, arcadeShellStyles.mono)}>Your turn · choose a word</p>
+        <h2>Pick your poison</h2>
+        <p className={cn(styles.label, arcadeShellStyles.mono)}>Auto-picks in {remaining}s</p>
+      </div>
+
+      <div className={styles.pickerTimer}>
+        <div className={styles.pickerTimerBar} style={{ width: `${progress}%` }} />
+      </div>
+
+      <div className={styles.pickerGrid}>
+        {words.map((word, index) => {
+          const plainWord = decodeWord(word)
+          const difficulty = index + 1
+          return (
+            <button
+              key={word}
+              type="button"
+              className={styles.wordCard}
+              onClick={() => onPick(word)}
+            >
+              <span className={cn(styles.wordIndex, arcadeShellStyles.mono)}>
+                0{index + 1} / 03
+              </span>
+              <span className={styles.wordDifficulty}>
+                {[1, 2, 3].map((value) => (
+                  <span
+                    key={value}
+                    className={cn(styles.wordDot, value <= difficulty && styles.wordDotActive)}
+                  />
+                ))}
+              </span>
+              <span className={styles.wordText}>{plainWord}</span>
+              <span className={styles.wordHint}>
+                {plainWord
+                  .split('')
+                  .map((character, characterIndex) =>
+                    character === ' ' ? (
+                      <span key={characterIndex} className={styles.wordHintSpace} />
+                    ) : (
+                      <span key={characterIndex} className={styles.wordHintBox} />
+                    )
+                  )}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function WaitingPickerScreen({ drawerName }: { drawerName: string }) {
+  return (
+    <div className={styles.pickerShell}>
+      <div className={styles.pickerHead}>
+        <p className={cn(styles.label, arcadeShellStyles.mono)}>{drawerName} is choosing</p>
+        <h2>Hang tight...</h2>
+        <p>A word is being picked for the next sketch.</p>
+      </div>
+      <div className={styles.skeletonGrid}>
+        {Array.from({ length: 3 }, (_, index) => (
+          <div key={index} className={styles.skeletonCard}>
+            <div className={styles.skeletonBar} style={{ animationDelay: `${index * 180}ms` }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function RoundEndScreen({
+  gameState,
+  playerId,
+  onLeave,
+  onNext,
+}: {
+  gameState: GameState
+  playerId: string
+  onLeave: () => void
+  onNext: () => void
+}) {
+  const isHost = gameState.players.find((player) => player.id === playerId)?.isHost ?? false
+  const [countdown, setCountdown] = useState(ROUND_END_DELAY)
+  const firedRef = useRef(false)
+  const drawer = getCurrentDrawer(gameState)
+  const allGuessed =
+    gameState.players.length > 1 && gameState.guessedPlayers.length >= gameState.players.length - 1
+  const sortedPlayers = [...gameState.players].sort((left, right) => right.score - left.score)
+
+  useEffect(() => {
+    firedRef.current = false
+    setCountdown(ROUND_END_DELAY)
+
+    const interval = window.setInterval(() => {
+      setCountdown((current) => {
+        const nextValue = Math.max(0, current - 1)
+        if (nextValue === 0 && isHost && !firedRef.current) {
+          firedRef.current = true
+          onNext()
+        }
+        return nextValue
+      })
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [isHost, onNext])
+
+  return (
+    <div className={styles.endShell}>
+      <p className={cn(styles.endMeta, arcadeShellStyles.mono)}>
+        Round {gameState.round} of {gameState.totalRounds} · {drawer?.name ?? 'Player'} was drawing
+      </p>
+      <h2 className={styles.endTitle}>{allGuessed ? 'Everyone got it!' : "Time's up"}</h2>
+      <p className={styles.endWord}>
+        The word was{' '}
+        <span className={styles.endWordAccent}>{decodeWord(gameState.word ?? '')}</span>
+      </p>
+
+      <div className={styles.resultsTable}>
+        {sortedPlayers.map((player, index) => (
+          <div key={player.id} className={styles.resultRow}>
+            <span className={cn(styles.resultTotal, arcadeShellStyles.mono)}>{index + 1}</span>
+            <div className={styles.resultPlayer}>
+              <ArcadeAvatar index={player.avatar} size={26} />
+              <span>{player.name}</span>
+            </div>
+            <span className={styles.resultDelta}>
+              {gameState.scoreDeltas[player.id] ? `+${gameState.scoreDeltas[player.id]}` : '—'}
+            </span>
+            <span className={styles.resultTotal}>{player.score}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className={styles.endActions}>
+        <button
+          type="button"
+          onClick={onLeave}
+          className={cn(
+            arcadeShellStyles.button,
+            arcadeShellStyles.buttonGhost,
+            arcadeShellStyles.buttonSmall
+          )}
+        >
+          Leave
+        </button>
+        {isHost ? (
+          <button type="button" onClick={onNext} className={arcadeShellStyles.button}>
+            Next turn →
+          </button>
+        ) : null}
+        <span className={cn(styles.endCountdown, arcadeShellStyles.mono)}>
+          auto in {countdown}s
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function FinishedScreen({
+  gameState,
+  playerId,
+  onLeave,
+  onPlayAgain,
+}: {
+  gameState: GameState
+  playerId: string
+  onLeave: () => void
+  onPlayAgain: () => void
+}) {
+  const isHost = gameState.players.find((player) => player.id === playerId)?.isHost ?? false
+  const sortedPlayers = [...gameState.players].sort((left, right) => right.score - left.score)
+  const winner = sortedPlayers[0]
+  const isWinner = winner?.id === playerId
+
+  return (
+    <div className={styles.endShell}>
+      <p className={cn(styles.endMeta, arcadeShellStyles.mono)}>Game over · final standings</p>
+      <h2 className={styles.endTitle}>
+        {isWinner ? 'You win' : `${winner?.name ?? 'Winner'} wins`}
+      </h2>
+      <p className={styles.endWord}>
+        with <span className={styles.endWordAccent}>{winner?.score ?? 0}</span> points
+      </p>
+
+      <div className={styles.resultsTable}>
+        {sortedPlayers.map((player, index) => (
+          <div
+            key={player.id}
+            className={cn(styles.resultRow, index === 0 && styles.resultRowWinner)}
+          >
+            <span className={cn(styles.resultTotal, arcadeShellStyles.mono)}>
+              {index === 0 ? '👑' : index + 1}
+            </span>
+            <div className={styles.resultPlayer}>
+              <ArcadeAvatar index={player.avatar} size={26} />
+              <span>{player.name}</span>
+            </div>
+            <span className={styles.resultDelta}>{index === 0 ? 'Winner' : ''}</span>
+            <span className={styles.resultTotal}>{player.score}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className={styles.endActions}>
+        <button
+          type="button"
+          onClick={onLeave}
+          className={cn(
+            arcadeShellStyles.button,
+            arcadeShellStyles.buttonGhost,
+            arcadeShellStyles.buttonSmall
+          )}
+        >
+          Back to library
+        </button>
+        {isHost ? (
+          <button type="button" onClick={onPlayAgain} className={arcadeShellStyles.button}>
+            Play again
+          </button>
+        ) : (
+          <span className={cn(styles.endCountdown, arcadeShellStyles.mono)}>waiting for host</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function GameBoardScreen({
+  gameState,
+  onlinePlayerIds,
+  playerId,
+  onAction,
+  onLeave,
+}: {
+  gameState: GameState
+  onlinePlayerIds: string[]
+  playerId: string
+  onAction: (action: GameAction) => void
+  onLeave: () => void
+}) {
+  const [color, setColor] = useState('#000000')
+  const [size, setSize] = useState(6)
+  const [tool, setTool] = useState<'pen' | 'eraser'>('pen')
+
+  const drawer = getCurrentDrawer(gameState)
+  const isDrawer = drawer?.id === playerId
+  const hasGuessed = gameState.guessedPlayers.includes(playerId)
+  const plainWord = decodeWord(gameState.word ?? '')
+
+  useEffect(() => {
+    if (!isDrawer || gameState.phase !== 'drawing' || !gameState.drawStartTime) return
+
+    const elapsed = Date.now() - gameState.drawStartTime
+    const halfDelay = gameState.turnDuration * 1000 * 0.5 - elapsed
+    const lateDelay = gameState.turnDuration * 1000 * 0.75 - elapsed
+    const timers: number[] = []
+
+    if (halfDelay > 0) {
+      timers.push(
+        window.setTimeout(() => {
+          onAction({ type: 'REVEAL_HINT', playerId, ratio: 0.5 })
+        }, halfDelay)
+      )
+    }
+
+    if (lateDelay > 0) {
+      timers.push(
+        window.setTimeout(() => {
+          onAction({ type: 'REVEAL_HINT', playerId, ratio: 0.75 })
+        }, lateDelay)
+      )
+    }
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
+  }, [
+    gameState.drawStartTime,
+    gameState.phase,
+    gameState.turnDuration,
+    isDrawer,
+    onAction,
+    playerId,
+  ])
+
+  return (
+    <div className={styles.board}>
+      <div className={styles.hud}>
+        <div className={styles.hudSection}>
+          <div className={styles.roundBlock}>
+            <span className={cn(styles.roundLabel, arcadeShellStyles.mono)}>Round</span>
+            <span className={styles.roundValue}>
+              {gameState.round}
+              <span className="text-sm font-normal text-[var(--arcade-ink-mute)]">
+                {' '}
+                / {gameState.totalRounds}
+              </span>
+            </span>
+          </div>
+          <div className={styles.roundBlock}>
+            <span className={cn(styles.roundLabel, arcadeShellStyles.mono)}>Drawer</span>
+            <span className={styles.roundValue}>{drawer?.name}</span>
+          </div>
+        </div>
+
+        <div className={cn(styles.hudSection, styles.hudSectionCenter)}>
+          {isDrawer ? (
+            <div className={styles.hintDrawer}>
+              <span className={cn(styles.hintLabel, arcadeShellStyles.mono)}>Draw this</span>
+              <span className={styles.hintWord}>{plainWord}</span>
+            </div>
           ) : (
-            <p className="text-muted-foreground text-sm">Next turn in {countdown}s&hellip;</p>
+            <div className={styles.hintDrawer}>
+              <span className={cn(styles.hintLabel, arcadeShellStyles.mono)}>
+                {plainWord.length} letters · {plainWord.replace(/ /g, '').length} chars
+              </span>
+              <span className={styles.hintMask}>{gameState.hint}</span>
+            </div>
+          )}
+        </div>
+
+        <div className={cn(styles.hudSection, styles.hudSectionRight)}>
+          {gameState.drawStartTime && (
+            <TimerRing
+              startTime={gameState.drawStartTime}
+              duration={gameState.turnDuration}
+              onTimeUp={() => onAction({ type: 'END_TURN', playerId })}
+            />
           )}
           <button
+            type="button"
             onClick={onLeave}
-            className="hover:bg-secondary rounded-lg border px-5 py-2.5 text-sm font-semibold"
+            className={cn(
+              arcadeShellStyles.button,
+              arcadeShellStyles.buttonGhost,
+              arcadeShellStyles.buttonSmall
+            )}
           >
             Leave
           </button>
         </div>
       </div>
-    </div>
-  )
-}
 
-// ─── Finished Screen ──────────────────────────────────────────────────────────
+      <Scoreboard
+        players={gameState.players}
+        currentDrawerId={drawer?.id ?? null}
+        guessedPlayers={gameState.guessedPlayers}
+        playerId={playerId}
+        onlinePlayerIds={onlinePlayerIds}
+        scoreDeltas={gameState.scoreDeltas}
+      />
 
-interface FinishedScreenProps {
-  gameState: GameState
-  playerId: string
-  onPlayAgain: () => void
-  onLeave: () => void
-}
-
-function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedScreenProps) {
-  const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
-  const sorted = [...gameState.players].sort((a, b) => b.score - a.score)
-  const winner = sorted[0]
-  const isWinner = winner?.id === playerId
-
-  return (
-    <div className="flex flex-col items-center gap-6">
-      <div className="text-6xl">{isWinner ? '\uD83C\uDFC6' : '\uD83C\uDFAE'}</div>
-      <div className="text-center">
-        <h2 className="text-2xl font-black">
-          {isWinner ? 'You win!' : `${winner?.name ?? '?'} wins!`}
-        </h2>
-        <p className="text-muted-foreground text-sm">Final score: {winner?.score ?? 0} points</p>
-      </div>
-
-      <div className="w-72">
-        <Scoreboard
-          players={gameState.players}
-          currentDrawerId={null}
-          guessedPlayers={[]}
-          playerId={playerId}
+      <div className={styles.canvasColumn}>
+        <DrawingCanvas
+          strokes={gameState.strokes}
+          isDrawer={isDrawer}
+          color={tool === 'eraser' ? '#ffffff' : color}
+          size={size}
+          tool={tool}
+          onStrokeComplete={(stroke) => onAction({ type: 'ADD_STROKE', playerId, stroke })}
         />
-      </div>
 
-      <div className="flex gap-3">
-        {isHost ? (
-          <button
-            onClick={onPlayAgain}
-            className="bg-primary text-primary-foreground rounded-lg px-5 py-2.5 text-sm font-semibold active:scale-95"
-          >
-            Play Again
-          </button>
+        {isDrawer ? (
+          <div className={styles.toolbar}>
+            <div className={styles.toolGroup}>
+              <span className={cn(styles.toolLabel, arcadeShellStyles.mono)}>Colors</span>
+              {COLORS.map((swatch) => (
+                <button
+                  key={swatch}
+                  type="button"
+                  title={swatch}
+                  onClick={() => {
+                    setTool('pen')
+                    setColor(swatch)
+                  }}
+                  className={cn(
+                    styles.colorButton,
+                    color === swatch && tool === 'pen' && styles.colorButtonActive
+                  )}
+                  style={{ background: swatch }}
+                />
+              ))}
+            </div>
+
+            <div className={styles.toolGroup}>
+              <span className={cn(styles.toolLabel, arcadeShellStyles.mono)}>Size</span>
+              {BRUSH_SIZES.map((brushSize) => (
+                <button
+                  key={brushSize}
+                  type="button"
+                  onClick={() => setSize(brushSize)}
+                  className={cn(styles.sizeButton, size === brushSize && styles.sizeButtonActive)}
+                >
+                  <span
+                    className={styles.sizeDot}
+                    style={{
+                      width: Math.min(brushSize, 18),
+                      height: Math.min(brushSize, 18),
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+
+            <div className={styles.toolGroup}>
+              <span className={cn(styles.toolLabel, arcadeShellStyles.mono)}>Tools</span>
+              <button
+                type="button"
+                title="Pen"
+                onClick={() => setTool('pen')}
+                className={cn(styles.toolButton, tool === 'pen' && styles.toolButtonActive)}
+              >
+                <PencilLine className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                title="Eraser"
+                onClick={() => setTool('eraser')}
+                className={cn(styles.toolButton, tool === 'eraser' && styles.toolButtonActive)}
+              >
+                <Eraser className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                title="Undo"
+                onClick={() => onAction({ type: 'UNDO_STROKE', playerId })}
+                className={styles.toolButton}
+              >
+                <Undo2 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                title="Clear all"
+                onClick={() => onAction({ type: 'CLEAR_CANVAS', playerId })}
+                className={cn(styles.toolButton, styles.toolButtonDanger)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         ) : (
-          <p className="text-muted-foreground text-sm">Waiting for host&hellip;</p>
-        )}
-        <button
-          onClick={onLeave}
-          className="hover:bg-secondary rounded-lg border px-5 py-2.5 text-sm font-semibold"
-        >
-          Leave
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─── Game Board (drawing phase) ───────────────────────────────────────────────
-
-interface GameBoardProps {
-  gameState: GameState
-  playerId: string
-  onlinePlayerIds: string[]
-  dispatch: (action: Parameters<ReturnType<typeof useSkribblRoom>['dispatch']>[0]) => void
-  onLeave: () => void
-}
-
-function GameBoardScreen({
-  gameState,
-  playerId,
-  onlinePlayerIds,
-  dispatch,
-  onLeave,
-}: GameBoardProps) {
-  const drawer = getCurrentDrawer(gameState)
-  const isDrawer = drawer?.id === playerId
-  const hasGuessed = gameState.guessedPlayers.includes(playerId)
-
-  const handleTimeUp = useCallback(() => {
-    dispatch({ type: 'END_TURN', playerId })
-  }, [dispatch, playerId])
-
-  // Drawer dispatches hint reveals at 50% and 75% of turn time
-  useEffect(() => {
-    if (!isDrawer || gameState.phase !== 'drawing' || !gameState.drawStartTime) return
-    const turnMs = gameState.turnDuration * 1000
-    const elapsed = Date.now() - gameState.drawStartTime
-    const halfTime = turnMs * 0.5 - elapsed
-    const threeQuarterTime = turnMs * 0.75 - elapsed
-    const timers: ReturnType<typeof setTimeout>[] = []
-    if (halfTime > 0) {
-      timers.push(
-        setTimeout(() => dispatch({ type: 'REVEAL_HINT', playerId, ratio: 0.5 }), halfTime)
-      )
-    }
-    if (threeQuarterTime > 0) {
-      timers.push(
-        setTimeout(() => dispatch({ type: 'REVEAL_HINT', playerId, ratio: 0.75 }), threeQuarterTime)
-      )
-    }
-    return () => timers.forEach(clearTimeout)
-  }, [
-    isDrawer,
-    gameState.phase,
-    gameState.drawStartTime,
-    gameState.turnDuration,
-    dispatch,
-    playerId,
-  ])
-
-  return (
-    <div className="flex w-full max-w-5xl flex-col gap-3 px-2">
-      {/* Top bar: round, hint/word, timer */}
-      <div className="bg-secondary/60 flex items-center gap-3 rounded-xl px-4 py-2">
-        <span className="text-muted-foreground text-xs font-semibold">
-          Round {gameState.round}/{gameState.totalRounds}
-        </span>
-        <div className="flex-1 text-center">
-          {isDrawer ? (
-            <span className="text-sm font-bold">
-              Draw: <span className="text-primary">{decodeWord(gameState.word ?? '')}</span>
+          <div className={cn(styles.toolbar, styles.toolbarInfo)}>
+            <span className={arcadeShellStyles.mono}>
+              {hasGuessed ? '✓ You got it — waiting on the others' : 'Keep guessing in chat →'}
             </span>
-          ) : (
-            <span className="text-lg font-bold tracking-[0.3em]">{gameState.hint}</span>
-          )}
-        </div>
-        <div className="w-32">
-          {gameState.drawStartTime && (
-            <Timer
-              startTime={gameState.drawStartTime}
-              duration={gameState.turnDuration}
-              onTimeUp={handleTimeUp}
-            />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Main layout: scoreboard | canvas | chat */}
-      <div className="flex flex-col gap-3 lg:flex-row">
-        {/* Scoreboard */}
-        <div className="w-full shrink-0 lg:w-44">
-          <Scoreboard
-            players={gameState.players}
-            currentDrawerId={drawer?.id ?? null}
-            guessedPlayers={gameState.guessedPlayers}
-            playerId={playerId}
-            onlinePlayerIds={onlinePlayerIds}
-          />
-        </div>
-
-        {/* Canvas */}
-        <div className="flex-1">
-          <DrawingCanvas
-            strokes={gameState.strokes}
-            isDrawer={isDrawer}
-            onStrokeComplete={(stroke) => dispatch({ type: 'ADD_STROKE', playerId, stroke })}
-            onClear={() => dispatch({ type: 'CLEAR_CANVAS', playerId })}
-            onUndo={() => dispatch({ type: 'UNDO_STROKE', playerId })}
-          />
-        </div>
-
-        {/* Chat */}
-        <div className="w-full shrink-0 lg:w-56">
-          <ChatPanel
-            messages={gameState.messages}
-            isDrawer={isDrawer}
-            hasGuessed={hasGuessed}
-            onGuess={(text) => dispatch({ type: 'GUESS', playerId, text })}
-          />
-        </div>
-      </div>
-
-      {/* Status + leave */}
-      <div className="flex items-center justify-between">
-        <p className="text-muted-foreground text-xs">
-          {isDrawer
-            ? "You're drawing!"
-            : hasGuessed
-              ? 'You guessed it! Waiting for others...'
-              : `${drawer?.name} is drawing`}
-        </p>
-        <button
-          onClick={onLeave}
-          className="hover:bg-secondary rounded-lg border px-3 py-1.5 text-xs"
-        >
-          Leave
-        </button>
-      </div>
+      <ChatPanel
+        messages={gameState.messages}
+        isDrawer={isDrawer}
+        hasGuessed={hasGuessed}
+        onGuess={(text) => onAction({ type: 'GUESS', playerId, text })}
+      />
     </div>
   )
 }
-
-// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function SkribblGame() {
   const inviteCode = useInviteCode()
+  const inviteCodeResolved = inviteCode !== undefined
+  const [entryMode, setEntryMode] = useState<'howto' | 'entry'>('howto')
   const {
-    gameState,
-    playerId,
-    roomCode,
-    status,
-    error,
-    savedSession,
-    onlinePlayerIds,
     createRoom,
-    joinRoom,
-    restoreSession,
     dispatch,
+    error,
+    gameState,
+    joinRoom,
     leaveRoom,
+    onlinePlayerIds,
+    playerId,
+    restoreSession,
+    roomCode,
+    savedSession,
+    status,
   } = useSkribblRoom()
 
-  if (!isSupabaseConfigured) return <SetupRequired />
-
-  const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
-
-  if (!gameState || !playerId || !roomCode) {
-    return (
-      <EntryScreen
-        onCreate={createRoom}
-        onJoin={joinRoom}
-        onRestore={savedSession ? restoreSession : undefined}
-        savedSession={savedSession}
-        loading={isLoading}
-        error={error}
-        initialCode={inviteCode}
-      />
-    )
-  }
-
-  if (gameState.phase === 'lobby') {
-    return (
-      <LobbyScreen
-        gameState={gameState}
-        playerId={playerId}
-        roomCode={roomCode}
-        onlinePlayerIds={onlinePlayerIds}
-        onStart={() => dispatch({ type: 'START_GAME', playerId })}
-        onLeave={leaveRoom}
-      />
-    )
-  }
-
-  if (gameState.phase === 'picking') {
-    const drawer = getCurrentDrawer(gameState)
-    const isDrawer = drawer?.id === playerId
-
-    if (isDrawer) {
-      return (
-        <WordPicker
-          words={gameState.wordChoices}
-          onPick={(word) => dispatch({ type: 'PICK_WORD', playerId, word })}
-        />
-      )
+  useEffect(() => {
+    if (inviteCode) {
+      setEntryMode('entry')
     }
+  }, [inviteCode])
 
-    return (
-      <div className="flex flex-col items-center gap-4">
-        <div className="text-5xl">🎨</div>
-        <h2 className="text-lg font-bold">{drawer?.name} is picking a word...</h2>
-        <p className="text-muted-foreground text-sm">Get ready to guess!</p>
-      </div>
-    )
-  }
+  const crumb = makeCrumb(gameState, roomCode, playerId, inviteCode)
+  const handleAction = useCallback(
+    (action: GameAction) => {
+      void dispatch(action)
+    },
+    [dispatch]
+  )
 
-  if (gameState.phase === 'drawing') {
-    return (
-      <GameBoardScreen
-        gameState={gameState}
-        playerId={playerId}
-        onlinePlayerIds={onlinePlayerIds}
-        dispatch={dispatch}
-        onLeave={leaveRoom}
-      />
-    )
-  }
+  const handleCreate = useCallback(
+    (name: string, avatar: number) => {
+      void createRoom(name, { avatar })
+    },
+    [createRoom]
+  )
 
-  if (gameState.phase === 'round-end') {
-    return (
-      <RoundEndScreen
-        gameState={gameState}
-        playerId={playerId}
-        onNext={() => dispatch({ type: 'NEXT_TURN', playerId })}
-        onLeave={leaveRoom}
-      />
-    )
-  }
+  const handleJoin = useCallback(
+    (code: string, name: string, avatar: number) => {
+      void joinRoom(code, name, { avatar })
+    },
+    [joinRoom]
+  )
 
-  if (gameState.phase === 'finished') {
-    return (
-      <FinishedScreen
-        gameState={gameState}
-        playerId={playerId}
-        onPlayAgain={() => dispatch({ type: 'PLAY_AGAIN', playerId })}
-        onLeave={leaveRoom}
-      />
-    )
-  }
+  const handleLeave = useCallback(() => {
+    void leaveRoom()
+  }, [leaveRoom])
 
-  return null
+  const centered = gameState?.phase !== 'drawing'
+  const isEntryState = !gameState || !playerId || !roomCode
+  const isResolvingInvite = isEntryState && !inviteCodeResolved
+
+  return (
+    <ArcadeShell title="Skribbl" crumb={crumb} centered={centered}>
+      {!isSupabaseConfigured ? (
+        <SetupRequired />
+      ) : isResolvingInvite ? (
+        <InviteResolvingScreen />
+      ) : isEntryState ? (
+        entryMode === 'howto' ? (
+          <HowToScreen onStart={() => setEntryMode('entry')} />
+        ) : (
+          <EntryScreen
+            error={error}
+            initialCode={inviteCode ?? null}
+            loading={status === 'creating' || status === 'joining' || status === 'restoring'}
+            onBackToHowTo={!inviteCode ? () => setEntryMode('howto') : undefined}
+            onCreate={handleCreate}
+            onJoin={handleJoin}
+            onRestore={() => void restoreSession()}
+            savedSession={savedSession}
+          />
+        )
+      ) : gameState.phase === 'lobby' ? (
+        <LobbyScreen
+          gameState={gameState}
+          onlinePlayerIds={onlinePlayerIds}
+          playerId={playerId}
+          roomCode={roomCode}
+          onLeave={handleLeave}
+          onRemovePlayer={(targetPlayerId) =>
+            handleAction({
+              type: 'REMOVE_PLAYER',
+              playerId,
+              targetPlayerId,
+            })
+          }
+          onStart={() => handleAction({ type: 'START_GAME', playerId })}
+          onUpdateSettings={(settings) =>
+            handleAction({
+              type: 'UPDATE_SETTINGS',
+              playerId,
+              ...settings,
+            })
+          }
+        />
+      ) : gameState.phase === 'picking' ? (
+        getCurrentDrawer(gameState)?.id === playerId ? (
+          <WordPickerScreen
+            words={gameState.wordChoices}
+            onPick={(word) => handleAction({ type: 'PICK_WORD', playerId, word })}
+          />
+        ) : (
+          <WaitingPickerScreen drawerName={getCurrentDrawer(gameState)?.name ?? 'Player'} />
+        )
+      ) : gameState.phase === 'drawing' ? (
+        <GameBoardScreen
+          gameState={gameState}
+          onlinePlayerIds={onlinePlayerIds}
+          playerId={playerId}
+          onAction={handleAction}
+          onLeave={handleLeave}
+        />
+      ) : gameState.phase === 'round-end' ? (
+        <RoundEndScreen
+          gameState={gameState}
+          playerId={playerId}
+          onLeave={handleLeave}
+          onNext={() => handleAction({ type: 'NEXT_TURN', playerId })}
+        />
+      ) : (
+        <FinishedScreen
+          gameState={gameState}
+          playerId={playerId}
+          onLeave={handleLeave}
+          onPlayAgain={() => handleAction({ type: 'PLAY_AGAIN', playerId })}
+        />
+      )}
+    </ArcadeShell>
+  )
 }
