@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { games } from '@/data/games'
-import { GameLayout } from '@/components/GameLayout'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { SkribblGame } from '@/games/skribbl/SkribblGame'
 
 const game = games.find((g) => g.slug === 'skribbl')!
@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 
 export default function SkribblPage() {
   return (
-    <GameLayout title="Skribbl" slug="skribbl">
+    <ErrorBoundary>
       <SkribblGame />
-    </GameLayout>
+    </ErrorBoundary>
   )
 }

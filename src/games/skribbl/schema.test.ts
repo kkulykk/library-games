@@ -2,7 +2,7 @@ import { GameStateSchema } from './schema'
 
 const validGameState = {
   phase: 'lobby' as const,
-  players: [{ id: 'p1', name: 'Alice', isHost: true, score: 0 }],
+  players: [{ id: 'p1', name: 'Alice', isHost: true, score: 0, avatar: 0 }],
   currentDrawerIndex: 0,
   round: 0,
   totalRounds: 3,
@@ -15,6 +15,7 @@ const validGameState = {
   drawStartTime: null,
   turnDuration: 80,
   turnEndTime: null,
+  scoreDeltas: {},
 }
 
 describe('skribbl GameStateSchema', () => {
@@ -37,6 +38,7 @@ describe('skribbl GameStateSchema', () => {
           playerName: 'Alice',
           text: 'a guess',
           isCorrect: false,
+          isClose: true,
         },
       ],
     }

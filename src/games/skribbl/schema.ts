@@ -5,6 +5,7 @@ const PlayerSchema = z.object({
   name: z.string(),
   isHost: z.boolean(),
   score: z.number(),
+  avatar: z.number().int().min(0).max(7).default(0),
 })
 
 const DrawPointSchema = z.object({
@@ -26,6 +27,7 @@ const ChatMessageSchema = z.object({
   text: z.string(),
   isCorrect: z.boolean().optional(),
   isSystem: z.boolean().optional(),
+  isClose: z.boolean().optional(),
 })
 
 export const GameStateSchema = z.object({
@@ -43,6 +45,7 @@ export const GameStateSchema = z.object({
   drawStartTime: z.number().nullable(),
   turnDuration: z.number(),
   turnEndTime: z.number().nullable(),
+  scoreDeltas: z.record(z.string(), z.number()).default({}),
 })
 
 export type GameState = z.infer<typeof GameStateSchema>

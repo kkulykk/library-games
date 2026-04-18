@@ -18,6 +18,14 @@ export type UseSkribblRoomReturn = Omit<
   'broadcast' | 'onBroadcast'
 >
 
+function resolveAvatar(extras?: Record<string, unknown>, playerIndex = 0): number {
+  const avatar = extras?.avatar
+  if (typeof avatar === 'number' && Number.isInteger(avatar) && avatar >= 0 && avatar <= 7) {
+    return avatar
+  }
+  return playerIndex % 8
+}
+
 export function useSkribblRoom(): UseSkribblRoomReturn {
   return useGameRoom<GameState, GameAction>({
     tableName: 'skribbl_rooms',
@@ -26,7 +34,14 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
     stateSchema: GameStateSchema,
     applyAction,
     createLobbyState: (host) => createLobbyState({ ...host, score: 0 } as Player),
-    createPlayer: ({ id, name, isHost }) => ({ id, name, isHost, score: 0 }) as Player,
+    createPlayer: ({ id, name, isHost, playerIndex, extras }) =>
+      ({
+        id,
+        name,
+        isHost,
+        score: 0,
+        avatar: resolveAvatar(extras, playerIndex),
+      }) as Player,
     addPlayer,
   })
 }
