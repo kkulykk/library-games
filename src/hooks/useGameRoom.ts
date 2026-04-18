@@ -60,12 +60,13 @@ export interface GameRoomConfig<TState extends BaseGameState, TAction, TBroadcas
   sessionKey: string
   stateSchema: ZodType<TState>
   applyAction: (state: TState, action: TAction) => TState
-  createLobbyState: (host: { id: string; name: string; isHost: true }) => TState
+  createLobbyState: (host: TState['players'][number]) => TState
   createPlayer: (info: {
     id: string
     name: string
     isHost: boolean
     playerIndex: number
+    extras?: Record<string, unknown>
   }) => TState['players'][number]
   addPlayer: (state: TState, player: TState['players'][number]) => TState
   broadcast?: BroadcastConfig<TBroadcast>
@@ -87,8 +88,8 @@ export interface UseGameRoomReturn<TState, TAction, TBroadcast = never> {
   error: string | null
   savedSession: Session | null
   onlinePlayerIds: string[]
-  createRoom: (playerName: string) => Promise<void>
-  joinRoom: (code: string, playerName: string) => Promise<void>
+  createRoom: (playerName: string, extras?: Record<string, unknown>) => Promise<void>
+  joinRoom: (code: string, playerName: string, extras?: Record<string, unknown>) => Promise<void>
   restoreSession: () => Promise<void>
   dispatch: (action: TAction) => Promise<void>
   leaveRoom: () => Promise<void>
@@ -216,7 +217,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   }, [])
 
   const createRoom = useCallback(
-    async (playerName: string) => {
+    async (playerName: string, extras?: Record<string, unknown>) => {
       if (!supabase) return
       const cfg = configRef.current
       setStatus('creating')
@@ -224,7 +225,14 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
 
       const id = crypto.randomUUID()
       const code = generateRoomCode()
-      const initialState = cfg.createLobbyState({ id, name: playerName, isHost: true as const })
+      const hostPlayer = cfg.createPlayer({
+        id,
+        name: playerName,
+        isHost: true,
+        playerIndex: 0,
+        extras,
+      })
+      const initialState = cfg.createLobbyState(hostPlayer)
 
       const { data: inserted, error: err } = await supabase
         .from(cfg.tableName)
@@ -248,7 +256,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   )
 
   const joinRoom = useCallback(
-    async (code: string, playerName: string) => {
+    async (code: string, playerName: string, extras?: Record<string, unknown>) => {
       if (!supabase) return
       const cfg = configRef.current
       setStatus('joining')
@@ -288,6 +296,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         name: playerName,
         isHost: false,
         playerIndex: currentState.players.length,
+        extras,
       })
       const newState = cfg.addPlayer(currentState, player)
 
@@ -388,7 +397,12 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           .eq('version', currentVersion)
           .select('version')
 
-        if (data && data.length > 0) return
+        if (data && data.length > 0) {
+          // Apply the accepted state locally right away so controls feel instant
+          // instead of waiting for the realtime echo from Supabase.
+          setStateAndRef(newState, currentVersion + 1)
+          return
+        }
 
         if (attempt < MAX_RETRIES) {
           const { data: fresh } = await supabase

@@ -1,18 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
- * Reads `?code=XXXX` from the current URL synchronously on first render.
- * Returns the uppercased code or null if absent.
+ * Reads `?code=XXXX` from the current URL after mount.
+ * Returns the uppercased code, null if absent, or undefined until resolved.
  */
-export function useInviteCode(): string | null {
-  const [code] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
+export function useInviteCode(): string | null | undefined {
+  const [code, setCode] = useState<string | null | undefined>(undefined)
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const raw = params.get('code')
-    return raw && raw.trim().length > 0 ? raw.trim().toUpperCase() : null
-  })
+    setCode(raw && raw.trim().length > 0 ? raw.trim().toUpperCase() : null)
+  }, [])
 
   return code
 }

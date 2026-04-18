@@ -16,11 +16,11 @@ import {
 } from './logic'
 
 function makeHost(): Player {
-  return { id: 'host', name: 'Host', isHost: true, score: 0 }
+  return { id: 'host', name: 'Host', isHost: true, score: 0, avatar: 0 }
 }
 
 function makePlayer(id: string, name: string): Player {
-  return { id, name, isHost: false, score: 0 }
+  return { id, name, isHost: false, score: 0, avatar: 1 }
 }
 
 function lobbyWithPlayers(): GameState {
@@ -121,6 +121,67 @@ describe('START_GAME', () => {
     state = { ...state, players: state.players.map((p) => ({ ...p, score: 100 })) }
     const next = applyAction(state, { type: 'START_GAME', playerId: 'host' })
     expect(next.players.every((p) => p.score === 0)).toBe(true)
+  })
+})
+
+describe('UPDATE_SETTINGS', () => {
+  it('lets the host change rounds and turn duration in lobby', () => {
+    const state = lobbyWithPlayers()
+    const next = applyAction(state, {
+      type: 'UPDATE_SETTINGS',
+      playerId: 'host',
+      totalRounds: 5,
+      turnDuration: 120,
+    })
+
+    expect(next.totalRounds).toBe(5)
+    expect(next.turnDuration).toBe(120)
+  })
+
+  it('ignores non-host updates', () => {
+    const state = lobbyWithPlayers()
+    const next = applyAction(state, {
+      type: 'UPDATE_SETTINGS',
+      playerId: 'p2',
+      totalRounds: 5,
+    })
+
+    expect(next.totalRounds).toBe(3)
+  })
+})
+
+describe('REMOVE_PLAYER', () => {
+  it('lets the host remove another player in lobby', () => {
+    const state = lobbyWithPlayers()
+    const next = applyAction(state, {
+      type: 'REMOVE_PLAYER',
+      playerId: 'host',
+      targetPlayerId: 'p2',
+    })
+
+    expect(next.players.map((player) => player.id)).toEqual(['host', 'p3'])
+  })
+
+  it('does not let non-host remove a player', () => {
+    const state = lobbyWithPlayers()
+    const next = applyAction(state, {
+      type: 'REMOVE_PLAYER',
+      playerId: 'p2',
+      targetPlayerId: 'p3',
+    })
+
+    expect(next.players).toHaveLength(3)
+  })
+
+  it('does not let host remove self', () => {
+    const state = lobbyWithPlayers()
+    const next = applyAction(state, {
+      type: 'REMOVE_PLAYER',
+      playerId: 'host',
+      targetPlayerId: 'host',
+    })
+
+    expect(next.players).toHaveLength(3)
   })
 })
 
@@ -226,6 +287,8 @@ describe('GUESS', () => {
     expect(next.guessedPlayers).toContain('p2')
     expect(next.players.find((p) => p.id === 'p2')!.score).toBeGreaterThan(0)
     expect(next.messages.some((m) => m.isCorrect)).toBe(true)
+    expect(next.scoreDeltas.p2).toBeGreaterThan(0)
+    expect(next.scoreDeltas.host).toBeGreaterThanOrEqual(0)
   })
 
   it('wrong guess adds chat message', () => {
@@ -234,6 +297,14 @@ describe('GUESS', () => {
     expect(next.guessedPlayers).not.toContain('p2')
     expect(next.messages).toHaveLength(1)
     expect(next.messages[0].text).toBe('wrongguess')
+  })
+
+  it('marks close guesses for richer chat UI', () => {
+    const state = drawingState()
+    const word = decodeWord(state.word!)
+    const almost = word.slice(0, Math.max(3, word.length - 1))
+    const next = applyAction(state, { type: 'GUESS', playerId: 'p2', text: almost })
+    expect(next.messages[0].isClose).toBe(true)
   })
 
   it('drawer cannot guess', () => {
