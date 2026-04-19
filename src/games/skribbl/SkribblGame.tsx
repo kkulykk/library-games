@@ -1,13 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Copy, Eraser, Link2, PencilLine, Trash2, Undo2 } from 'lucide-react'
+import { Eraser, PencilLine, Trash2, Undo2 } from 'lucide-react'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { ArcadeAvatar } from '@/components/multiplayer/ArcadeAvatar'
 import { ArcadeShell, arcadeShellStyles } from '@/components/multiplayer/ArcadeShell'
+import { AvatarPicker } from '@/components/multiplayer/AvatarPicker'
+import { LobbyActions } from '@/components/multiplayer/LobbyActions'
+import { PlayerRoster } from '@/components/multiplayer/PlayerRoster'
+import { ResultsTable } from '@/components/multiplayer/ResultsTable'
+import { ResumeSessionCard } from '@/components/multiplayer/ResumeSessionCard'
+import { RoomInviteCard } from '@/components/multiplayer/RoomInviteCard'
 import { useSkribblRoom, type UseSkribblRoomReturn } from './useSkribblRoom'
 import {
   decodeWord,
@@ -666,21 +672,14 @@ function EntryScreen({
         </div>
 
         {savedSession && (
-          <div className={styles.resumeCard}>
-            <div>
-              <div className={styles.resumeTitle}>Resume your last room</div>
-              <div className={styles.resumeCopy}>
-                Room {savedSession.roomCode} as {savedSession.playerName}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onRestore}
-              className={cn(arcadeShellStyles.button, arcadeShellStyles.buttonSmall)}
-            >
-              Resume →
-            </button>
-          </div>
+          <ResumeSessionCard
+            session={savedSession}
+            onResume={onRestore}
+            className={styles.resumeCard}
+            titleClassName={styles.resumeTitle}
+            descriptionClassName={styles.resumeCopy}
+            actionClassName={cn(arcadeShellStyles.button, arcadeShellStyles.buttonSmall)}
+          />
         )}
 
         <div className={styles.entryChoiceGrid}>
@@ -745,18 +744,13 @@ function EntryScreen({
 
         <div className={styles.field}>
           <span className={cn(styles.label, arcadeShellStyles.mono)}>Pick an avatar</span>
-          <div className={styles.avatarGrid}>
-            {Array.from({ length: 8 }, (_, index) => (
-              <button
-                key={index}
-                type="button"
-                onClick={() => setAvatar(index)}
-                className={cn(styles.avatarButton, avatar === index && styles.avatarButtonActive)}
-              >
-                <ArcadeAvatar index={index} size={42} />
-              </button>
-            ))}
-          </div>
+          <AvatarPicker
+            selectedIndex={avatar}
+            onSelect={setAvatar}
+            className={styles.avatarGrid}
+            buttonClassName={styles.avatarButton}
+            selectedButtonClassName={styles.avatarButtonActive}
+          />
         </div>
 
         {mode === 'join' && (
@@ -834,80 +828,41 @@ function LobbyScreen({
 
   return (
     <div className={styles.lobby}>
-      <section className={styles.roomCard}>
-        <span className={cn(styles.roomLabel, arcadeShellStyles.mono)}>Room · share this code</span>
-        <div className={styles.roomCode}>{roomCode}</div>
-        <div className={styles.roomActions}>
-          <button
-            type="button"
-            className={cn(styles.roomAction, arcadeShellStyles.mono)}
-            onClick={() => copyValue(roomCode, 'code')}
-          >
-            <Copy className="h-3.5 w-3.5" />
-            {copied === 'code' ? 'Copied' : 'Copy code'}
-          </button>
-          <button
-            type="button"
-            className={cn(styles.roomAction, arcadeShellStyles.mono)}
-            onClick={() => copyValue(getInviteLink('skribbl', roomCode), 'link')}
-          >
-            <Link2 className="h-3.5 w-3.5" />
-            {copied === 'link' ? 'Copied' : 'Copy link'}
-          </button>
-        </div>
-        <div className={cn(styles.roomMeta, arcadeShellStyles.mono)}>
-          / lobby · waiting for players
-        </div>
-      </section>
+      <RoomInviteCard
+        roomCode={roomCode}
+        inviteLink={getInviteLink('skribbl', roomCode)}
+        copied={copied}
+        onCopy={copyValue}
+        className={styles.roomCard}
+        titleClassName={cn(styles.roomLabel, arcadeShellStyles.mono)}
+        roomCodeClassName={styles.roomCode}
+        actionsClassName={styles.roomActions}
+        actionClassName={cn(styles.roomAction, arcadeShellStyles.mono)}
+        metaClassName={cn(styles.roomMeta, arcadeShellStyles.mono)}
+      />
 
       <div className={styles.lobbySide}>
-        <section className={styles.playersPanel}>
-          <div className={cn(styles.panelHead, arcadeShellStyles.mono)}>
-            <span>Players</span>
-            <span>{gameState.players.length} / 8</span>
-          </div>
-
-          <div className={styles.playerList}>
-            {gameState.players.map((player) => {
-              const isOnline = onlinePlayerIds.includes(player.id)
-              const canRemove = isHost && !isOnline && !player.isHost && player.id !== playerId
-
-              return (
-                <div
-                  key={player.id}
-                  className={cn(styles.playerRow, player.id === playerId && styles.playerRowYou)}
-                >
-                  <div className={styles.playerAvatar}>
-                    <ArcadeAvatar index={player.avatar} size={30} />
-                  </div>
-
-                  <div className={styles.playerInfo}>
-                    <div className={styles.playerName}>{player.name}</div>
-                    <div className={styles.playerMeta}>
-                      {player.id === playerId ? 'you' : isOnline ? 'online' : 'offline'}
-                    </div>
-                  </div>
-
-                  <div className={styles.playerTags}>
-                    {player.isHost && (
-                      <span className={cn(styles.playerTag, styles.playerTagHost)}>host</span>
-                    )}
-                    {!isOnline && <span className={styles.playerTag}>away</span>}
-                    {canRemove && (
-                      <button
-                        type="button"
-                        onClick={() => onRemovePlayer(player.id)}
-                        className={cn(styles.playerTag, styles.playerRemove)}
-                      >
-                        remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
+        <PlayerRoster
+          players={gameState.players}
+          currentPlayerId={playerId}
+          onlinePlayerIds={onlinePlayerIds}
+          maxPlayers={8}
+          currentPlayerIsHost={isHost}
+          onRemovePlayer={onRemovePlayer}
+          className={styles.playersPanel}
+          headerClassName={cn(styles.panelHead, arcadeShellStyles.mono)}
+          listClassName={styles.playerList}
+          rowClassName={styles.playerRow}
+          currentPlayerRowClassName={styles.playerRowYou}
+          avatarClassName={styles.playerAvatar}
+          infoClassName={styles.playerInfo}
+          nameClassName={styles.playerName}
+          metaClassName={styles.playerMeta}
+          tagsClassName={styles.playerTags}
+          tagClassName={styles.playerTag}
+          hostTagClassName={styles.playerTagHost}
+          removeButtonClassName={styles.playerRemove}
+        />
 
         <section className={styles.settingsPanel}>
           <div className={styles.settingsRow}>
@@ -952,34 +907,21 @@ function LobbyScreen({
         </section>
       </div>
 
-      <footer className={styles.lobbyFooter}>
-        <span className={cn(styles.waiting, arcadeShellStyles.mono)}>
-          {isHost ? "You're the host" : 'Waiting for host to start'}
-        </span>
-        <div className={styles.entryActions}>
-          <button
-            type="button"
-            onClick={onLeave}
-            className={cn(
-              arcadeShellStyles.button,
-              arcadeShellStyles.buttonGhost,
-              arcadeShellStyles.buttonSmall
-            )}
-          >
-            Leave
-          </button>
-          {isHost && (
-            <button
-              type="button"
-              disabled={gameState.players.length < 2}
-              onClick={onStart}
-              className={arcadeShellStyles.button}
-            >
-              Start game →
-            </button>
-          )}
-        </div>
-      </footer>
+      <LobbyActions
+        isHost={isHost}
+        canStart={gameState.players.length >= 2}
+        onLeave={onLeave}
+        onStart={onStart}
+        className={styles.lobbyFooter}
+        statusClassName={cn(styles.waiting, arcadeShellStyles.mono)}
+        actionsClassName={styles.entryActions}
+        leaveButtonClassName={cn(
+          arcadeShellStyles.button,
+          arcadeShellStyles.buttonGhost,
+          arcadeShellStyles.buttonSmall
+        )}
+        startButtonClassName={arcadeShellStyles.button}
+      />
     </div>
   )
 }
@@ -1129,21 +1071,24 @@ function RoundEndScreen({
         <span className={styles.endWordAccent}>{decodeWord(gameState.word ?? '')}</span>
       </p>
 
-      <div className={styles.resultsTable}>
-        {sortedPlayers.map((player, index) => (
-          <div key={player.id} className={styles.resultRow}>
-            <span className={cn(styles.resultTotal, arcadeShellStyles.mono)}>{index + 1}</span>
-            <div className={styles.resultPlayer}>
-              <ArcadeAvatar index={player.avatar} size={26} />
-              <span>{player.name}</span>
-            </div>
-            <span className={styles.resultDelta}>
-              {gameState.scoreDeltas[player.id] ? `+${gameState.scoreDeltas[player.id]}` : '—'}
-            </span>
-            <span className={styles.resultTotal}>{player.score}</span>
-          </div>
-        ))}
-      </div>
+      <ResultsTable
+        rows={sortedPlayers.map((player, index) => ({
+          id: player.id,
+          rankLabel: index + 1,
+          name: player.name,
+          avatar: player.avatar,
+          secondaryLabel: gameState.scoreDeltas[player.id]
+            ? `+${gameState.scoreDeltas[player.id]}`
+            : '—',
+          totalLabel: player.score,
+        }))}
+        className={styles.resultsTable}
+        rowClassName={styles.resultRow}
+        rankClassName={cn(styles.resultTotal, arcadeShellStyles.mono)}
+        playerClassName={styles.resultPlayer}
+        secondaryClassName={styles.resultDelta}
+        totalClassName={styles.resultTotal}
+      />
 
       <div className={styles.endActions}>
         <button
@@ -1196,24 +1141,24 @@ function FinishedScreen({
         with <span className={styles.endWordAccent}>{winner?.score ?? 0}</span> points
       </p>
 
-      <div className={styles.resultsTable}>
-        {sortedPlayers.map((player, index) => (
-          <div
-            key={player.id}
-            className={cn(styles.resultRow, index === 0 && styles.resultRowWinner)}
-          >
-            <span className={cn(styles.resultTotal, arcadeShellStyles.mono)}>
-              {index === 0 ? '👑' : index + 1}
-            </span>
-            <div className={styles.resultPlayer}>
-              <ArcadeAvatar index={player.avatar} size={26} />
-              <span>{player.name}</span>
-            </div>
-            <span className={styles.resultDelta}>{index === 0 ? 'Winner' : ''}</span>
-            <span className={styles.resultTotal}>{player.score}</span>
-          </div>
-        ))}
-      </div>
+      <ResultsTable
+        rows={sortedPlayers.map((player, index) => ({
+          id: player.id,
+          rankLabel: index === 0 ? '👑' : index + 1,
+          name: player.name,
+          avatar: player.avatar,
+          secondaryLabel: index === 0 ? 'Winner' : '',
+          totalLabel: player.score,
+          isWinner: index === 0,
+        }))}
+        className={styles.resultsTable}
+        rowClassName={styles.resultRow}
+        winnerRowClassName={styles.resultRowWinner}
+        rankClassName={cn(styles.resultTotal, arcadeShellStyles.mono)}
+        playerClassName={styles.resultPlayer}
+        secondaryClassName={styles.resultDelta}
+        totalClassName={styles.resultTotal}
+      />
 
       <div className={styles.endActions}>
         <button
