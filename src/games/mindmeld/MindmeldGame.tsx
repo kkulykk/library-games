@@ -260,6 +260,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
             </button>
             <button
               data-testid="invite-link"
+              data-invite-link={getInviteLink('mindmeld', roomCode)}
               onClick={() => handleCopy(getInviteLink('mindmeld', roomCode), 'link')}
               className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/12"
             >

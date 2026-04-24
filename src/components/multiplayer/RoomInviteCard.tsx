@@ -48,6 +48,7 @@ export function RoomInviteCard({
         <button
           type="button"
           data-testid="invite-link"
+          data-invite-link={inviteLink}
           className={cn(actionClassName)}
           onClick={() => onCopy(inviteLink, 'link')}
         >

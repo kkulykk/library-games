@@ -291,6 +291,7 @@ function LobbyScreen({
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const ready = canStartGame(gameState)
+  const unassignedPlayers = gameState.players.filter((player) => !player.team || !player.role)
 
   function copyCode() {
     navigator.clipboard.writeText(roomCode).then(
@@ -330,6 +331,7 @@ function LobbyScreen({
           </button>
           <button
             data-testid="invite-link"
+            data-invite-link={getInviteLink('codenames', roomCode)}
             onClick={copyInviteLink}
             className="hover:bg-background rounded-lg border px-3 py-1 text-xs font-medium transition-colors"
           >
@@ -343,9 +345,29 @@ function LobbyScreen({
         {gameState.players.length !== 1 ? 's' : ''} in room)
       </p>
 
-      <div data-testid="player-roster" className="flex gap-3">
-        <TeamPanel team="red" gameState={gameState} playerId={playerId} onJoinTeam={onJoinTeam} />
-        <TeamPanel team="blue" gameState={gameState} playerId={playerId} onJoinTeam={onJoinTeam} />
+      <div data-testid="player-roster" className="flex flex-col gap-3">
+        {unassignedPlayers.length > 0 && (
+          <div className="bg-secondary/60 rounded-xl p-3 text-xs">
+            <p className="text-muted-foreground mb-2 font-medium">Choosing teams</p>
+            <div className="flex flex-wrap gap-2">
+              {unassignedPlayers.map((player) => (
+                <span key={player.id} className="bg-background rounded-lg px-2 py-1 font-medium">
+                  {player.name}
+                  {player.isHost ? ' (host)' : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex gap-3">
+          <TeamPanel team="red" gameState={gameState} playerId={playerId} onJoinTeam={onJoinTeam} />
+          <TeamPanel
+            team="blue"
+            gameState={gameState}
+            playerId={playerId}
+            onJoinTeam={onJoinTeam}
+          />
+        </div>
       </div>
 
       {!ready && (
