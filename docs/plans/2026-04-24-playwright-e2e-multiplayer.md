@@ -44,7 +44,7 @@
 
 **Branch:** `feat/playwright-multiplayer-e2e`
 
-**Last updated:** 2026-04-24 20:10 UTC
+**Last updated:** 2026-04-24 21:13 UTC
 
 **Completed:**
 
@@ -57,6 +57,7 @@
 - [x] Task 6 — Added injectable Supabase boundary and browser-side fake Supabase client backed by a local HTTP server.
 - [x] Task 7 — Added fake Supabase reset endpoint plus Playwright reset helper/fixture.
 - [x] Task 8 — Added shared room-create contract spec covering Skribbl, Uno, Agario, Cards Against Humanity, Codenames, and Mindmeld.
+- [x] Security fix — Sanitized fake Supabase 500 responses so server exception details are logged locally but not returned over HTTP.
 
 **Verification passed:**
 
@@ -75,6 +76,7 @@
 - ESLint now ignores generated coverage and Playwright artifact directories.
 - Playwright now starts both the fake Supabase server and the Next dev server for E2E runs.
 - Codenames lobby now surfaces unassigned players in the roster so hosts are visible before choosing a team/role.
+- GitHub Advanced Security flagged fake Supabase error responses for information exposure; 500 responses are now generic while details stay in server logs.
 
 **Next:** Task 9 — Join room contract spec.
 
