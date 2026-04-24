@@ -35,12 +35,18 @@ export function LobbyActions({
     <footer className={className}>
       <span className={statusClassName}>{isHost ? hostLabel : guestLabel}</span>
       <div className={actionsClassName}>
-        <button type="button" onClick={onLeave} className={leaveButtonClassName}>
+        <button
+          type="button"
+          data-testid="leave-room-button"
+          onClick={onLeave}
+          className={leaveButtonClassName}
+        >
           {leaveLabel}
         </button>
         {isHost && onStart && (
           <button
             type="button"
+            data-testid="start-game-button"
             disabled={!canStart}
             onClick={onStart}
             className={cn(startButtonClassName)}

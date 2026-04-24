@@ -304,6 +304,7 @@ function EntryScreen({
 
         <div className="flex gap-4">
           <button
+            data-testid="create-room-button"
             onClick={() => setMode('create')}
             className="group border-border/50 bg-card hover:border-border flex w-40 flex-col items-center gap-3 rounded-2xl border px-6 py-6 text-center transition-all hover:-translate-y-1 hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
           >
@@ -316,6 +317,7 @@ function EntryScreen({
             </div>
           </button>
           <button
+            data-testid="join-room-button"
             onClick={() => setMode('join')}
             className="group border-border/50 bg-card hover:border-border flex w-40 flex-col items-center gap-3 rounded-2xl border px-6 py-6 text-center transition-all hover:-translate-y-1 hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
           >
@@ -343,13 +345,17 @@ function EntryScreen({
       </button>
       <h2 className="text-xl font-black">{isCreate ? 'Create Room' : 'Join Room'}</h2>
       {error && (
-        <p className="animate-cah-slide-down bg-destructive/10 text-destructive rounded-xl px-4 py-2.5 text-sm font-medium">
+        <p
+          data-testid="room-error"
+          className="animate-cah-slide-down bg-destructive/10 text-destructive rounded-xl px-4 py-2.5 text-sm font-medium"
+        >
           {error}
         </p>
       )}
       <label className="flex flex-col gap-1.5">
         <span className="text-muted-foreground text-xs font-semibold">Your name</span>
         <input
+          data-testid="player-name-input"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your name"
@@ -361,6 +367,7 @@ function EntryScreen({
         <label className="flex flex-col gap-1.5">
           <span className="text-muted-foreground text-xs font-semibold">Room code</span>
           <input
+            data-testid="room-code-input"
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="e.g. AB12"
@@ -370,6 +377,7 @@ function EntryScreen({
         </label>
       )}
       <button
+        data-testid={isCreate ? 'create-room-button' : 'join-room-button'}
         disabled={loading || !name.trim() || (!isCreate && joinCode.length < 4)}
         onClick={() => {
           savePlayerName(name.trim())
@@ -423,7 +431,9 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
         <p className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
           Room code
         </p>
-        <p className="mb-4 text-5xl font-black tracking-[0.3em]">{roomCode}</p>
+        <p data-testid="room-code" className="mb-4 text-5xl font-black tracking-[0.3em]">
+          {roomCode}
+        </p>
         <div className="flex justify-center gap-2">
           <button
             onClick={copyCode}
@@ -433,6 +443,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
           </button>
           <button
             onClick={copyInviteLink}
+            data-testid="invite-link"
             className="rounded-lg bg-white/10 px-4 py-1.5 text-xs font-semibold transition-all hover:bg-white/20 active:scale-95"
           >
             {copied === 'link' ? '✓ Copied!' : 'Share link'}
@@ -441,7 +452,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
       </div>
 
       {/* Players list */}
-      <div className="flex flex-col gap-2">
+      <div data-testid="player-roster" className="flex flex-col gap-2">
         <p className="text-muted-foreground flex items-center gap-2 text-xs font-bold tracking-wider uppercase">
           <span className="flex h-2 w-2 rounded-full bg-green-400">
             <span className="inline-flex h-2 w-2 animate-ping rounded-full bg-green-400 opacity-75" />
@@ -495,6 +506,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
       <div className="flex gap-3">
         {isHost ? (
           <button
+            data-testid="start-game-button"
             disabled={gameState.players.length < 3}
             onClick={onStart}
             className="flex-1 rounded-xl bg-black px-4 py-3 text-sm font-bold text-white transition-all hover:bg-gray-800 active:scale-[0.98] disabled:opacity-30 dark:bg-white dark:text-black dark:hover:bg-gray-200"
@@ -510,6 +522,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
           </div>
         )}
         <button
+          data-testid="leave-room-button"
           onClick={onLeave}
           className="text-muted-foreground hover:bg-secondary hover:text-foreground rounded-xl border px-5 py-3 text-sm font-semibold transition-colors"
         >
@@ -731,6 +744,7 @@ function GameBoard({
           {selectedCards.length === pick && (
             <div className="mt-4 flex justify-center">
               <button
+                data-testid="cah-submit-card"
                 onClick={handleSubmit}
                 className="animate-cah-slide-up rounded-xl bg-black px-8 py-3 text-sm font-bold text-white shadow-xl transition-all hover:bg-gray-800 active:scale-95 dark:bg-white dark:text-black dark:hover:bg-gray-200"
               >
@@ -766,6 +780,7 @@ function GameBoard({
 
       {/* Leave button */}
       <button
+        data-testid="leave-room-button"
         onClick={onLeave}
         className="text-muted-foreground/60 hover:text-muted-foreground rounded-lg px-3 py-2 text-xs transition-colors"
       >

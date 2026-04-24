@@ -40,6 +40,34 @@
 
 ---
 
+## Progress
+
+**Branch:** `feat/playwright-multiplayer-e2e`
+
+**Last updated:** 2026-04-24 15:50 UTC
+
+**Completed:**
+
+- [x] Task 1 — Installed Playwright (`@playwright/test`) and Chromium.
+- [x] Task 2 — Added `playwright.config.ts` for Chromium, `/library-games` base URL, dev server startup, CI retries, and trace/screenshot/video artifacts.
+- [x] Task 3 — Added `pnpm e2e`, `pnpm e2e:ui`, `pnpm e2e:debug`, and `pnpm e2e:ci` scripts.
+- [x] Task 4 — Added stable `data-testid` selectors for shared multiplayer create/join/lobby flows across Uno, Skribbl, Agario, Cards Against Humanity, Codenames, and Mindmeld.
+
+**Verification passed:**
+
+- `pnpm lint`
+- `pnpm e2e --list`
+
+**Notes:**
+
+- Added `e2e/playwright-setup.spec.ts` as a skipped placeholder so Playwright config/list commands succeed before real E2E specs are added.
+- Added `/playwright-report/` and `/test-results/` to `.gitignore`.
+- Mindmeld currently exposes `data-testid="room-code"` on text formatted as `Room ABCD`; future helpers should parse the 4-character code or this can be normalized in Task 5.
+
+**Next:** Task 5 — Create reusable E2E helpers.
+
+---
+
 ## Stage 1 — Playwright Baseline
 
 ### Task 1: Install Playwright
@@ -102,7 +130,7 @@
 
 **Verification:**
 
-- Run: `pnpm e2e -- --list`
+- Run: `pnpm e2e --list`
 - Expected: Playwright lists tests once tests are added; no config crash.
 
 ---
