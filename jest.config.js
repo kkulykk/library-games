@@ -14,6 +14,7 @@ const config = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   collectCoverageFrom: ['src/games/**/logic.ts'],
+  testPathIgnorePatterns: ['<rootDir>/e2e/'],
   coverageThreshold: {
     global: {
       lines: 80,

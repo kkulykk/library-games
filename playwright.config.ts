@@ -17,17 +17,25 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  webServer: {
-    command: `pnpm dev --hostname ${HOST} --port ${PORT}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    env: {
-      NEXT_PUBLIC_E2E_FAKE_SUPABASE: '1',
-      NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'e2e-anon-key',
+  webServer: [
+    {
+      command: 'node e2e/fake-supabase/server.mjs',
+      url: 'http://127.0.0.1:54321/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
     },
-  },
+    {
+      command: `pnpm dev --hostname ${HOST} --port ${PORT}`,
+      url: baseURL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: {
+        NEXT_PUBLIC_E2E_FAKE_SUPABASE: '1',
+        NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: 'e2e-anon-key',
+      },
+    },
+  ],
   projects: [
     {
       name: 'chromium',
