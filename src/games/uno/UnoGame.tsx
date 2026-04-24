@@ -312,7 +312,12 @@ function HowToScreen({ onStart }: { onStart: () => void }) {
           cards, call UNO before your friends catch you, and survive the draw piles.
         </p>
         <div className={styles.heroActions}>
-          <button type="button" onClick={onStart} className={arcadeShellStyles.button}>
+          <button
+            type="button"
+            data-testid="play-game-button"
+            onClick={onStart}
+            className={arcadeShellStyles.button}
+          >
             Play now →
           </button>
           <span className={cn(styles.heroMeta, arcadeShellStyles.mono)}>
@@ -1014,7 +1019,9 @@ function ConfettiEffect() {
 export function UnoGame() {
   const inviteCode = useInviteCode()
   const inviteCodeResolved = inviteCode !== undefined
-  const [entryMode, setEntryMode] = useState<'howto' | 'entry'>('howto')
+  const [entryMode, setEntryMode] = useState<'howto' | 'entry'>(
+    process.env.NEXT_PUBLIC_E2E_FAKE_SUPABASE === '1' ? 'entry' : 'howto'
+  )
   const {
     gameState,
     playerId,

@@ -720,6 +720,7 @@ function Lobby({
           <button
             onClick={copyInviteLink}
             data-testid="invite-link"
+            data-invite-link={getInviteLink('agario', roomCode)}
             className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
           >
             {copied === 'link' ? 'Copied!' : 'Copy invite link'}

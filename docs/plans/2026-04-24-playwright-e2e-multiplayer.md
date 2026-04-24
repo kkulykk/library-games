@@ -44,7 +44,7 @@
 
 **Branch:** `feat/playwright-multiplayer-e2e`
 
-**Last updated:** 2026-04-24 16:38 UTC
+**Last updated:** 2026-04-24 20:10 UTC
 
 **Completed:**
 
@@ -56,12 +56,14 @@
 - [x] Task 5 — Added reusable E2E helper modules for player contexts, game navigation, room create/join, roster assertions, room-code parsing, and start-game interactions.
 - [x] Task 6 — Added injectable Supabase boundary and browser-side fake Supabase client backed by a local HTTP server.
 - [x] Task 7 — Added fake Supabase reset endpoint plus Playwright reset helper/fixture.
+- [x] Task 8 — Added shared room-create contract spec covering Skribbl, Uno, Agario, Cards Against Humanity, Codenames, and Mindmeld.
 
 **Verification passed:**
 
 - `pnpm lint`
 - `pnpm test:coverage`
 - `pnpm e2e --list`
+- `pnpm e2e -- e2e/multiplayer-room-contract.spec.ts`
 - `pnpm build`
 
 **Notes:**
@@ -72,8 +74,9 @@
 - Root cause of the failed CI run was Jest collecting `e2e/playwright-setup.spec.ts`; `jest.config.js` now ignores `<rootDir>/e2e/`.
 - ESLint now ignores generated coverage and Playwright artifact directories.
 - Playwright now starts both the fake Supabase server and the Next dev server for E2E runs.
+- Codenames lobby now surfaces unassigned players in the roster so hosts are visible before choosing a team/role.
 
-**Next:** Task 8 — Create room contract spec.
+**Next:** Task 9 — Join room contract spec.
 
 ---
 

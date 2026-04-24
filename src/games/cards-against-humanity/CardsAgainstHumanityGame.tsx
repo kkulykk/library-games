@@ -444,6 +444,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
           <button
             onClick={copyInviteLink}
             data-testid="invite-link"
+            data-invite-link={getInviteLink('cards-against-humanity', roomCode)}
             className="rounded-lg bg-white/10 px-4 py-1.5 text-xs font-semibold transition-all hover:bg-white/20 active:scale-95"
           >
             {copied === 'link' ? '✓ Copied!' : 'Share link'}

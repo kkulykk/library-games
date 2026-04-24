@@ -162,7 +162,9 @@ class FakeRealtimeChannel {
       void this.poll()
     }, pollMs)
 
-    void Promise.resolve(callback?.('SUBSCRIBED'))
+    queueMicrotask(() => {
+      void Promise.resolve(callback?.('SUBSCRIBED'))
+    })
     return this
   }
 
