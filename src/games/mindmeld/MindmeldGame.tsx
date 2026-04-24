@@ -113,6 +113,7 @@ function EntryScreen({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <button
+              data-testid="create-room-button"
               onClick={() => setMode('create')}
               className="rounded-[1.5rem] border border-white/10 bg-white/8 px-6 py-6 text-left transition hover:-translate-y-0.5 hover:bg-white/12"
             >
@@ -123,6 +124,7 @@ function EntryScreen({
               <div className="mt-1 text-sm text-white/65">Host the psychic signal.</div>
             </button>
             <button
+              data-testid="join-room-button"
               onClick={() => setMode('join')}
               className="rounded-[1.5rem] border border-white/10 bg-white/8 px-6 py-6 text-left transition hover:-translate-y-0.5 hover:bg-white/12"
             >
@@ -162,11 +164,17 @@ function EntryScreen({
         </p>
       </div>
       {error && (
-        <p className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm">{error}</p>
+        <p
+          data-testid="room-error"
+          className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm"
+        >
+          {error}
+        </p>
       )}
       <label className="flex flex-col gap-1.5">
         <span className="text-muted-foreground text-xs font-medium">Your name</span>
         <input
+          data-testid="player-name-input"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your name"
@@ -178,6 +186,7 @@ function EntryScreen({
         <label className="flex flex-col gap-1.5">
           <span className="text-muted-foreground text-xs font-medium">Room code</span>
           <input
+            data-testid="room-code-input"
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="e.g. AB12"
@@ -187,6 +196,7 @@ function EntryScreen({
         </label>
       )}
       <button
+        data-testid={isCreate ? 'create-room-button' : 'join-room-button'}
         disabled={loading || !name.trim() || (!isCreate && joinCode.length < 4)}
         onClick={() => {
           savePlayerName(name.trim())
@@ -230,7 +240,9 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
               <div className="text-[11px] font-semibold tracking-[0.28em] text-amber-200/90 uppercase">
                 Lobby frequency
               </div>
-              <h2 className="mt-2 text-3xl font-black tracking-tight">Room {roomCode}</h2>
+              <h2 data-testid="room-code" className="mt-2 text-3xl font-black tracking-tight">
+                Room {roomCode}
+              </h2>
               <p className="mt-2 max-w-lg text-sm leading-6 text-white/68">
                 Psychic gives the clue. The rest of the table discusses and submits one shared dial
                 position, then the target is revealed.
@@ -247,6 +259,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
               {copied === 'code' ? 'Copied code' : 'Copy code'}
             </button>
             <button
+              data-testid="invite-link"
               onClick={() => handleCopy(getInviteLink('mindmeld', roomCode), 'link')}
               className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/12"
             >
@@ -279,7 +292,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
             </span>
           )}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div data-testid="player-roster" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {gameState.players.map((player) => (
             <div
               key={player.id}
@@ -304,6 +317,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
       <div className="flex gap-3">
         {isHost ? (
           <button
+            data-testid="start-game-button"
             disabled={!ready}
             onClick={onStart}
             className="bg-foreground text-background flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40"
@@ -316,6 +330,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
           </div>
         )}
         <button
+          data-testid="leave-room-button"
           onClick={onLeave}
           className="hover:bg-secondary rounded-xl border px-4 py-3 text-sm font-semibold transition"
         >
@@ -851,6 +866,7 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
           </div>
         )}
         <button
+          data-testid="leave-room-button"
           onClick={onLeave}
           className="hover:bg-secondary rounded-xl border px-4 py-3 text-sm font-semibold transition"
         >

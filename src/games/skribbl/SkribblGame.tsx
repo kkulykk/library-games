@@ -318,6 +318,7 @@ function DrawingCanvas({
   return (
     <div className={cn(styles.canvasSurface, !isDrawer && styles.canvasReadOnly)}>
       <canvas
+        data-testid="skribbl-canvas"
         ref={canvasRef}
         width={800}
         height={560}
@@ -685,6 +686,7 @@ function EntryScreen({
         <div className={styles.entryChoiceGrid}>
           <button
             type="button"
+            data-testid="create-room-button"
             className={cn(styles.entryCard, styles.entryCardAccent)}
             onClick={() => setMode('create')}
           >
@@ -694,7 +696,12 @@ function EntryScreen({
             </div>
           </button>
 
-          <button type="button" className={styles.entryCard} onClick={() => setMode('join')}>
+          <button
+            type="button"
+            data-testid="join-room-button"
+            className={styles.entryCard}
+            onClick={() => setMode('join')}
+          >
             <div className={styles.entryCardTitle}>Join Room</div>
             <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
               Enter a 4-char code
@@ -729,11 +736,16 @@ function EntryScreen({
       </div>
 
       <div className={styles.entryForm}>
-        {error && <div className={styles.error}>{error}</div>}
+        {error && (
+          <div data-testid="room-error" className={styles.error}>
+            {error}
+          </div>
+        )}
 
         <label className={styles.field}>
           <span className={cn(styles.label, arcadeShellStyles.mono)}>Your name</span>
           <input
+            data-testid="player-name-input"
             value={name}
             onChange={(event) => setName(event.target.value)}
             maxLength={16}
@@ -757,6 +769,7 @@ function EntryScreen({
           <label className={styles.field}>
             <span className={cn(styles.label, arcadeShellStyles.mono)}>Room code</span>
             <input
+              data-testid="room-code-input"
               value={code}
               onChange={(event) =>
                 setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
@@ -782,6 +795,7 @@ function EntryScreen({
           </button>
           <button
             type="button"
+            data-testid={mode === 'create' ? 'create-room-button' : 'join-room-button'}
             onClick={submit}
             disabled={loading || !canSubmit}
             className={arcadeShellStyles.button}
