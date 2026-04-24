@@ -4,7 +4,15 @@ import eslintConfigPrettier from 'eslint-config-prettier'
 import tseslint from 'typescript-eslint'
 
 const eslintConfig = defineConfig([
-  globalIgnores(['next-env.d.ts', '.next/**', 'out/**', 'node_modules/**']),
+  globalIgnores([
+    'next-env.d.ts',
+    '.next/**',
+    'out/**',
+    'node_modules/**',
+    'coverage/**',
+    'playwright-report/**',
+    'test-results/**',
+  ]),
   {
     extends: [...nextCoreWebVitals, eslintConfigPrettier],
   },

@@ -44,7 +44,7 @@
 
 **Branch:** `feat/playwright-multiplayer-e2e`
 
-**Last updated:** 2026-04-24 15:50 UTC
+**Last updated:** 2026-04-24 16:38 UTC
 
 **Completed:**
 
@@ -52,19 +52,28 @@
 - [x] Task 2 — Added `playwright.config.ts` for Chromium, `/library-games` base URL, dev server startup, CI retries, and trace/screenshot/video artifacts.
 - [x] Task 3 — Added `pnpm e2e`, `pnpm e2e:ui`, `pnpm e2e:debug`, and `pnpm e2e:ci` scripts.
 - [x] Task 4 — Added stable `data-testid` selectors for shared multiplayer create/join/lobby flows across Uno, Skribbl, Agario, Cards Against Humanity, Codenames, and Mindmeld.
+- [x] CI fix — Updated Jest config so Jest ignores Playwright E2E specs under `e2e/`.
+- [x] Task 5 — Added reusable E2E helper modules for player contexts, game navigation, room create/join, roster assertions, room-code parsing, and start-game interactions.
+- [x] Task 6 — Added injectable Supabase boundary and browser-side fake Supabase client backed by a local HTTP server.
+- [x] Task 7 — Added fake Supabase reset endpoint plus Playwright reset helper/fixture.
 
 **Verification passed:**
 
 - `pnpm lint`
+- `pnpm test:coverage`
 - `pnpm e2e --list`
+- `pnpm build`
 
 **Notes:**
 
 - Added `e2e/playwright-setup.spec.ts` as a skipped placeholder so Playwright config/list commands succeed before real E2E specs are added.
 - Added `/playwright-report/` and `/test-results/` to `.gitignore`.
 - Mindmeld currently exposes `data-testid="room-code"` on text formatted as `Room ABCD`; future helpers should parse the 4-character code or this can be normalized in Task 5.
+- Root cause of the failed CI run was Jest collecting `e2e/playwright-setup.spec.ts`; `jest.config.js` now ignores `<rootDir>/e2e/`.
+- ESLint now ignores generated coverage and Playwright artifact directories.
+- Playwright now starts both the fake Supabase server and the Next dev server for E2E runs.
 
-**Next:** Task 5 — Create reusable E2E helpers.
+**Next:** Task 8 — Create room contract spec.
 
 ---
 
