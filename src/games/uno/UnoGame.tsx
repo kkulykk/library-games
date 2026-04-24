@@ -1,17 +1,19 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
-import {
-  ResumeSessionButton,
-  type SavedSessionSummary,
-} from '@/components/multiplayer/ResumeSessionButton'
+import { ArcadeShell, arcadeShellStyles } from '@/components/multiplayer/ArcadeShell'
+import { LobbyActions } from '@/components/multiplayer/LobbyActions'
+import { PlayerRoster } from '@/components/multiplayer/PlayerRoster'
+import { ResultsTable } from '@/components/multiplayer/ResultsTable'
+import { ResumeSessionCard } from '@/components/multiplayer/ResumeSessionCard'
+import { RoomInviteCard } from '@/components/multiplayer/RoomInviteCard'
+import type { SavedSessionSummary } from '@/components/multiplayer/ResumeSessionButton'
 import { useUnoRoom } from './useUnoRoom'
 import {
-  canPlayCard,
   getPlayableCards,
   getCurrentPlayer,
   getTopCard,
@@ -20,6 +22,7 @@ import {
   type CardColor,
   type GameState,
 } from './logic'
+import styles from './UnoGame.module.css'
 
 // ─── Animations (injected once) ─────────────────────────────────────────────
 
@@ -51,6 +54,10 @@ function UnoStyles() {
         60% { transform: scale(1.05) rotate(1deg); }
         100% { transform: scale(1) rotate(0deg); opacity: 1; }
       }
+      @keyframes confetti-fall {
+        0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+      }
       .animate-uno-fade-in { animation: uno-fade-in 0.3s ease-out; }
       .animate-uno-slide-up { animation: uno-slide-up 0.35s ease-out; }
       .animate-uno-card-deal { animation: uno-card-deal 0.3s ease-out both; }
@@ -72,13 +79,6 @@ const ACTIVE_COLOR_BG: Record<CardColor, string> = {
   yellow: 'bg-yellow-400',
   green: 'bg-emerald-500',
   blue: 'bg-blue-500',
-}
-
-const ACTIVE_COLOR_RING: Record<CardColor, string> = {
-  red: 'ring-red-400',
-  yellow: 'ring-yellow-300',
-  green: 'ring-emerald-400',
-  blue: 'ring-blue-400',
 }
 
 /** Map a card to its {row, col} in the sprite grid (14 cols × 8 rows). */
@@ -182,6 +182,52 @@ function UnoCard({
 
 const COLORS: CardColor[] = ['red', 'yellow', 'green', 'blue']
 
+function makeCrumb(
+  gameState: GameState | null,
+  roomCode: string | null,
+  playerId: string | null,
+  inviteCode: string | null | undefined
+) {
+  if (!gameState) {
+    return (
+      <>
+        /{' '}
+        <span className={arcadeShellStyles.crumbAccent}>
+          {inviteCode === undefined ? 'Loading' : inviteCode ? 'Join a game' : 'How to play'}
+        </span>
+      </>
+    )
+  }
+
+  if (gameState.phase === 'lobby') {
+    return (
+      <>
+        / Lobby · <span className={arcadeShellStyles.crumbAccent}>{roomCode}</span>
+      </>
+    )
+  }
+
+  if (gameState.phase === 'playing') {
+    const currentPlayer = getCurrentPlayer(gameState)
+    return (
+      <>
+        /{' '}
+        <span className={arcadeShellStyles.crumbAccent}>
+          {currentPlayer?.id === playerId
+            ? 'Your turn'
+            : `${currentPlayer?.name ?? 'Player'}\u2019s turn`}
+        </span>
+      </>
+    )
+  }
+
+  return (
+    <>
+      / <span className={arcadeShellStyles.crumbAccent}>Game over</span>
+    </>
+  )
+}
+
 const COLOR_PICKER_STYLES: Record<CardColor, string> = {
   red: 'bg-red-500 hover:bg-red-400',
   yellow: 'bg-yellow-400 hover:bg-yellow-300',
@@ -225,17 +271,85 @@ function ColorPicker({ onPick }: ColorPickerProps) {
 
 function SetupRequired() {
   return (
-    <div className="bg-secondary/40 mx-auto max-w-md rounded-2xl border p-6 text-center">
-      <div className="mb-3 text-4xl">🔧</div>
-      <h2 className="mb-2 text-lg font-bold">Supabase setup required</h2>
-      <p className="text-muted-foreground mb-4 text-sm">
-        Online multiplayer requires a Supabase project. Create a free project at{' '}
-        <span className="text-foreground font-medium">supabase.com</span>, run the schema from{' '}
-        <code className="bg-secondary rounded px-1 text-xs">supabase-schema.sql</code>, then set:
+    <div className={styles.setup}>
+      <div className="mb-4 text-5xl">🔧</div>
+      <h2>Supabase setup required</h2>
+      <p>
+        Online multiplayer rooms still run through Supabase. The redesign is ready, but the game
+        needs the same backend wiring as before.
       </p>
-      <pre className="bg-secondary rounded-lg p-3 text-left text-xs">
-        {`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
-      </pre>
+      <pre>{`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}</pre>
+    </div>
+  )
+}
+
+function InviteResolvingScreen() {
+  return (
+    <div className={styles.entryShell}>
+      <div className={styles.entryHead}>
+        <h2>Loading room…</h2>
+        <p>Checking your invite link and preparing the right entry screen.</p>
+      </div>
+    </div>
+  )
+}
+
+function HowToScreen({ onStart }: { onStart: () => void }) {
+  return (
+    <div className={styles.hero}>
+      <div className={styles.heroLeft}>
+        <span className={cn(styles.tag, arcadeShellStyles.mono)}>Multiplayer · 2-10 players</span>
+        <h1 className={styles.heroTitle}>
+          Match it.
+          <br />
+          Stack it.
+          <br />
+          <span className={styles.heroTitleAccent}>UNO it.</span>
+        </h1>
+        <p className={styles.heroCopy}>
+          Race to empty your hand in a private online room. Match colors or numbers, drop action
+          cards, call UNO before your friends catch you, and survive the draw piles.
+        </p>
+        <div className={styles.heroActions}>
+          <button type="button" onClick={onStart} className={arcadeShellStyles.button}>
+            Play now →
+          </button>
+          <span className={cn(styles.heroMeta, arcadeShellStyles.mono)}>
+            realtime · private rooms · chaos encouraged
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.steps}>
+        {[
+          [
+            '01 · Join',
+            'Grab a room',
+            'Host a private room or enter a four-character invite code.',
+            '▣',
+          ],
+          [
+            '02 · Match',
+            'Play smart',
+            'Match the active color or value. Wilds let you bend the table.',
+            '◆',
+          ],
+          [
+            '03 · Punish',
+            'Stack pressure',
+            'Skip, reverse, and draw cards keep everyone sweating.',
+            '↯',
+          ],
+          ['04 · UNO', 'Say it fast', 'One card left? Call UNO before somebody catches you.', '!'],
+        ].map(([number, title, copy, icon], index) => (
+          <article key={number} className={cn(styles.step, index === 1 && styles.stepAccent)}>
+            <span className={cn(styles.stepNumber, arcadeShellStyles.mono)}>{number}</span>
+            <div className={styles.stepIcon}>{icon}</div>
+            <div className={styles.stepTitle}>{title}</div>
+            <div className={styles.stepDescription}>{copy}</div>
+          </article>
+        ))}
+      </div>
     </div>
   )
 }
@@ -258,110 +372,150 @@ function EntryScreen({
   loading,
   error,
   initialCode,
-}: EntryScreenProps) {
+  onBackToHowTo,
+}: EntryScreenProps & { onBackToHowTo?: () => void }) {
   const [name, setName] = useState(getSavedPlayerName)
   const [joinCode, setJoinCode] = useState(initialCode ?? '')
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
 
+  useEffect(() => {
+    if (!initialCode) return
+    setMode('join')
+    setJoinCode(initialCode)
+  }, [initialCode])
+
+  const canSubmit = name.trim().length >= 2 && (mode === 'create' || joinCode.trim().length >= 4)
+
+  function submit() {
+    if (!canSubmit) return
+    const trimmedName = name.trim()
+    savePlayerName(trimmedName)
+
+    if (mode === 'create') {
+      onCreate(trimmedName)
+      return
+    }
+
+    onJoin(joinCode.trim().toUpperCase(), trimmedName)
+  }
+
   if (mode === 'choose') {
     return (
-      <div className="animate-uno-fade-in flex flex-col items-center gap-6">
-        <div className="text-center">
-          <div className="mb-3 flex justify-center gap-1">
-            {['red', 'yellow', 'green', 'blue'].map((c) => (
-              <div
-                key={c}
-                className={cn('h-10 w-7 rounded-md shadow-md', {
-                  'bg-red-500': c === 'red',
-                  '-ml-1 -rotate-6 bg-yellow-400': c === 'yellow',
-                  '-ml-1 rotate-3 bg-emerald-500': c === 'green',
-                  '-ml-1 rotate-6 bg-blue-500': c === 'blue',
-                })}
-              />
-            ))}
-          </div>
-          <h2 className="text-xl font-black tracking-tight">UNO Online</h2>
-          <p className="text-muted-foreground text-sm">2-10 players</p>
+      <div className={styles.entryShell}>
+        <div className={styles.entryHead}>
+          <h2>Ready to play?</h2>
+          <p>Host a new room or jump into a friend&apos;s game with a code.</p>
         </div>
-        {savedSession && (
-          <ResumeSessionButton
+
+        {savedSession && onRestore && (
+          <ResumeSessionCard
             session={savedSession}
-            onClick={() => onRestore?.()}
-            className="w-64"
+            onResume={onRestore}
+            className={styles.resumeCard}
+            titleClassName={styles.resumeTitle}
+            descriptionClassName={styles.resumeCopy}
+            actionClassName={cn(arcadeShellStyles.button, arcadeShellStyles.buttonSmall)}
           />
         )}
-        <div className="flex gap-3">
+
+        <div className={styles.entryChoiceGrid}>
           <button
+            type="button"
+            className={cn(styles.entryCard, styles.entryCardAccent)}
             onClick={() => setMode('create')}
-            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
           >
-            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
-              <span className="text-2xl">+</span>
+            <div className={styles.entryCardTitle}>Create Room</div>
+            <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
+              Host a private game
             </div>
-            <span>Create Room</span>
-            <span className="text-muted-foreground text-xs font-normal">Host a game</span>
           </button>
-          <button
-            onClick={() => setMode('join')}
-            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
-          >
-            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
-              <span className="text-2xl">&rarr;</span>
+
+          <button type="button" className={styles.entryCard} onClick={() => setMode('join')}>
+            <div className={styles.entryCardTitle}>Join Room</div>
+            <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
+              Enter a 4-char code
             </div>
-            <span>Join Room</span>
-            <span className="text-muted-foreground text-xs font-normal">Enter a code</span>
           </button>
         </div>
+
+        {onBackToHowTo && (
+          <div className={styles.entryActions}>
+            <button
+              type="button"
+              className={cn(
+                arcadeShellStyles.button,
+                arcadeShellStyles.buttonGhost,
+                arcadeShellStyles.buttonSmall
+              )}
+              onClick={onBackToHowTo}
+            >
+              ← Back to how it works
+            </button>
+          </div>
+        )}
       </div>
     )
   }
 
   const isCreate = mode === 'create'
   return (
-    <div className="animate-uno-slide-up flex w-72 flex-col gap-4">
-      <button
-        onClick={() => setMode('choose')}
-        className="text-muted-foreground hover:text-foreground self-start text-sm"
-      >
-        &larr; Back
-      </button>
-      <h2 className="text-lg font-bold">{isCreate ? 'Create Room' : 'Join Room'}</h2>
-      {error && (
-        <p className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm">{error}</p>
-      )}
-      <label className="flex flex-col gap-1">
-        <span className="text-muted-foreground text-xs font-medium">Your name</span>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Enter your name"
-          maxLength={16}
-          className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"
-        />
-      </label>
-      {!isCreate && (
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-xs font-medium">Room code</span>
+    <div className={styles.entryShell}>
+      <div className={styles.entryHead}>
+        <h2>{isCreate ? 'Create a room' : 'Join a room'}</h2>
+        <p>{isCreate ? "You'll be the host." : 'Ask the host for the room code.'}</p>
+      </div>
+
+      <div className={styles.entryForm}>
+        {error && <div className={styles.error}>{error}</div>}
+
+        <label className={styles.field}>
+          <span className={cn(styles.label, arcadeShellStyles.mono)}>Your name</span>
           <input
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            placeholder="e.g. AB12"
-            maxLength={4}
-            className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm tracking-widest uppercase outline-none focus:ring-2"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="e.g. Marble"
+            maxLength={16}
+            className={arcadeShellStyles.input}
           />
         </label>
-      )}
-      <button
-        disabled={loading || !name.trim() || (!isCreate && joinCode.length < 4)}
-        onClick={() => {
-          savePlayerName(name.trim())
-          if (isCreate) onCreate(name.trim())
-          else onJoin(joinCode, name.trim())
-        }}
-        className="bg-primary text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
-      >
-        {loading ? 'Connecting\u2026' : isCreate ? 'Create Room' : 'Join Room'}
-      </button>
+
+        {!isCreate && (
+          <label className={styles.field}>
+            <span className={cn(styles.label, arcadeShellStyles.mono)}>Room code</span>
+            <input
+              value={joinCode}
+              onChange={(event) =>
+                setJoinCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+              }
+              placeholder="AB23"
+              maxLength={4}
+              className={cn(arcadeShellStyles.input, styles.codeInput)}
+            />
+          </label>
+        )}
+
+        <div className={styles.entryActions}>
+          <button
+            type="button"
+            className={cn(
+              arcadeShellStyles.button,
+              arcadeShellStyles.buttonGhost,
+              arcadeShellStyles.buttonSmall
+            )}
+            onClick={() => setMode('choose')}
+          >
+            ← Back
+          </button>
+          <button
+            type="button"
+            disabled={loading || !canSubmit}
+            onClick={submit}
+            className={arcadeShellStyles.button}
+          >
+            {loading ? 'Connecting...' : isCreate ? 'Create room' : 'Join room'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -386,106 +540,70 @@ function LobbyScreen({
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
-  function copyCode() {
-    navigator.clipboard.writeText(roomCode).then(
+  function copyValue(value: string, kind: 'code' | 'link') {
+    navigator.clipboard?.writeText(value).then(
       () => {
-        setCopied('code')
-        setTimeout(() => setCopied(null), 2000)
+        setCopied(kind)
+        window.setTimeout(() => setCopied(null), 1800)
       },
       () => {}
     )
   }
 
-  function copyInviteLink() {
-    navigator.clipboard.writeText(getInviteLink('uno', roomCode)).then(
-      () => {
-        setCopied('link')
-        setTimeout(() => setCopied(null), 2000)
-      },
-      () => {}
-    )
-  }
+  const rosterPlayers = gameState.players.map((player, index) => ({ ...player, avatar: index % 8 }))
 
   return (
-    <div className="animate-uno-fade-in flex w-80 flex-col gap-5">
-      <div className="bg-secondary rounded-2xl p-5 text-center">
-        <p className="text-muted-foreground mb-1 text-xs font-medium">
-          Room code &mdash; share with friends
-        </p>
-        <p className="mb-3 text-4xl font-black tracking-widest">{roomCode}</p>
-        <div className="flex justify-center gap-2">
-          <button
-            onClick={copyCode}
-            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
-          >
-            {copied === 'code' ? 'Copied!' : 'Copy code'}
-          </button>
-          <button
-            onClick={copyInviteLink}
-            className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
-          >
-            {copied === 'link' ? 'Copied!' : 'Copy invite link'}
-          </button>
-        </div>
+    <div className={styles.lobby}>
+      <RoomInviteCard
+        roomCode={roomCode}
+        inviteLink={getInviteLink('uno', roomCode)}
+        copied={copied}
+        onCopy={copyValue}
+        className={styles.roomCard}
+        titleClassName={cn(styles.roomLabel, arcadeShellStyles.mono)}
+        roomCodeClassName={styles.roomCode}
+        actionsClassName={styles.roomActions}
+        actionClassName={cn(styles.roomAction, arcadeShellStyles.mono)}
+        metaClassName={cn(styles.roomMeta, arcadeShellStyles.mono)}
+      />
+
+      <div className={styles.lobbySide}>
+        <PlayerRoster
+          players={rosterPlayers}
+          currentPlayerId={playerId}
+          onlinePlayerIds={onlinePlayerIds}
+          maxPlayers={10}
+          currentPlayerIsHost={isHost}
+          className={styles.playersPanel}
+          headerClassName={cn(styles.panelHead, arcadeShellStyles.mono)}
+          listClassName={styles.playerList}
+          rowClassName={styles.playerRow}
+          currentPlayerRowClassName={styles.playerRowYou}
+          avatarClassName={styles.playerAvatar}
+          infoClassName={styles.playerInfo}
+          nameClassName={styles.playerName}
+          metaClassName={styles.playerMeta}
+          tagsClassName={styles.playerTags}
+          tagClassName={styles.playerTag}
+          hostTagClassName={styles.playerTagHost}
+        />
       </div>
 
-      <div className="flex flex-col gap-2">
-        <p className="text-muted-foreground text-xs font-medium">
-          Players ({gameState.players.length}/10)
-        </p>
-        {gameState.players.map((p, i) => {
-          const isOnline = onlinePlayerIds.includes(p.id)
-          return (
-            <div
-              key={p.id}
-              className="animate-uno-slide-up bg-secondary flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-              style={{ animationDelay: `${i * 50}ms` }}
-            >
-              <span
-                className={cn(
-                  'h-2 w-2 rounded-full',
-                  isOnline ? 'bg-green-400' : 'bg-gray-400 opacity-50'
-                )}
-                title={isOnline ? 'Online' : 'Offline'}
-              />
-              <span className={cn('font-medium', !isOnline && 'opacity-60')}>{p.name}</span>
-              {p.isHost && <span className="text-muted-foreground ml-auto text-xs">host</span>}
-              {p.id === playerId && !p.isHost && (
-                <span className="text-muted-foreground ml-auto text-xs">you</span>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {isHost && gameState.players.length < 2 && (
-        <p className="text-muted-foreground text-center text-xs">
-          Waiting for at least one more player&hellip;
-        </p>
-      )}
-
-      <div className="flex gap-3">
-        {isHost && (
-          <button
-            disabled={gameState.players.length < 2}
-            onClick={onStart}
-            className="bg-primary text-primary-foreground flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
-          >
-            Start Game
-          </button>
+      <LobbyActions
+        isHost={isHost}
+        canStart={gameState.players.length >= 2}
+        onLeave={onLeave}
+        onStart={onStart}
+        className={styles.lobbyFooter}
+        statusClassName={cn(styles.waiting, arcadeShellStyles.mono)}
+        actionsClassName={styles.entryActions}
+        leaveButtonClassName={cn(
+          arcadeShellStyles.button,
+          arcadeShellStyles.buttonGhost,
+          arcadeShellStyles.buttonSmall
         )}
-        {!isHost && (
-          <p className="text-muted-foreground flex-1 text-center text-sm">
-            Waiting for host to start&hellip;
-          </p>
-        )}
-        <button
-          onClick={onLeave}
-          className="hover:bg-secondary rounded-lg border px-4 py-2.5 text-sm font-semibold"
-        >
-          Leave
-        </button>
-      </div>
+        startButtonClassName={arcadeShellStyles.button}
+      />
     </div>
   )
 }
@@ -527,7 +645,6 @@ function GameBoard({
   const hasDrawnCard = gameState.drawnCardId !== null && isMyTurn
   const mustDraw = isMyTurn && gameState.pendingDrawCount > 0
 
-  // Track discard pile changes for animation
   const topCardId = topCard?.id ?? null
   useEffect(() => {
     if (topCardId !== prevTopCardRef.current) {
@@ -563,14 +680,14 @@ function GameBoard({
     }
   }
 
-  const statusText = () => {
-    if (!isMyTurn) return `${currentPlayer?.name ?? '?'}'s turn`
-    if (mustDraw) return `You must draw ${gameState.pendingDrawCount} cards`
-    if (hasDrawnCard) return 'Play the drawn card or pass'
-    return 'Your turn — play a card or draw'
-  }
+  const statusText = !isMyTurn
+    ? `${currentPlayer?.name ?? '?'}'s turn`
+    : mustDraw
+      ? `You must draw ${gameState.pendingDrawCount} cards`
+      : hasDrawnCard
+        ? 'Play the drawn card or pass'
+        : 'Your turn — play a card or draw'
 
-  // Track current time so we can hide the Catch button during the grace window
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const windows = Object.values(gameState.unoWindow)
@@ -581,7 +698,6 @@ function GameBoard({
     return () => clearTimeout(timer)
   }, [gameState.unoWindow])
 
-  // Check if any opponent can be caught (has 1 card, didn't call UNO, grace window expired)
   const catchableTargets = otherPlayers.filter((p) => {
     const hand = gameState.hands[p.id] ?? []
     const windowUntil = gameState.unoWindow[p.id] ?? 0
@@ -589,231 +705,178 @@ function GameBoard({
   })
 
   return (
-    <div className="flex w-full max-w-2xl flex-col items-center gap-3 px-2 sm:gap-4 sm:px-0">
+    <div className={styles.board}>
       {pendingWild && <ColorPicker onPick={handleColorPick} />}
 
-      {/* Status bar */}
-      <div
-        className={cn(
-          'animate-uno-fade-in w-full rounded-xl px-4 py-2 text-center text-sm font-semibold transition-colors duration-300 sm:px-5',
-          isMyTurn
-            ? mustDraw
-              ? 'bg-orange-100 text-orange-800 ring-1 ring-orange-300 dark:bg-orange-500/20 dark:text-orange-300 dark:ring-orange-500/30'
-              : hasDrawnCard
-                ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30'
-                : 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-500/30'
-            : 'bg-secondary text-secondary-foreground'
-        )}
-      >
-        {isMyTurn && (
-          <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
-        )}
-        {statusText()}
-      </div>
+      <aside className={styles.tablePanel}>
+        <div className={cn(styles.scoreHead, arcadeShellStyles.mono)}>
+          <span>Players</span>
+          <span>{gameState.players.length} / 10</span>
+        </div>
+        <div className={styles.opponents}>
+          {otherPlayers.map((p) => {
+            const hand = gameState.hands[p.id] ?? []
+            const isTurn = currentPlayer?.id === p.id
+            const calledUno = gameState.calledUno.includes(p.id)
+            const isCatchable = catchableTargets.includes(p)
+            const isOnline = onlinePlayerIds.includes(p.id)
 
-      {/* Other players */}
-      <div className="flex w-full flex-wrap justify-center gap-2">
-        {otherPlayers.map((p) => {
-          const hand = gameState.hands[p.id] ?? []
-          const isTurn = currentPlayer?.id === p.id
-          const calledUno = gameState.calledUno.includes(p.id)
-          const isCatchable = catchableTargets.includes(p)
+            return (
+              <div key={p.id} className={cn(styles.opponentRow, isTurn && styles.opponentTurn)}>
+                <div>
+                  <div className={styles.playerName}>{p.name}</div>
+                  <div className={styles.opponentMeta}>
+                    {isOnline ? 'online' : 'offline'} · {hand.length} cards
+                  </div>
+                </div>
+                <div className={styles.playerTags}>
+                  {isTurn && (
+                    <span className={cn(styles.playerTag, styles.playerTagHost)}>turn</span>
+                  )}
+                  {calledUno && <span className={styles.playerTag}>UNO</span>}
+                  {isCatchable && (
+                    <button
+                      type="button"
+                      onClick={() => onCatchUno(p.id)}
+                      className={cn(styles.playerTag, styles.playerTagHost)}
+                    >
+                      catch
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </aside>
 
-          const isOnline = onlinePlayerIds.includes(p.id)
-          return (
+      <div className={styles.mainColumn}>
+        <div className={cn(styles.statusBar, arcadeShellStyles.mono)}>
+          {isMyTurn && (
+            <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
+          )}
+          {statusText}
+        </div>
+
+        <div className={styles.playArea}>
+          <div className={cn(styles.direction, arcadeShellStyles.mono)}>
+            <span style={{ transform: gameState.direction === 1 ? 'scaleX(1)' : 'scaleX(-1)' }}>
+              →
+            </span>{' '}
+            {gameState.direction === 1 ? 'clockwise' : 'counter-clockwise'}
+          </div>
+
+          <div className={styles.pile}>
+            <div className="relative">
+              <div className="absolute -top-0.5 -right-0.5 h-full w-full border-2 border-gray-300 bg-gray-200" />
+              <div className="relative">
+                <UnoCard
+                  card={{ id: 'draw', color: 'wild', value: 'wild' }}
+                  size="lg"
+                  faceDown
+                  playable={isMyTurn && !hasDrawnCard}
+                  onClick={isMyTurn && !hasDrawnCard ? onDraw : undefined}
+                />
+              </div>
+            </div>
+            <span className={arcadeShellStyles.mono}>{gameState.drawPile.length} cards</span>
+          </div>
+
+          <div className={styles.pile}>
             <div
-              key={p.id}
+              className={cn(styles.colorPuck, ACTIVE_COLOR_BG[gameState.currentColor])}
+              title={`Current color: ${gameState.currentColor}`}
+            />
+            <span className={cn(styles.label, arcadeShellStyles.mono)}>
+              {gameState.currentColor}
+            </span>
+          </div>
+
+          <div className={styles.pile}>
+            {topCard && (
+              <div key={discardKey} className="animate-uno-discard-pop">
+                <UnoCard card={topCard} size="lg" />
+              </div>
+            )}
+            <span className={cn(styles.label, arcadeShellStyles.mono)}>discard</span>
+          </div>
+        </div>
+
+        <div className={styles.actionPanel}>
+          <div className={styles.entryActions}>
+            {isMyTurn && !hasDrawnCard && (
+              <button
+                type="button"
+                onClick={onDraw}
+                className={cn(
+                  arcadeShellStyles.button,
+                  arcadeShellStyles.buttonSmall,
+                  mustDraw && 'animate-uno-bounce-sm'
+                )}
+              >
+                {mustDraw ? `Draw ${gameState.pendingDrawCount}` : 'Draw card'}
+              </button>
+            )}
+
+            {hasDrawnCard && (
+              <button
+                type="button"
+                onClick={onPassAfterDraw}
+                className={cn(arcadeShellStyles.button, arcadeShellStyles.buttonSmall)}
+              >
+                Pass
+              </button>
+            )}
+
+            {myHand.length === 1 && !gameState.calledUno.includes(playerId) && (
+              <button type="button" onClick={onSayUno} className={arcadeShellStyles.button}>
+                UNO!
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onLeave}
               className={cn(
-                'flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 sm:gap-2',
-                isTurn
-                  ? 'bg-primary/90 text-primary-foreground shadow-md'
-                  : 'bg-secondary/80 text-secondary-foreground'
+                arcadeShellStyles.button,
+                arcadeShellStyles.buttonGhost,
+                arcadeShellStyles.buttonSmall
               )}
             >
-              {isTurn && (
-                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-              )}
-              {!isTurn && (
-                <span
-                  className={cn(
-                    'inline-block h-1.5 w-1.5 rounded-full',
-                    isOnline ? 'bg-green-400' : 'bg-gray-400 opacity-50'
-                  )}
-                  title={isOnline ? 'Online' : 'Offline'}
-                />
-              )}
-              <span className={cn('max-w-[5rem] truncate', !isOnline && 'opacity-60')}>
-                {p.name}
-              </span>
-              {/* Mini card count */}
-              <span className="rounded-md bg-black/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
-                {hand.length}
-              </span>
-              {calledUno && (
-                <span className="rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white">
-                  UNO
-                </span>
-              )}
-              {isCatchable && (
-                <button
-                  onClick={() => onCatchUno(p.id)}
-                  className="animate-uno-bounce-sm rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white transition-transform hover:scale-110 active:scale-95"
-                >
-                  Catch!
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Play area */}
-      <div className="relative flex w-full items-center justify-center gap-4 rounded-2xl bg-emerald-100 px-4 py-6 shadow-inner sm:gap-8 sm:px-8 sm:py-8 dark:bg-emerald-950/40">
-        {/* Direction indicator */}
-        <div className="absolute top-2 right-3 flex items-center gap-1 text-xs text-emerald-600/60 sm:top-3 sm:right-4 dark:text-emerald-400/60">
-          <span
-            className="inline-block transition-transform duration-500"
-            style={{
-              transform: gameState.direction === 1 ? 'scaleX(1)' : 'scaleX(-1)',
-            }}
-          >
-            &rarr;
-          </span>
-          <span className="hidden sm:inline">
-            {gameState.direction === 1 ? 'clockwise' : 'counter-clockwise'}
-          </span>
-        </div>
-
-        {/* Draw pile */}
-        <div className="flex flex-col items-center gap-1.5">
-          <div className="relative">
-            {/* Stacked card effect */}
-            <div className="absolute -top-0.5 -right-0.5 h-full w-full rounded-xl border-2 border-gray-300 bg-gray-200 dark:border-gray-800 dark:bg-gray-900/50" />
-            <div className="relative">
-              <UnoCard
-                card={{ id: 'draw', color: 'wild', value: 'wild' }}
-                size="lg"
-                faceDown
-                playable={isMyTurn && !hasDrawnCard}
-                onClick={isMyTurn && !hasDrawnCard ? onDraw : undefined}
-                className={cn(
-                  isMyTurn && !hasDrawnCard && 'hover:shadow-lg hover:shadow-yellow-500/20'
-                )}
-              />
-            </div>
+              Leave
+            </button>
           </div>
-          <span className="text-[10px] text-emerald-700/70 tabular-nums sm:text-xs dark:text-emerald-400/50">
-            {gameState.drawPile.length}
-          </span>
         </div>
 
-        {/* Active color indicator */}
-        <div className="flex flex-col items-center gap-1.5">
-          <div
-            className={cn(
-              'h-7 w-7 rounded-full border-2 border-white/20 shadow-lg ring-2 transition-all duration-300 sm:h-8 sm:w-8',
-              ACTIVE_COLOR_BG[gameState.currentColor],
-              ACTIVE_COLOR_RING[gameState.currentColor]
-            )}
-          />
-          <span className="text-[10px] text-emerald-700/70 capitalize sm:text-xs dark:text-emerald-400/50">
-            {gameState.currentColor}
-          </span>
-        </div>
-
-        {/* Discard pile */}
-        <div className="flex flex-col items-center gap-1.5">
-          {topCard && (
-            <div key={discardKey} className="animate-uno-discard-pop">
-              <UnoCard card={topCard} size="lg" />
-            </div>
-          )}
-          <span className="text-[10px] text-emerald-700/70 sm:text-xs dark:text-emerald-400/50">
-            discard
-          </span>
-        </div>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        {isMyTurn && !hasDrawnCard && (
-          <button
-            onClick={onDraw}
-            className={cn(
-              'rounded-xl px-4 py-2 text-sm font-semibold shadow transition-all active:scale-95',
-              mustDraw
-                ? 'animate-uno-bounce-sm bg-orange-500 text-white hover:bg-orange-400'
-                : 'bg-secondary hover:bg-secondary/80'
-            )}
-          >
-            {mustDraw ? `Draw ${gameState.pendingDrawCount}` : 'Draw card'}
-          </button>
-        )}
-
-        {hasDrawnCard && (
-          <button
-            onClick={onPassAfterDraw}
-            className="bg-secondary hover:bg-secondary/80 rounded-xl px-4 py-2 text-sm font-semibold shadow transition-all active:scale-95"
-          >
-            Pass
-          </button>
-        )}
-
-        {myHand.length === 1 && !gameState.calledUno.includes(playerId) && (
-          <button
-            onClick={onSayUno}
-            className="animate-uno-pulse-ring rounded-xl bg-red-500 px-5 py-2 text-sm font-black text-white shadow-lg transition-all hover:bg-red-400 active:scale-95"
-          >
-            UNO!
-          </button>
-        )}
-
-        <button
-          onClick={onLeave}
-          className="text-muted-foreground hover:bg-secondary rounded-xl border px-3 py-2 text-xs transition-colors sm:text-sm"
-        >
-          Leave
-        </button>
-      </div>
-
-      {/* Player's hand */}
-      <div className="w-full">
-        <p className="text-muted-foreground mb-1.5 text-center text-xs">
-          Your hand ({myHand.length})
-          {hasDrawnCard && (
-            <span className="ml-1 font-semibold text-amber-600 dark:text-amber-400">
-              &mdash; play drawn card or pass
-            </span>
-          )}
-        </p>
-        <div className="uno-hand-scroll p-4 pt-5">
-          <div className="mx-auto flex w-fit items-end justify-center">
-            {myHand.map((card, i) => {
-              const isDrawn = card.id === gameState.drawnCardId
-              return (
-                <div
-                  key={card.id}
-                  className={cn(
-                    'transition-all duration-200',
-                    i > 0 && '-ml-2 sm:-ml-3',
-                    isDrawn && 'relative z-10'
-                  )}
-                  style={{
-                    animationDelay: `${i * 30}ms`,
-                  }}
-                >
-                  <UnoCard
-                    card={card}
-                    size="md"
-                    playable={isMyTurn && playableIds.has(card.id)}
-                    onClick={() => handleCardClick(card)}
+        <div className={styles.handPanel}>
+          <p className={cn(styles.handTitle, arcadeShellStyles.mono)}>
+            Your hand ({myHand.length}){hasDrawnCard && <span> — play drawn card or pass</span>}
+          </p>
+          <div className="uno-hand-scroll p-4 pt-5">
+            <div className="mx-auto flex w-fit items-end justify-center">
+              {myHand.map((card, i) => {
+                const isDrawn = card.id === gameState.drawnCardId
+                return (
+                  <div
+                    key={card.id}
                     className={cn(
-                      isDrawn && 'ring-2 ring-amber-400 ring-offset-1 ring-offset-black/50'
+                      'transition-all duration-200',
+                      i > 0 && '-ml-2 sm:-ml-3',
+                      isDrawn && 'relative z-10'
                     )}
-                  />
-                </div>
-              )
-            })}
+                    style={{ animationDelay: `${i * 30}ms` }}
+                  >
+                    <UnoCard
+                      card={card}
+                      size="md"
+                      playable={isMyTurn && playableIds.has(card.id)}
+                      onClick={() => handleCardClick(card)}
+                      className={cn(isDrawn && 'ring-2 ring-[var(--arcade-accent)] ring-offset-1')}
+                    />
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -831,7 +894,11 @@ interface FinishedScreenProps {
 }
 
 function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedScreenProps) {
-  const winner = gameState.players.find((p) => p.id === gameState.winnerId)
+  const sortedPlayers = [...gameState.players].sort(
+    (left, right) =>
+      (gameState.hands[left.id]?.length ?? 0) - (gameState.hands[right.id]?.length ?? 0)
+  )
+  const winner = gameState.players.find((p) => p.id === gameState.winnerId) ?? sortedPlayers[0]
   const isWinner = gameState.winnerId === playerId
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const [showConfetti, setShowConfetti] = useState(true)
@@ -842,37 +909,54 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
   }, [])
 
   return (
-    <div className="animate-uno-fade-in flex flex-col items-center gap-6">
+    <div className={styles.endShell}>
       {isWinner && showConfetti && <ConfettiEffect />}
-      <div className="text-6xl">{isWinner ? '\uD83C\uDFC6' : '\uD83C\uDFAE'}</div>
-      <div className="text-center">
-        <h2 className="text-2xl font-black">
-          {isWinner ? 'You win!' : `${winner?.name ?? '?'} wins!`}
-        </h2>
-        <p className="text-muted-foreground">
-          {isWinner ? 'Nicely played!' : 'Better luck next time!'}
-        </p>
-      </div>
-      <div className="flex gap-3">
-        {isHost && (
-          <button
-            onClick={onPlayAgain}
-            className="bg-primary text-primary-foreground rounded-lg px-5 py-2.5 text-sm font-semibold transition-all active:scale-95"
-          >
-            Play Again
-          </button>
-        )}
-        {!isHost && (
-          <p className="text-muted-foreground text-sm">
-            Waiting for host to start another game&hellip;
-          </p>
-        )}
+      <p className={cn(styles.endMeta, arcadeShellStyles.mono)}>Game over · final standings</p>
+      <h2 className={styles.endTitle}>
+        {isWinner ? 'You win' : `${winner?.name ?? 'Winner'} wins`}
+      </h2>
+      <p className={styles.endWord}>
+        with <span className={styles.endWordAccent}>zero cards</span> left
+      </p>
+
+      <ResultsTable
+        rows={sortedPlayers.map((player, index) => ({
+          id: player.id,
+          rankLabel: player.id === winner?.id ? '👑' : index + 1,
+          name: player.name,
+          avatar: index % 8,
+          secondaryLabel: player.id === winner?.id ? 'Winner' : '',
+          totalLabel: gameState.hands[player.id]?.length ?? 0,
+          isWinner: player.id === winner?.id,
+        }))}
+        className={styles.resultsTable}
+        rowClassName={styles.resultRow}
+        winnerRowClassName={styles.resultRowWinner}
+        rankClassName={cn(styles.resultTotal, arcadeShellStyles.mono)}
+        playerClassName={styles.resultPlayer}
+        secondaryClassName={styles.resultDelta}
+        totalClassName={styles.resultTotal}
+      />
+
+      <div className={styles.endActions}>
         <button
+          type="button"
           onClick={onLeave}
-          className="hover:bg-secondary rounded-lg border px-5 py-2.5 text-sm font-semibold"
+          className={cn(
+            arcadeShellStyles.button,
+            arcadeShellStyles.buttonGhost,
+            arcadeShellStyles.buttonSmall
+          )}
         >
-          Leave
+          Back to library
         </button>
+        {isHost ? (
+          <button type="button" onClick={onPlayAgain} className={arcadeShellStyles.button}>
+            Play again
+          </button>
+        ) : (
+          <span className={cn(styles.endCountdown, arcadeShellStyles.mono)}>waiting for host</span>
+        )}
       </div>
     </div>
   )
@@ -894,12 +978,6 @@ function ConfettiEffect() {
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
-      <style>{`
-        @keyframes confetti-fall {
-          0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-        }
-      `}</style>
       {particles.map((p) => (
         <div
           key={p.id}
@@ -921,6 +999,8 @@ function ConfettiEffect() {
 
 export function UnoGame() {
   const inviteCode = useInviteCode()
+  const inviteCodeResolved = inviteCode !== undefined
+  const [entryMode, setEntryMode] = useState<'howto' | 'entry'>('howto')
   const {
     gameState,
     playerId,
@@ -936,85 +1016,93 @@ export function UnoGame() {
     leaveRoom,
   } = useUnoRoom()
 
-  // Redact opponent hands from client state to prevent devtools inspection.
-  // Must be called unconditionally (React hooks rules).
+  useEffect(() => {
+    if (inviteCode) setEntryMode('entry')
+  }, [inviteCode])
+
   const redactedState = useMemo(
     () => (gameState && playerId ? redactForPlayer(gameState, playerId) : gameState),
     [gameState, playerId]
   )
 
-  if (!isSupabaseConfigured) return <SetupRequired />
-
+  const crumb = makeCrumb(gameState, roomCode, playerId, inviteCode)
   const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
+  const isEntryState = !gameState || !playerId || !roomCode
+  const isResolvingInvite = isEntryState && !inviteCodeResolved
 
-  if (!gameState || !playerId || !roomCode) {
-    return (
-      <>
-        <UnoStyles />
-        <EntryScreen
-          onCreate={createRoom}
-          onJoin={joinRoom}
-          onRestore={savedSession ? restoreSession : undefined}
-          savedSession={savedSession}
-          loading={isLoading}
-          error={error}
-          initialCode={inviteCode}
-        />
-      </>
-    )
-  }
+  const handleCreate = useCallback(
+    (name: string) => {
+      void createRoom(name)
+    },
+    [createRoom]
+  )
 
-  if (gameState.phase === 'finished') {
-    return (
-      <>
-        <UnoStyles />
+  const handleJoin = useCallback(
+    (code: string, name: string) => {
+      void joinRoom(code, name)
+    },
+    [joinRoom]
+  )
+
+  const handleLeave = useCallback(() => {
+    void leaveRoom()
+  }, [leaveRoom])
+
+  return (
+    <ArcadeShell title="Uno" crumb={crumb} centered>
+      <UnoStyles />
+      {!isSupabaseConfigured ? (
+        <SetupRequired />
+      ) : isResolvingInvite ? (
+        <InviteResolvingScreen />
+      ) : isEntryState ? (
+        entryMode === 'howto' ? (
+          <HowToScreen onStart={() => setEntryMode('entry')} />
+        ) : (
+          <EntryScreen
+            onCreate={handleCreate}
+            onJoin={handleJoin}
+            onRestore={savedSession ? () => void restoreSession() : undefined}
+            savedSession={savedSession}
+            loading={isLoading}
+            error={error}
+            initialCode={inviteCode ?? null}
+            onBackToHowTo={!inviteCode ? () => setEntryMode('howto') : undefined}
+          />
+        )
+      ) : gameState.phase === 'finished' ? (
         <FinishedScreen
           gameState={gameState}
           playerId={playerId}
-          onPlayAgain={() => dispatch({ type: 'PLAY_AGAIN', playerId })}
-          onLeave={leaveRoom}
+          onPlayAgain={() => void dispatch({ type: 'PLAY_AGAIN', playerId })}
+          onLeave={handleLeave}
         />
-      </>
-    )
-  }
-
-  if (gameState.phase === 'lobby') {
-    return (
-      <>
-        <UnoStyles />
+      ) : gameState.phase === 'lobby' ? (
         <LobbyScreen
           gameState={gameState}
           playerId={playerId}
           roomCode={roomCode}
           onlinePlayerIds={onlinePlayerIds}
-          onStart={() => dispatch({ type: 'START_GAME', playerId })}
-          onLeave={leaveRoom}
+          onStart={() => void dispatch({ type: 'START_GAME', playerId })}
+          onLeave={handleLeave}
         />
-      </>
-    )
-  }
-
-  return (
-    <>
-      <UnoStyles />
-      <GameBoard
-        gameState={redactedState!}
-        playerId={playerId}
-        onlinePlayerIds={onlinePlayerIds}
-        onDispatch={(cardId, chosenColor) =>
-          dispatch({ type: 'PLAY_CARD', playerId, cardId, chosenColor, now: Date.now() })
-        }
-        onDraw={() => dispatch({ type: 'DRAW_CARD', playerId })}
-        onPassAfterDraw={() => dispatch({ type: 'PASS_AFTER_DRAW', playerId })}
-        onSayUno={() => dispatch({ type: 'SAY_UNO', playerId })}
-        onCatchUno={(targetId) =>
-          dispatch({ type: 'CATCH_UNO', playerId, targetId, now: Date.now() })
-        }
-        onLeave={leaveRoom}
-      />
-    </>
+      ) : (
+        <GameBoard
+          gameState={redactedState!}
+          playerId={playerId}
+          onlinePlayerIds={onlinePlayerIds}
+          onDispatch={(cardId, chosenColor) =>
+            void dispatch({ type: 'PLAY_CARD', playerId, cardId, chosenColor, now: Date.now() })
+          }
+          onDraw={() => void dispatch({ type: 'DRAW_CARD', playerId })}
+          onPassAfterDraw={() => void dispatch({ type: 'PASS_AFTER_DRAW', playerId })}
+          onSayUno={() => void dispatch({ type: 'SAY_UNO', playerId })}
+          onCatchUno={(targetId) =>
+            void dispatch({ type: 'CATCH_UNO', playerId, targetId, now: Date.now() })
+          }
+          onLeave={handleLeave}
+        />
+      )}
+    </ArcadeShell>
   )
 }
-
-// Re-export to avoid unused import warning
-export { canPlayCard }
