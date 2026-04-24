@@ -219,8 +219,9 @@ const server = http.createServer(async (req, res) => {
 
     sendJson(res, 404, { error: { message: 'Not found' } })
   } catch (error) {
+    console.error('Fake Supabase request failed', error)
     sendJson(res, 500, {
-      error: { message: error instanceof Error ? error.message : String(error) },
+      error: { message: 'Internal fake Supabase server error' },
     })
   }
 })
