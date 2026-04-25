@@ -44,7 +44,7 @@
 
 **Branch:** `feat/playwright-multiplayer-e2e`
 
-**Last updated:** 2026-04-25 10:55 UTC
+**Last updated:** 2026-04-25 11:25 UTC
 
 **Completed:**
 
@@ -62,6 +62,7 @@
 - [x] Task 11 — Added deterministic Uno full-turn smoke coverage for start-game UI, synced hands/piles/status, turn advancement, near-win seeding, and final-card win screens on both player contexts.
 - [x] Task 12 — Added deterministic Skribbl round smoke coverage for word picking, drawer/guesser visibility, canvas presence, wrong/correct guesses, scoring, round reveal, and drawer rotation.
 - [x] Task 13 — Added deterministic Cards Against Humanity smoke coverage for non-czar submissions, judging reveal flow, Czar winner selection, score increment, and next-round Czar rotation.
+- [x] Task 14 — Added deterministic Codenames smoke coverage for spymaster key visibility, operative redaction, clue submission, correct guess count/log updates, and assassin end-game flow.
 - [x] Security fix — Sanitized fake Supabase 500 responses so server exception details are logged locally but not returned over HTTP.
 
 **Verification passed:**
@@ -74,6 +75,7 @@
 - `pnpm e2e -- e2e/games/uno.spec.ts`
 - `pnpm e2e -- e2e/games/skribbl.spec.ts`
 - `pnpm e2e -- e2e/games/cards-against-humanity.spec.ts`
+- `pnpm e2e -- e2e/games/codenames.spec.ts`
 - `pnpm build`
 
 **Notes:**
@@ -90,9 +92,10 @@
 - Task 11 seeds deterministic fake Supabase Uno states after exercising the real create/join/start flow, avoiding random deck assumptions while still testing realtime UI sync.
 - Task 12 seeds deterministic fake Supabase Skribbl drawing state after exercising the real create/join/start flow, then uses real guess actions to validate chat/scoring/reveal/rotation.
 - Task 13 seeds deterministic fake Supabase Cards Against Humanity playing/judging states after exercising the real create/join/start flow, then uses real submit/reveal/pick/next-round actions to validate Czar and non-Czar behavior.
+- Task 14 seeds deterministic fake Supabase Codenames playing state after exercising the real create/join flow, then uses real clue/guess actions to validate spymaster visibility, operative redaction, correct guesses, and assassin win behavior.
 - GitHub Advanced Security flagged fake Supabase error responses for information exposure; 500 responses are now generic while details stay in server logs.
 
-**Next:** Task 14 — Codenames smoke test.
+**Next:** Task 15 — Mindmeld smoke test.
 
 ---
 
