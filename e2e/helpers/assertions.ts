@@ -81,6 +81,12 @@ export async function createRoom(page: Page, playerName: string): Promise<string
 }
 
 export async function joinRoom(page: Page, roomCode: string, playerName: string): Promise<void> {
+  const playButton = page.getByTestId('play-game-button')
+
+  if (await playButton.isVisible().catch(() => false)) {
+    await playButton.click()
+  }
+
   await page.getByTestId('join-room-button').filter({ visible: true }).first().click()
   await playerNameInput(page).fill(playerName)
   await roomCodeInput(page).fill(roomCode)
