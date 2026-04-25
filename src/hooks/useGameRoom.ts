@@ -142,7 +142,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           .filter(Boolean)
         setOnlinePlayerIds(ids)
       })
-      .subscribe(async (s) => {
+      .subscribe(async (s: string) => {
         if (s === 'SUBSCRIBED') {
           await channel.track({ player_id: playerId })
         }
@@ -177,7 +177,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
             table: tableName,
             filter: `code=eq.${code}`,
           },
-          (payload) => {
+          (payload: { new: { state: unknown; version: unknown } }) => {
             const parsed = stateSchema.safeParse(payload.new.state)
             if (!parsed.success) {
               console.error(`[${channelPrefix}] Invalid GameState payload:`, parsed.error)
@@ -192,7 +192,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         broadcastChannelRef.current?.unsubscribe()
         broadcastChannelRef.current = supabase
           .channel(`${broadcastCfg.channelPrefix}:${code}`)
-          .on('broadcast', { event: 'game' }, (payload) => {
+          .on('broadcast', { event: 'game' }, (payload: { payload: unknown }) => {
             if (onBroadcastRef.current) {
               const parsed = broadcastCfg.schema.safeParse(payload.payload)
               if (!parsed.success) {

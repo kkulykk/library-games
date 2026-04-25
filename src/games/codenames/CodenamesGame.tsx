@@ -104,6 +104,7 @@ function EntryScreen({
         )}
         <div className="flex gap-3">
           <button
+            data-testid="create-room-button"
             onClick={() => setMode('create')}
             className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
           >
@@ -114,6 +115,7 @@ function EntryScreen({
             <span className="text-muted-foreground text-xs font-normal">Host a game</span>
           </button>
           <button
+            data-testid="join-room-button"
             onClick={() => setMode('join')}
             className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
           >
@@ -139,11 +141,17 @@ function EntryScreen({
       </button>
       <h2 className="text-lg font-bold">{isCreate ? 'Create Room' : 'Join Room'}</h2>
       {error && (
-        <p className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm">{error}</p>
+        <p
+          data-testid="room-error"
+          className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm"
+        >
+          {error}
+        </p>
       )}
       <label className="flex flex-col gap-1">
         <span className="text-muted-foreground text-xs font-medium">Your name</span>
         <input
+          data-testid="player-name-input"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your name"
@@ -155,6 +163,7 @@ function EntryScreen({
         <label className="flex flex-col gap-1">
           <span className="text-muted-foreground text-xs font-medium">Room code</span>
           <input
+            data-testid="room-code-input"
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="e.g. AB12"
@@ -164,6 +173,7 @@ function EntryScreen({
         </label>
       )}
       <button
+        data-testid={isCreate ? 'create-room-button' : 'join-room-button'}
         disabled={loading || !name.trim() || (!isCreate && joinCode.length < 4)}
         onClick={() => {
           savePlayerName(name.trim())
@@ -281,6 +291,7 @@ function LobbyScreen({
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const ready = canStartGame(gameState)
+  const unassignedPlayers = gameState.players.filter((player) => !player.team || !player.role)
 
   function copyCode() {
     navigator.clipboard.writeText(roomCode).then(
@@ -308,7 +319,9 @@ function LobbyScreen({
         <p className="text-muted-foreground mb-1 text-xs font-medium">
           Room code &mdash; share with friends
         </p>
-        <p className="mb-2 text-3xl font-black tracking-widest">{roomCode}</p>
+        <p data-testid="room-code" className="mb-2 text-3xl font-black tracking-widest">
+          {roomCode}
+        </p>
         <div className="flex justify-center gap-2">
           <button
             onClick={copyCode}
@@ -317,6 +330,8 @@ function LobbyScreen({
             {copied === 'code' ? 'Copied!' : 'Copy code'}
           </button>
           <button
+            data-testid="invite-link"
+            data-invite-link={getInviteLink('codenames', roomCode)}
             onClick={copyInviteLink}
             className="hover:bg-background rounded-lg border px-3 py-1 text-xs font-medium transition-colors"
           >
@@ -330,9 +345,29 @@ function LobbyScreen({
         {gameState.players.length !== 1 ? 's' : ''} in room)
       </p>
 
-      <div className="flex gap-3">
-        <TeamPanel team="red" gameState={gameState} playerId={playerId} onJoinTeam={onJoinTeam} />
-        <TeamPanel team="blue" gameState={gameState} playerId={playerId} onJoinTeam={onJoinTeam} />
+      <div data-testid="player-roster" className="flex flex-col gap-3">
+        {unassignedPlayers.length > 0 && (
+          <div className="bg-secondary/60 rounded-xl p-3 text-xs">
+            <p className="text-muted-foreground mb-2 font-medium">Choosing teams</p>
+            <div className="flex flex-wrap gap-2">
+              {unassignedPlayers.map((player) => (
+                <span key={player.id} className="bg-background rounded-lg px-2 py-1 font-medium">
+                  {player.name}
+                  {player.isHost ? ' (host)' : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex gap-3">
+          <TeamPanel team="red" gameState={gameState} playerId={playerId} onJoinTeam={onJoinTeam} />
+          <TeamPanel
+            team="blue"
+            gameState={gameState}
+            playerId={playerId}
+            onJoinTeam={onJoinTeam}
+          />
+        </div>
       </div>
 
       {!ready && (
@@ -344,6 +379,7 @@ function LobbyScreen({
       <div className="flex gap-3">
         {isHost && (
           <button
+            data-testid="start-game-button"
             disabled={!ready}
             onClick={onStart}
             className="bg-primary text-primary-foreground flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
@@ -357,6 +393,7 @@ function LobbyScreen({
           </p>
         )}
         <button
+          data-testid="leave-room-button"
           onClick={onLeave}
           className="hover:bg-secondary rounded-lg border px-4 py-2.5 text-sm font-semibold"
         >

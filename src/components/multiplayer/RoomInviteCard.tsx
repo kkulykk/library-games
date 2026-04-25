@@ -33,7 +33,9 @@ export function RoomInviteCard({
   return (
     <section className={className}>
       <span className={titleClassName}>{title}</span>
-      <div className={roomCodeClassName}>{roomCode}</div>
+      <div data-testid="room-code" className={roomCodeClassName}>
+        {roomCode}
+      </div>
       <div className={actionsClassName}>
         <button
           type="button"
@@ -45,6 +47,8 @@ export function RoomInviteCard({
         </button>
         <button
           type="button"
+          data-testid="invite-link"
+          data-invite-link={inviteLink}
           className={cn(actionClassName)}
           onClick={() => onCopy(inviteLink, 'link')}
         >

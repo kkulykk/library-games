@@ -36,6 +36,7 @@ export function GameRulesGate({ emoji, title, rules, children }: GameRulesGatePr
       </div>
 
       <button
+        data-testid="play-game-button"
         onClick={() => setStarted(true)}
         className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-8 py-3 text-sm font-semibold transition-colors"
       >
