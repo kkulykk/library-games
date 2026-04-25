@@ -42,11 +42,11 @@
 
 ## Progress
 
-**Branch:** `feat/uno-e2e-smoke`
+**Branch:** `feat/mindmeld-e2e-smoke`
 
-**PR:** #118 — https://github.com/kkulykk/library-games/pull/118
+**PR:** #119 — https://github.com/kkulykk/library-games/pull/119
 
-**Last updated:** 2026-04-25 16:41 UTC
+**Last updated:** 2026-04-25 17:05 UTC
 
 **Completed:**
 
@@ -65,6 +65,7 @@
 - [x] Task 12 — Added deterministic Skribbl round smoke coverage for word picking, drawer/guesser visibility, canvas presence, wrong/correct guesses, scoring, round reveal, and drawer rotation.
 - [x] Task 13 — Added deterministic Cards Against Humanity smoke coverage for non-czar submissions, judging reveal flow, Czar winner selection, score increment, and next-round Czar rotation.
 - [x] Task 14 — Added deterministic Codenames smoke coverage for spymaster key visibility, operative redaction, clue submission, correct guess count/log updates, and assassin end-game flow.
+- [x] Task 15 — Added deterministic Mindmeld smoke coverage for Psychic clue submission, guesser target redaction, team dial locking, reveal scoring, Psychic rotation, and final leaderboard results.
 - [x] Security fix — Sanitized fake Supabase 500 responses so server exception details are logged locally but not returned over HTTP.
 
 **Verification passed:**
@@ -78,13 +79,13 @@
 - `pnpm e2e -- e2e/games/skribbl.spec.ts`
 - `pnpm e2e -- e2e/games/cards-against-humanity.spec.ts`
 - `pnpm e2e -- e2e/games/codenames.spec.ts`
+- `pnpm e2e -- e2e/games/mindmeld.spec.ts`
 - `pnpm build`
 
 **Latest PR/CI status checked:**
 
-- PR #118 is open on `feat/uno-e2e-smoke`.
-- Previous implementation commit `2e80ad8`: Build, CodeQL, Lint & Test, Analyze (javascript-typescript), and Analyze (actions) passed; Deploy skipped; `claude-review` failed and needs review/follow-up before merge.
-- Latest documentation-status commit: GitHub checks restarted and were in progress when last checked (`claude-review`, Lint & Test, Analyze javascript-typescript, Analyze actions).
+- PR #118 was merged into `main` before starting this Task 15 branch.
+- Task 15 is being prepared on fresh branch `feat/mindmeld-e2e-smoke`.
 
 **Notes:**
 
@@ -101,9 +102,10 @@
 - Task 12 seeds deterministic fake Supabase Skribbl drawing state after exercising the real create/join/start flow, then uses real guess actions to validate chat/scoring/reveal/rotation.
 - Task 13 seeds deterministic fake Supabase Cards Against Humanity playing/judging states after exercising the real create/join/start flow, then uses real submit/reveal/pick/next-round actions to validate Czar and non-Czar behavior.
 - Task 14 seeds deterministic fake Supabase Codenames playing state after exercising the real create/join flow, then uses real clue/guess actions to validate spymaster visibility, operative redaction, correct guesses, and assassin win behavior.
+- Task 15 seeds deterministic fake Supabase Mindmeld clue/final-reveal states after exercising the real create/join/start flow, then uses real clue, guess, next-round, and final-results actions to validate target redaction, reveal scoring, Psychic rotation, and leaderboard sync.
 - GitHub Advanced Security flagged fake Supabase error responses for information exposure; 500 responses are now generic while details stay in server logs.
 
-**Next:** Resolve/follow up on failed `claude-review` check for PR #118, then Task 15 — Mindmeld smoke test.
+**Next:** Task 16 — Agario/Slither.io smoke test.
 
 ---
 
