@@ -168,6 +168,7 @@ interface WhiteCardProps {
   onClick?: () => void
   className?: string
   isWinner?: boolean
+  testId?: string
 }
 
 function WhiteCard({
@@ -178,9 +179,11 @@ function WhiteCard({
   onClick,
   className,
   isWinner,
+  testId,
 }: WhiteCardProps) {
   return (
     <button
+      data-testid={testId}
       onClick={onClick}
       disabled={disabled && !selected}
       className={cn(
@@ -214,6 +217,7 @@ function WhiteCard({
 function FaceDownCard({ onClick, clickable }: { onClick?: () => void; clickable?: boolean }) {
   return (
     <button
+      data-testid="cah-face-down-submission"
       onClick={clickable ? onClick : undefined}
       className={cn(
         'border-border/60 bg-secondary/40 flex min-h-[80px] items-center justify-center rounded-xl border-2 border-dashed transition-all sm:rounded-2xl',
@@ -596,7 +600,7 @@ function GameBoard({
   return (
     <div className="flex w-full max-w-2xl flex-col items-center gap-5 px-2 sm:px-0">
       {/* Scoreboard */}
-      <div className="flex w-full flex-wrap justify-center gap-1.5">
+      <div data-testid="cah-scoreboard" className="flex w-full flex-wrap justify-center gap-1.5">
         {gameState.players.map((p) => (
           <div
             key={p.id}
@@ -657,7 +661,7 @@ function GameBoard({
 
       {/* Judging phase: revealed submissions */}
       {gameState.phase === 'judging' && (
-        <div className="flex w-full flex-col gap-3">
+        <div data-testid="cah-judging-submissions" className="flex w-full flex-col gap-3">
           {gameState.revealOrder.map((anonId, idx) => {
             const isRevealed = idx <= gameState.revealIndex
             const cards = gameState.shuffledSubmissions[idx] ?? []
@@ -671,6 +675,7 @@ function GameBoard({
             return (
               <button
                 key={anonId}
+                data-testid="cah-revealed-submission"
                 onClick={() => {
                   if (canPick) onPickWinner(anonId)
                 }}
@@ -693,6 +698,7 @@ function GameBoard({
 
           {amCzar && !allRevealed && (
             <button
+              data-testid="cah-reveal-next"
               onClick={onRevealNext}
               className="animate-cah-float mx-auto mt-1 rounded-xl bg-black px-8 py-3 text-sm font-bold text-white shadow-xl transition-all hover:bg-gray-800 active:scale-95 dark:bg-white dark:text-black dark:hover:bg-gray-200"
             >
@@ -734,6 +740,7 @@ function GameBoard({
                 style={{ animationDelay: `${i * 40}ms` }}
               >
                 <WhiteCard
+                  testId="cah-hand-card"
                   text={getWhiteCardText(cardIndex)}
                   selected={selectedCards.includes(cardIndex)}
                   selectionIndex={selectedCards.indexOf(cardIndex)}
@@ -831,6 +838,7 @@ function StatusBar({
 
   return (
     <div
+      data-testid="cah-status"
       className={cn(
         'animate-cah-slide-down w-full rounded-xl px-4 py-2.5 text-center text-sm font-bold transition-colors duration-300',
         gameState.phase === 'reveal'
@@ -861,7 +869,10 @@ function RevealPhase({
   return (
     <div className="animate-cah-fade-in flex w-full flex-col items-center gap-5">
       {/* Winning card(s) */}
-      <div className="animate-cah-winner-glow bg-card w-full rounded-2xl border-2 border-amber-400 p-5 dark:border-amber-500/60">
+      <div
+        data-testid="cah-round-winner"
+        className="animate-cah-winner-glow bg-card w-full rounded-2xl border-2 border-amber-400 p-5 dark:border-amber-500/60"
+      >
         <div className="mb-3 flex items-center gap-2">
           <span className="animate-cah-stamp text-2xl">🏆</span>
           <span className="text-sm font-black">{winner?.name ?? '?'}</span>
@@ -880,6 +891,7 @@ function RevealPhase({
 
       {amCzar ? (
         <button
+          data-testid="cah-next-round"
           onClick={onNextRound}
           className="animate-cah-slide-up rounded-xl bg-black px-8 py-3 text-sm font-bold text-white shadow-xl transition-all hover:bg-gray-800 active:scale-95 dark:bg-white dark:text-black dark:hover:bg-gray-200"
         >
