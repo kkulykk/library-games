@@ -44,7 +44,7 @@
 
 **Branch:** `feat/playwright-multiplayer-e2e`
 
-**Last updated:** 2026-04-25 09:30 UTC
+**Last updated:** 2026-04-25 10:20 UTC
 
 **Completed:**
 
@@ -60,6 +60,7 @@
 - [x] Task 9 — Extended shared room contract spec with cross-context join flow assertions across all live multiplayer slugs.
 - [x] Task 10 — Added edge-state room contract coverage (invalid code, started-game join rejection, room-full rejection, leave/session-clear, reload restore path, expired/malformed session handling).
 - [x] Task 11 — Added deterministic Uno full-turn smoke coverage for start-game UI, synced hands/piles/status, turn advancement, near-win seeding, and final-card win screens on both player contexts.
+- [x] Task 12 — Added deterministic Skribbl round smoke coverage for word picking, drawer/guesser visibility, canvas presence, wrong/correct guesses, scoring, round reveal, and drawer rotation.
 - [x] Security fix — Sanitized fake Supabase 500 responses so server exception details are logged locally but not returned over HTTP.
 
 **Verification passed:**
@@ -70,6 +71,7 @@
 - `pnpm e2e --list`
 - `pnpm e2e -- e2e/multiplayer-room-contract.spec.ts`
 - `pnpm e2e -- e2e/games/uno.spec.ts`
+- `pnpm e2e -- e2e/games/skribbl.spec.ts`
 - `pnpm build`
 
 **Notes:**
@@ -82,10 +84,12 @@
 - Playwright now starts both the fake Supabase server and the Next dev server for E2E runs.
 - Codenames lobby now surfaces unassigned players in the roster so hosts are visible before choosing a team/role.
 - Uno now has stable game-state E2E selectors for current status, draw pile, discard pile, and winner banner.
+- Skribbl now has stable E2E selectors for word choices, waiting picker, drawer word, hint mask, scoreboard, chat log, guess input, round reveal, and next-turn controls.
 - Task 11 seeds deterministic fake Supabase Uno states after exercising the real create/join/start flow, avoiding random deck assumptions while still testing realtime UI sync.
+- Task 12 seeds deterministic fake Supabase Skribbl drawing state after exercising the real create/join/start flow, then uses real guess actions to validate chat/scoring/reveal/rotation.
 - GitHub Advanced Security flagged fake Supabase error responses for information exposure; 500 responses are now generic while details stay in server logs.
 
-**Next:** Task 12 — Skribbl round smoke test.
+**Next:** Task 13 — Cards Against Humanity smoke test.
 
 ---
 
