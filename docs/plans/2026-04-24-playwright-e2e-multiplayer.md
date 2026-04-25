@@ -44,7 +44,7 @@
 
 **Branch:** `feat/playwright-multiplayer-e2e`
 
-**Last updated:** 2026-04-25 07:39 UTC
+**Last updated:** 2026-04-25 08:22 UTC
 
 **Completed:**
 
@@ -58,6 +58,7 @@
 - [x] Task 7 — Added fake Supabase reset endpoint plus Playwright reset helper/fixture.
 - [x] Task 8 — Added shared room-create contract spec covering Skribbl, Uno, Agario, Cards Against Humanity, Codenames, and Mindmeld.
 - [x] Task 9 — Extended shared room contract spec with cross-context join flow assertions across all live multiplayer slugs.
+- [x] Task 10 — Added edge-state room contract coverage (invalid code, started-game join rejection, room-full rejection, leave/session-clear, reload restore path, expired/malformed session handling).
 - [x] Security fix — Sanitized fake Supabase 500 responses so server exception details are logged locally but not returned over HTTP.
 
 **Verification passed:**
@@ -79,7 +80,7 @@
 - Codenames lobby now surfaces unassigned players in the roster so hosts are visible before choosing a team/role.
 - GitHub Advanced Security flagged fake Supabase error responses for information exposure; 500 responses are now generic while details stay in server logs.
 
-**Next:** Task 10 — Error and edge room states.
+**Next:** Task 11 — Uno full turn smoke test.
 
 ---
 
