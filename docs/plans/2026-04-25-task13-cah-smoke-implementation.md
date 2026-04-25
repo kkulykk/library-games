@@ -31,7 +31,7 @@ Execution steps:
 - [x] 6. Re-run targeted CAH E2E spec until green.
 - [x] 7. Run lint, Jest, build, and relevant E2E regression specs.
 - [x] 8. Update global plan progress for Task 13 completion and next task.
-- [ ] 9. Commit, push, and update PR #118.
+- [x] 9. Commit, push, and update PR #118.
 
 Validation:
 
