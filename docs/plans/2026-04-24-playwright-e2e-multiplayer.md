@@ -42,9 +42,11 @@
 
 ## Progress
 
-**Branch:** `feat/playwright-multiplayer-e2e`
+**Branch:** `feat/uno-e2e-smoke`
 
-**Last updated:** 2026-04-25 11:25 UTC
+**PR:** #118 — https://github.com/kkulykk/library-games/pull/118
+
+**Last updated:** 2026-04-25 16:41 UTC
 
 **Completed:**
 
@@ -78,6 +80,12 @@
 - `pnpm e2e -- e2e/games/codenames.spec.ts`
 - `pnpm build`
 
+**Latest PR/CI status checked:**
+
+- PR #118 is open on `feat/uno-e2e-smoke`.
+- Previous implementation commit `2e80ad8`: Build, CodeQL, Lint & Test, Analyze (javascript-typescript), and Analyze (actions) passed; Deploy skipped; `claude-review` failed and needs review/follow-up before merge.
+- Latest documentation-status commit: GitHub checks restarted and were in progress when last checked (`claude-review`, Lint & Test, Analyze javascript-typescript, Analyze actions).
+
 **Notes:**
 
 - Added `e2e/playwright-setup.spec.ts` as a skipped placeholder so Playwright config/list commands succeed before real E2E specs are added.
@@ -95,7 +103,7 @@
 - Task 14 seeds deterministic fake Supabase Codenames playing state after exercising the real create/join flow, then uses real clue/guess actions to validate spymaster visibility, operative redaction, correct guesses, and assassin win behavior.
 - GitHub Advanced Security flagged fake Supabase error responses for information exposure; 500 responses are now generic while details stay in server logs.
 
-**Next:** Task 15 — Mindmeld smoke test.
+**Next:** Resolve/follow up on failed `claude-review` check for PR #118, then Task 15 — Mindmeld smoke test.
 
 ---
 
