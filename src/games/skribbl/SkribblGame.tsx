@@ -355,7 +355,7 @@ function Scoreboard({
   const sortedPlayers = [...players].sort((left, right) => right.score - left.score)
 
   return (
-    <aside className={styles.scoreboard}>
+    <aside data-testid="skribbl-scoreboard" className={styles.scoreboard}>
       <div className={cn(styles.scoreHead, arcadeShellStyles.mono)}>
         <span>Scoreboard</span>
         <span>{players.length} players</span>
@@ -436,7 +436,7 @@ function ChatPanel({
         <span>live</span>
       </div>
 
-      <div ref={logRef} className={styles.chatLog}>
+      <div ref={logRef} data-testid="skribbl-chat-log" className={styles.chatLog}>
         {messages.length === 0 && (
           <div className={cn(styles.message, styles.messageSystem)}>
             {isDrawer ? 'Players will guess here' : 'Type your guess below'}
@@ -461,6 +461,7 @@ function ChatPanel({
 
       <form className={styles.chatForm} onSubmit={handleSubmit}>
         <input
+          data-testid="skribbl-guess-input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
           disabled={!canGuess}
@@ -989,6 +990,7 @@ function WordPickerScreen({ words, onPick }: { words: string[]; onPick: (word: s
             <button
               key={word}
               type="button"
+              data-testid="skribbl-word-option"
               className={styles.wordCard}
               onClick={() => onPick(word)}
             >
@@ -1025,7 +1027,7 @@ function WordPickerScreen({ words, onPick }: { words: string[]; onPick: (word: s
 
 function WaitingPickerScreen({ drawerName }: { drawerName: string }) {
   return (
-    <div className={styles.pickerShell}>
+    <div data-testid="skribbl-waiting-picker" className={styles.pickerShell}>
       <div className={styles.pickerHead}>
         <p className={cn(styles.label, arcadeShellStyles.mono)}>{drawerName} is choosing</p>
         <h2>Hang tight...</h2>
@@ -1080,14 +1082,16 @@ function RoundEndScreen({
   }, [isHost, onNext])
 
   return (
-    <div className={styles.endShell}>
+    <div data-testid="skribbl-round-end" className={styles.endShell}>
       <p className={cn(styles.endMeta, arcadeShellStyles.mono)}>
         Round {gameState.round} of {gameState.totalRounds} · {drawer?.name ?? 'Player'} was drawing
       </p>
       <h2 className={styles.endTitle}>{allGuessed ? 'Everyone got it!' : "Time's up"}</h2>
       <p className={styles.endWord}>
         The word was{' '}
-        <span className={styles.endWordAccent}>{decodeWord(gameState.word ?? '')}</span>
+        <span data-testid="skribbl-round-word" className={styles.endWordAccent}>
+          {decodeWord(gameState.word ?? '')}
+        </span>
       </p>
 
       <ResultsTable
@@ -1122,7 +1126,12 @@ function RoundEndScreen({
           Leave
         </button>
         {isHost ? (
-          <button type="button" onClick={onNext} className={arcadeShellStyles.button}>
+          <button
+            type="button"
+            data-testid="skribbl-next-turn-button"
+            onClick={onNext}
+            className={arcadeShellStyles.button}
+          >
             Next turn →
           </button>
         ) : null}
@@ -1285,14 +1294,18 @@ function GameBoardScreen({
           {isDrawer ? (
             <div className={styles.hintDrawer}>
               <span className={cn(styles.hintLabel, arcadeShellStyles.mono)}>Draw this</span>
-              <span className={styles.hintWord}>{plainWord}</span>
+              <span data-testid="skribbl-drawer-word" className={styles.hintWord}>
+                {plainWord}
+              </span>
             </div>
           ) : (
             <div className={styles.hintDrawer}>
               <span className={cn(styles.hintLabel, arcadeShellStyles.mono)}>
                 {plainWord.length} letters · {plainWord.replace(/ /g, '').length} chars
               </span>
-              <span className={styles.hintMask}>{gameState.hint}</span>
+              <span data-testid="skribbl-hint-mask" className={styles.hintMask}>
+                {gameState.hint}
+              </span>
             </div>
           )}
         </div>
