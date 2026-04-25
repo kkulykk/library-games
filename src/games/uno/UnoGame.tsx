@@ -770,7 +770,7 @@ function GameBoard({
       </aside>
 
       <div className={styles.mainColumn}>
-        <div className={cn(styles.statusBar, arcadeShellStyles.mono)}>
+        <div data-testid="uno-status" className={cn(styles.statusBar, arcadeShellStyles.mono)}>
           {isMyTurn && (
             <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
           )}
@@ -785,7 +785,7 @@ function GameBoard({
             {gameState.direction === 1 ? 'clockwise' : 'counter-clockwise'}
           </div>
 
-          <div className={styles.pile}>
+          <div data-testid="uno-draw-pile" className={styles.pile}>
             <div className="relative">
               <div className="absolute -top-0.5 -right-0.5 h-full w-full border-2 border-gray-300 bg-gray-200" />
               <div className="relative">
@@ -811,7 +811,7 @@ function GameBoard({
             </span>
           </div>
 
-          <div className={styles.pile}>
+          <div data-testid="uno-discard-pile" className={styles.pile}>
             {topCard && (
               <div key={discardKey} className="animate-uno-discard-pop">
                 <UnoCard card={topCard} size="lg" />
@@ -931,7 +931,7 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
     <div className={styles.endShell}>
       {isWinner && showConfetti && <ConfettiEffect />}
       <p className={cn(styles.endMeta, arcadeShellStyles.mono)}>Game over · final standings</p>
-      <h2 className={styles.endTitle}>
+      <h2 data-testid="uno-winner-banner" className={styles.endTitle}>
         {isWinner ? 'You win' : `${winner?.name ?? 'Winner'} wins`}
       </h2>
       <p className={styles.endWord}>
