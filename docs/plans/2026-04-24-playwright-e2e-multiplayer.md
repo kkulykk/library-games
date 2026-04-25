@@ -42,9 +42,11 @@
 
 ## Progress
 
-**Branch:** `feat/playwright-multiplayer-e2e`
+**Branch:** `feat/uno-e2e-smoke`
 
-**Last updated:** 2026-04-25 08:22 UTC
+**PR:** #118 — https://github.com/kkulykk/library-games/pull/118
+
+**Last updated:** 2026-04-25 16:41 UTC
 
 **Completed:**
 
@@ -59,15 +61,30 @@
 - [x] Task 8 — Added shared room-create contract spec covering Skribbl, Uno, Agario, Cards Against Humanity, Codenames, and Mindmeld.
 - [x] Task 9 — Extended shared room contract spec with cross-context join flow assertions across all live multiplayer slugs.
 - [x] Task 10 — Added edge-state room contract coverage (invalid code, started-game join rejection, room-full rejection, leave/session-clear, reload restore path, expired/malformed session handling).
+- [x] Task 11 — Added deterministic Uno full-turn smoke coverage for start-game UI, synced hands/piles/status, turn advancement, near-win seeding, and final-card win screens on both player contexts.
+- [x] Task 12 — Added deterministic Skribbl round smoke coverage for word picking, drawer/guesser visibility, canvas presence, wrong/correct guesses, scoring, round reveal, and drawer rotation.
+- [x] Task 13 — Added deterministic Cards Against Humanity smoke coverage for non-czar submissions, judging reveal flow, Czar winner selection, score increment, and next-round Czar rotation.
+- [x] Task 14 — Added deterministic Codenames smoke coverage for spymaster key visibility, operative redaction, clue submission, correct guess count/log updates, and assassin end-game flow.
 - [x] Security fix — Sanitized fake Supabase 500 responses so server exception details are logged locally but not returned over HTTP.
 
 **Verification passed:**
 
 - `pnpm lint`
+- `pnpm test`
 - `pnpm test:coverage`
 - `pnpm e2e --list`
 - `pnpm e2e -- e2e/multiplayer-room-contract.spec.ts`
+- `pnpm e2e -- e2e/games/uno.spec.ts`
+- `pnpm e2e -- e2e/games/skribbl.spec.ts`
+- `pnpm e2e -- e2e/games/cards-against-humanity.spec.ts`
+- `pnpm e2e -- e2e/games/codenames.spec.ts`
 - `pnpm build`
+
+**Latest PR/CI status checked:**
+
+- PR #118 is open on `feat/uno-e2e-smoke`.
+- Previous implementation commit `2e80ad8`: Build, CodeQL, Lint & Test, Analyze (javascript-typescript), and Analyze (actions) passed; Deploy skipped; `claude-review` failed and needs review/follow-up before merge.
+- Latest documentation-status commit: GitHub checks restarted and were in progress when last checked (`claude-review`, Lint & Test, Analyze javascript-typescript, Analyze actions).
 
 **Notes:**
 
@@ -78,9 +95,15 @@
 - ESLint now ignores generated coverage and Playwright artifact directories.
 - Playwright now starts both the fake Supabase server and the Next dev server for E2E runs.
 - Codenames lobby now surfaces unassigned players in the roster so hosts are visible before choosing a team/role.
+- Uno now has stable game-state E2E selectors for current status, draw pile, discard pile, and winner banner.
+- Skribbl now has stable E2E selectors for word choices, waiting picker, drawer word, hint mask, scoreboard, chat log, guess input, round reveal, and next-turn controls.
+- Task 11 seeds deterministic fake Supabase Uno states after exercising the real create/join/start flow, avoiding random deck assumptions while still testing realtime UI sync.
+- Task 12 seeds deterministic fake Supabase Skribbl drawing state after exercising the real create/join/start flow, then uses real guess actions to validate chat/scoring/reveal/rotation.
+- Task 13 seeds deterministic fake Supabase Cards Against Humanity playing/judging states after exercising the real create/join/start flow, then uses real submit/reveal/pick/next-round actions to validate Czar and non-Czar behavior.
+- Task 14 seeds deterministic fake Supabase Codenames playing state after exercising the real create/join flow, then uses real clue/guess actions to validate spymaster visibility, operative redaction, correct guesses, and assassin win behavior.
 - GitHub Advanced Security flagged fake Supabase error responses for information exposure; 500 responses are now generic while details stay in server logs.
 
-**Next:** Task 11 — Uno full turn smoke test.
+**Next:** Resolve/follow up on failed `claude-review` check for PR #118, then Task 15 — Mindmeld smoke test.
 
 ---
 
