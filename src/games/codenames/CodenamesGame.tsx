@@ -487,7 +487,9 @@ function GameBoard({
       <div className="bg-secondary flex w-full items-center justify-between gap-3 rounded-xl px-4 py-2">
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-red-500" />
-          <span className="text-sm font-bold text-red-500">{gameState.redRemaining}</span>
+          <span data-testid="codenames-red-remaining" className="text-sm font-bold text-red-500">
+            {gameState.redRemaining}
+          </span>
           <span className="text-muted-foreground text-xs">left</span>
         </div>
         <div className="text-muted-foreground text-xs">
@@ -501,13 +503,18 @@ function GameBoard({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs">left</span>
-          <span className="text-sm font-bold text-blue-500">{gameState.blueRemaining}</span>
+          <span data-testid="codenames-blue-remaining" className="text-sm font-bold text-blue-500">
+            {gameState.blueRemaining}
+          </span>
           <span className="h-3 w-3 rounded-full bg-blue-500" />
         </div>
       </div>
 
       {/* Status */}
-      <div className={cn('w-full rounded-xl px-4 py-2 text-center text-sm font-semibold', teamBg)}>
+      <div
+        data-testid="codenames-status"
+        className={cn('w-full rounded-xl px-4 py-2 text-center text-sm font-semibold', teamBg)}
+      >
         {isMyTeamTurn && (
           <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
         )}
@@ -522,6 +529,7 @@ function GameBoard({
           return (
             <button
               key={i}
+              data-testid="codenames-board-card"
               disabled={!canGuess || revealed}
               onClick={() => canGuess && !revealed && onGuess(i)}
               className={cn(
@@ -538,6 +546,11 @@ function GameBoard({
               )}
             >
               <span className={cn(revealed && 'drop-shadow-sm')}>{card.word}</span>
+              {(iAmSpymaster || revealed) && (
+                <span className="absolute right-1 bottom-1 rounded bg-black/20 px-1 text-[8px] uppercase">
+                  {card.type}
+                </span>
+              )}
             </button>
           )
         })}
@@ -549,6 +562,7 @@ function GameBoard({
           <p className="text-muted-foreground text-center text-xs font-medium">Give a clue</p>
           <div className="flex gap-2">
             <input
+              data-testid="codenames-clue-input"
               value={clueWord}
               onChange={(e) => setClueWord(e.target.value.replace(/\s/g, ''))}
               placeholder="One word..."
@@ -557,6 +571,7 @@ function GameBoard({
               onKeyDown={(e) => e.key === 'Enter' && handleGiveClue()}
             />
             <select
+              data-testid="codenames-clue-count"
               value={clueCount}
               onChange={(e) => setClueCount(Number(e.target.value))}
               className="bg-background w-16 rounded-lg border px-2 py-2 text-center text-sm outline-none"
@@ -569,6 +584,7 @@ function GameBoard({
               ))}
             </select>
             <button
+              data-testid="codenames-send-clue"
               onClick={handleGiveClue}
               disabled={!clueWord.trim()}
               className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-semibold transition-opacity disabled:opacity-50"
@@ -599,7 +615,7 @@ function GameBoard({
 
       {/* Log */}
       {gameState.log.length > 0 && (
-        <div className="bg-secondary/50 w-full max-w-sm rounded-xl p-3">
+        <div data-testid="codenames-log" className="bg-secondary/50 w-full max-w-sm rounded-xl p-3">
           <p className="text-muted-foreground mb-1 text-xs font-medium">Game log</p>
           <div className="text-muted-foreground max-h-32 overflow-y-auto text-xs">
             {[...gameState.log].reverse().map((entry, i) => (
@@ -629,7 +645,10 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
   const isWinner = myTeam === gameState.winningTeam
 
   return (
-    <div className="animate-cn-fade-in flex flex-col items-center gap-6">
+    <div
+      data-testid="codenames-finished"
+      className="animate-cn-fade-in flex flex-col items-center gap-6"
+    >
       <div className="text-6xl">{isWinner ? '🏆' : '🎭'}</div>
       <div className="text-center">
         <h2 className="text-2xl font-black">{gameState.winningTeam?.toUpperCase()} team wins!</h2>
