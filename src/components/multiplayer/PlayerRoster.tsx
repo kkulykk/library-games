@@ -54,7 +54,7 @@ export function PlayerRoster({
   removeButtonClassName,
 }: PlayerRosterProps) {
   return (
-    <section className={className}>
+    <section data-testid="player-roster" className={className}>
       <div className={headerClassName}>
         <span>{title}</span>
         <span>

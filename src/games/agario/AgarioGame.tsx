@@ -706,7 +706,9 @@ function Lobby({
     <div className="flex flex-col items-center gap-6">
       <div className="text-center">
         <p className="text-muted-foreground mb-1 text-sm">Room Code</p>
-        <p className="font-mono text-4xl font-bold tracking-widest">{roomCode}</p>
+        <p data-testid="room-code" className="font-mono text-4xl font-bold tracking-widest">
+          {roomCode}
+        </p>
         <p className="text-muted-foreground mt-1 text-sm">Share this code with friends</p>
         <div className="mt-2 flex justify-center gap-2">
           <button
@@ -717,6 +719,8 @@ function Lobby({
           </button>
           <button
             onClick={copyInviteLink}
+            data-testid="invite-link"
+            data-invite-link={getInviteLink('agario', roomCode)}
             className="hover:bg-background rounded-lg border px-4 py-1.5 text-xs font-medium transition-colors"
           >
             {copied === 'link' ? 'Copied!' : 'Copy invite link'}
@@ -726,7 +730,7 @@ function Lobby({
 
       <div className="w-full max-w-xs">
         <h3 className="mb-2 text-sm font-semibold">Players ({gameState.players.length}/8)</h3>
-        <div className="space-y-1">
+        <div data-testid="player-roster" className="space-y-1">
           {gameState.players.map((p) => (
             <div
               key={p.id}
@@ -748,6 +752,7 @@ function Lobby({
 
       {isHost ? (
         <button
+          data-testid="start-game-button"
           onClick={onStart}
           disabled={gameState.players.length < 2}
           className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-8 py-2 font-semibold transition disabled:opacity-50"
@@ -820,6 +825,7 @@ function FinishedScreen({
           </button>
         )}
         <button
+          data-testid="leave-room-button"
           onClick={onLeave}
           className="bg-muted hover:bg-muted/80 rounded-lg px-6 py-2 font-semibold transition"
         >
@@ -1416,7 +1422,12 @@ export function AgarioGame() {
       </p>
 
       {error && (
-        <div className="bg-destructive/10 text-destructive rounded px-4 py-2 text-sm">{error}</div>
+        <div
+          data-testid="room-error"
+          className="bg-destructive/10 text-destructive rounded px-4 py-2 text-sm"
+        >
+          {error}
+        </div>
       )}
 
       {savedSession && (
@@ -1431,12 +1442,14 @@ export function AgarioGame() {
       {mode === 'menu' && (
         <div className="flex w-full max-w-xs flex-col gap-3">
           <button
+            data-testid="create-room-button"
             onClick={() => setMode('create')}
             className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-4 py-3 font-semibold transition"
           >
             Create Room
           </button>
           <button
+            data-testid="join-room-button"
             onClick={() => setMode('join')}
             className="bg-muted hover:bg-muted/80 rounded-lg px-4 py-3 font-semibold transition"
           >
@@ -1457,6 +1470,7 @@ export function AgarioGame() {
           className="flex w-full max-w-xs flex-col gap-3"
         >
           <input
+            data-testid="player-name-input"
             type="text"
             placeholder="Your name"
             value={nameInput}
@@ -1475,6 +1489,7 @@ export function AgarioGame() {
             </button>
             <button
               type="submit"
+              data-testid="create-room-button"
               disabled={!nameInput.trim()}
               className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
             >
@@ -1496,6 +1511,7 @@ export function AgarioGame() {
           className="flex w-full max-w-xs flex-col gap-3"
         >
           <input
+            data-testid="player-name-input"
             type="text"
             placeholder="Your name"
             value={nameInput}
@@ -1505,6 +1521,7 @@ export function AgarioGame() {
             autoFocus
           />
           <input
+            data-testid="room-code-input"
             type="text"
             placeholder="Room code"
             value={codeInput}
@@ -1522,6 +1539,7 @@ export function AgarioGame() {
             </button>
             <button
               type="submit"
+              data-testid="join-room-button"
               disabled={!nameInput.trim() || codeInput.length < 4}
               className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
             >
