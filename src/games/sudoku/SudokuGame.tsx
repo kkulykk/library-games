@@ -96,7 +96,10 @@ export function SudokuGame() {
       )}
 
       {/* Grid */}
-      <div className="border-foreground grid grid-cols-9 overflow-hidden rounded border-2">
+      <div
+        data-testid="sudoku-board"
+        className="border-foreground grid grid-cols-9 overflow-hidden rounded border-2"
+      >
         {userGrid.map((row, ri) =>
           row.map((value, ci) => {
             const isSelected = selected?.[0] === ri && selected?.[1] === ci

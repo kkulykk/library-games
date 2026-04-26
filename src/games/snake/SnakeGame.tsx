@@ -138,6 +138,7 @@ export function SnakeGame() {
 
       {/* Canvas-like grid */}
       <div
+        data-testid="snake-board"
         className="border-border relative overflow-hidden rounded border-2 bg-zinc-100 dark:bg-zinc-900"
         style={{ width: GRID_SIZE * CELL_PX, height: GRID_SIZE * CELL_PX }}
         onClick={() => !started && dispatch({ type: 'start' })}

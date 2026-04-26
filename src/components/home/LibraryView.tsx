@@ -105,14 +105,25 @@ function LibraryTile({ game, size }: { game: GameMeta; size: string }) {
 
   if (isComingSoon) {
     return (
-      <div className={`tile tile-${size}`} style={style} aria-disabled="true">
+      <div
+        className={`tile tile-${size}`}
+        style={style}
+        aria-disabled="true"
+        data-testid={`game-card-coming-soon-${game.slug}`}
+      >
         {tile}
       </div>
     )
   }
 
   return (
-    <Link href={`/games/${game.slug}`} className={`tile tile-${size}`} style={style}>
+    <Link
+      href={`/games/${game.slug}`}
+      className={`tile tile-${size}`}
+      style={style}
+      data-testid="game-card"
+      data-game-slug={game.slug}
+    >
       {tile}
     </Link>
   )
@@ -186,6 +197,8 @@ export function LibraryView({ games }: LibraryViewProps) {
           <span className="lib-search-icon">⌕</span>
           <input
             className="lib-input"
+            type="search"
+            aria-label="Search games"
             placeholder="Search titles, genres, vibes…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

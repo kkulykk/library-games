@@ -140,6 +140,7 @@ export function MinesweeperGame() {
 
       {/* Board */}
       <div
+        data-testid="minesweeper-board"
         className="bg-border inline-grid gap-px overflow-hidden rounded border"
         style={{ gridTemplateColumns: `repeat(${config.cols}, minmax(0, 1fr))` }}
       >
