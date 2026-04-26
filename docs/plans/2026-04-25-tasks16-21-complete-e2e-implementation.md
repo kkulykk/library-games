@@ -28,7 +28,10 @@
 - [x] Update global roadmap progress for Tasks 16-21.
 - [x] Run verification gate.
   - Passed after `pnpm lint:fix`: `pnpm lint`, `pnpm test`, targeted Agario E2E, race-conditions E2E, full `pnpm e2e:ci` (27 passed, 1 skipped), and `pnpm build`.
-- [ ] Commit, push, and update PR #119.
+- [x] Commit, push, and update PR #119.
+  - PR: https://github.com/kkulykk/library-games/pull/119
+  - Branch pushed at `5717630`.
+  - PR body updated with implemented tasks, validation results, and Task 20 workflow-token note.
 
 ## Task 16 — Agario/Slither.io smoke test
 
