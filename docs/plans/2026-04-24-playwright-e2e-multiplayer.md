@@ -42,11 +42,11 @@
 
 ## Progress
 
-**Branch:** `feat/uno-e2e-smoke`
+**Branch:** `feat/mindmeld-e2e-smoke`
 
-**PR:** #118 — https://github.com/kkulykk/library-games/pull/118
+**PR:** #119 — https://github.com/kkulykk/library-games/pull/119
 
-**Last updated:** 2026-04-25 16:41 UTC
+**Last updated:** 2026-04-25 18:07 UTC
 
 **Completed:**
 
@@ -65,6 +65,13 @@
 - [x] Task 12 — Added deterministic Skribbl round smoke coverage for word picking, drawer/guesser visibility, canvas presence, wrong/correct guesses, scoring, round reveal, and drawer rotation.
 - [x] Task 13 — Added deterministic Cards Against Humanity smoke coverage for non-czar submissions, judging reveal flow, Czar winner selection, score increment, and next-round Czar rotation.
 - [x] Task 14 — Added deterministic Codenames smoke coverage for spymaster key visibility, operative redaction, clue submission, correct guess count/log updates, and assassin end-game flow.
+- [x] Task 15 — Added deterministic Mindmeld smoke coverage for Psychic clue submission, guesser target redaction, team dial locking, reveal scoring, Psychic rotation, and final leaderboard results.
+- [x] Task 16 — Added Agario/Slither.io realtime smoke coverage for create/join/start flow, canvas gameplay entry, cross-client snake leaderboard sync, broadcast-driven game end, and final scores.
+- [x] Task 17 — Added deterministic concurrent join conflict coverage for optimistic room-version updates without player overwrites.
+- [x] Task 18 — Added deterministic concurrent action conflict coverage proving dispatch retries preserve simultaneous Skribbl correct guesses.
+- [x] Task 19 — Added reconnect/reload resilience coverage proving restored Uno players receive later realtime updates and leave clears session state.
+- [!] Task 20 — Prepared GitHub Actions Playwright E2E job patch with Chromium install and failure artifact uploads; pushing `.github/workflows/ci.yml` requires a token with `workflow` scope.
+- [x] Task 21 — Added E2E documentation for local commands, fake Supabase, selector conventions, CI artifacts, and debugging.
 - [x] Security fix — Sanitized fake Supabase 500 responses so server exception details are logged locally but not returned over HTTP.
 
 **Verification passed:**
@@ -78,13 +85,16 @@
 - `pnpm e2e -- e2e/games/skribbl.spec.ts`
 - `pnpm e2e -- e2e/games/cards-against-humanity.spec.ts`
 - `pnpm e2e -- e2e/games/codenames.spec.ts`
+- `pnpm e2e -- e2e/games/mindmeld.spec.ts`
+- `pnpm e2e -- e2e/games/agario.spec.ts`
+- `pnpm e2e -- e2e/race-conditions.spec.ts`
+- `pnpm e2e:ci`
 - `pnpm build`
 
 **Latest PR/CI status checked:**
 
-- PR #118 is open on `feat/uno-e2e-smoke`.
-- Previous implementation commit `2e80ad8`: Build, CodeQL, Lint & Test, Analyze (javascript-typescript), and Analyze (actions) passed; Deploy skipped; `claude-review` failed and needs review/follow-up before merge.
-- Latest documentation-status commit: GitHub checks restarted and were in progress when last checked (`claude-review`, Lint & Test, Analyze javascript-typescript, Analyze actions).
+- PR #118 was merged into `main` before starting this Task 15 branch.
+- Task 15 is being prepared on fresh branch `feat/mindmeld-e2e-smoke`.
 
 **Notes:**
 
@@ -101,9 +111,14 @@
 - Task 12 seeds deterministic fake Supabase Skribbl drawing state after exercising the real create/join/start flow, then uses real guess actions to validate chat/scoring/reveal/rotation.
 - Task 13 seeds deterministic fake Supabase Cards Against Humanity playing/judging states after exercising the real create/join/start flow, then uses real submit/reveal/pick/next-round actions to validate Czar and non-Czar behavior.
 - Task 14 seeds deterministic fake Supabase Codenames playing state after exercising the real create/join flow, then uses real clue/guess actions to validate spymaster visibility, operative redaction, correct guesses, and assassin win behavior.
+- Task 15 seeds deterministic fake Supabase Mindmeld clue/final-reveal states after exercising the real create/join/start flow, then uses real clue, guess, next-round, and final-results actions to validate target redaction, reveal scoring, Psychic rotation, and leaderboard sync.
+- Task 16 uses Agario broadcast helpers after the real create/join/start flow to validate realtime canvas entry, cross-client snake leaderboard sync, and final score rendering without brittle canvas pixel assertions.
+- Tasks 17-19 use Playwright route barriers and restore flows to make optimistic-version conflict and reconnect coverage deterministic instead of “probably simultaneous” flaky.
+- Task 20 patch is saved locally at `/tmp/library-games-e2e-ci-workflow.patch`; applying it requires GitHub workflow-file write permission.
+- Task 21 documents E2E commands, fake Supabase, adding specs, selector conventions, and trace/report debugging in `docs/e2e.md`.
 - GitHub Advanced Security flagged fake Supabase error responses for information exposure; 500 responses are now generic while details stay in server logs.
 
-**Next:** Resolve/follow up on failed `claude-review` check for PR #118, then Task 15 — Mindmeld smoke test.
+**Next:** Multiplayer E2E roadmap code/docs coverage is complete except applying the Task 20 workflow patch with a workflow-scoped credential. Merge PR #119 after CI review; then apply `/tmp/library-games-e2e-ci-workflow.patch` with a token/user that can update `.github/workflows/ci.yml`.
 
 ---
 

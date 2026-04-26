@@ -854,6 +854,7 @@ function GameBoard({
             )}
 
             <button
+              data-testid="leave-room-button"
               type="button"
               onClick={onLeave}
               className={cn(

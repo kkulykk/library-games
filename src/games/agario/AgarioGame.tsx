@@ -407,6 +407,7 @@ function GameCanvas({
 
   return (
     <canvas
+      data-testid="agario-canvas"
       ref={canvasRef}
       className="block h-full w-full select-none"
       style={{
@@ -644,13 +645,21 @@ function Leaderboard({
     .slice(0, 8)
 
   return (
-    <div className="absolute top-10 right-2 rounded-lg border border-white/10 bg-[#0a0a2e]/80 px-3 py-2 text-sm text-white backdrop-blur-sm">
+    <div
+      data-testid="agario-leaderboard"
+      className="absolute top-10 right-2 rounded-lg border border-white/10 bg-[#0a0a2e]/80 px-3 py-2 text-sm text-white backdrop-blur-sm"
+    >
       <div className="mb-1 text-center text-xs font-bold tracking-wider text-white/50 uppercase">
         Leaderboard
       </div>
       {sorted.map((s, i) => (
         <div
           key={s.id}
+          data-testid="agario-leaderboard-row"
+          data-player-id={s.id}
+          data-player-name={s.name}
+          data-score={s.score}
+          data-length={Math.floor(s.targetLength)}
           className={cn('flex items-center gap-2 py-0.5', s.id === myId && 'font-bold')}
         >
           <span className="w-4 text-right text-white/40">{i + 1}.</span>
@@ -788,15 +797,19 @@ function FinishedScreen({
   const sorted = [...finalScores].sort((a, b) => b.score - a.score)
 
   return (
-    <div className="flex flex-col items-center gap-6">
+    <div data-testid="agario-finished" className="flex flex-col items-center gap-6">
       <h2 className="text-2xl font-bold">Game Over!</h2>
 
       <div className="w-full max-w-xs">
         <h3 className="mb-2 text-center text-sm font-semibold">Final Scores</h3>
-        <div className="space-y-1">
+        <div data-testid="agario-final-scores" className="space-y-1">
           {sorted.map((s, i) => (
             <div
               key={s.id}
+              data-testid="agario-final-score-row"
+              data-player-id={s.id}
+              data-player-name={s.name}
+              data-score={s.score}
               className={cn(
                 'bg-muted flex items-center gap-2 rounded px-3 py-2 text-sm',
                 s.id === myId && 'ring-primary ring-1',
@@ -1346,6 +1359,7 @@ export function AgarioGame() {
     return (
       <div className="relative flex flex-col items-center">
         <div
+          data-testid="agario-game-area"
           className="relative overflow-hidden rounded-lg border border-white/10"
           style={{ width: canvasSize.width, height: canvasSize.height }}
         >
