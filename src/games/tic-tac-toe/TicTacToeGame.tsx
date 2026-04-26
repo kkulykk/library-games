@@ -105,7 +105,7 @@ export function TicTacToeGame() {
       </div>
 
       {/* Board */}
-      <div className="grid grid-cols-3 gap-2">
+      <div data-testid="tic-tac-toe-board" className="grid grid-cols-3 gap-2">
         {state.board.map((cell, index) => {
           const isWinningCell = state.winningLine?.includes(index) ?? false
           return (

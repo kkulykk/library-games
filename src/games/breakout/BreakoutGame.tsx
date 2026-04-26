@@ -196,6 +196,7 @@ export function BreakoutGame() {
         style={{ maxWidth: CANVAS_WIDTH }}
       >
         <canvas
+          data-testid="breakout-board"
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}

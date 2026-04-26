@@ -142,7 +142,10 @@ export function TetrisGame() {
   return (
     <div className="flex items-start gap-6">
       {/* Board */}
-      <div className="border-border relative overflow-hidden rounded border-2 bg-zinc-900">
+      <div
+        data-testid="tetris-board"
+        className="border-border relative overflow-hidden rounded border-2 bg-zinc-900"
+      >
         <div style={{ width: BOARD_WIDTH * CELL_PX, height: BOARD_HEIGHT * CELL_PX }}>
           {displayBoard.map((row, ri) =>
             row.map((color, ci) => (

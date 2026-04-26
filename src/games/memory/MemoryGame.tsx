@@ -69,7 +69,7 @@ export function MemoryGame() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
+      <div data-testid="memory-board" className="grid grid-cols-4 gap-3">
         {cards.map((card) => (
           <button
             key={card.id}
