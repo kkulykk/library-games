@@ -417,7 +417,10 @@ function PsychicDial({
   }
 
   return (
-    <div className="overflow-hidden rounded-[2rem] border bg-[linear-gradient(180deg,rgba(24,24,27,1),rgba(10,10,12,0.98))] p-6 text-white shadow-2xl">
+    <div
+      data-testid="mindmeld-dial"
+      className="overflow-hidden rounded-[2rem] border bg-[linear-gradient(180deg,rgba(24,24,27,1),rgba(10,10,12,0.98))] p-6 text-white shadow-2xl"
+    >
       <div className="mb-4 flex items-center justify-between">
         <div className="text-[11px] font-semibold tracking-[0.28em] text-white/55 uppercase">
           Psychic dial
@@ -562,12 +565,12 @@ function PlayingScreen({
           <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
             Round {round.number} of {gameState.totalRounds}
           </div>
-          <h2 className="mt-1 text-2xl font-black tracking-tight">
+          <h2 data-testid="mindmeld-status" className="mt-1 text-2xl font-black tracking-tight">
             {psychic?.name ?? 'Psychic'}
             {youArePsychic ? ' · you are up' : ' is the Psychic'}
           </h2>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div data-testid="mindmeld-leaderboard" className="flex flex-wrap gap-2">
           {getLeaderboard(gameState).map((player) => (
             <span
               key={player.id}
@@ -598,7 +601,10 @@ function PlayingScreen({
               <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
                 Private target
               </div>
-              <div className="bg-background mt-3 rounded-2xl border px-4 py-3">
+              <div
+                data-testid="mindmeld-private-target"
+                className="bg-background mt-3 rounded-2xl border px-4 py-3"
+              >
                 <div className="text-muted-foreground text-xs">Secret position</div>
                 <div className="mt-1 text-4xl font-black text-amber-500 tabular-nums">
                   {round.target}
@@ -627,6 +633,7 @@ function PlayingScreen({
                 className="mt-5 flex flex-col gap-3"
               >
                 <input
+                  data-testid="mindmeld-clue-input"
                   value={clueInput}
                   onChange={(e) => setClueInput(e.target.value)}
                   placeholder="Transmit your clue…"
@@ -635,6 +642,7 @@ function PlayingScreen({
                   className="bg-background focus:ring-primary/40 rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2"
                 />
                 <button
+                  data-testid="mindmeld-send-clue"
                   type="submit"
                   disabled={!clueInput.trim()}
                   className="bg-foreground text-background rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40"
@@ -646,7 +654,10 @@ function PlayingScreen({
           )}
 
           {round.phase === 'clue' && !youArePsychic && (
-            <div className="bg-secondary/35 rounded-[1.75rem] border p-6 text-center shadow-sm">
+            <div
+              data-testid="mindmeld-waiting-clue"
+              className="bg-secondary/35 rounded-[1.75rem] border p-6 text-center shadow-sm"
+            >
               <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
                 Stand by
               </div>
@@ -659,7 +670,10 @@ function PlayingScreen({
           )}
 
           {round.phase !== 'clue' && round.clue && (
-            <div className="rounded-[1.75rem] border bg-[linear-gradient(145deg,rgba(250,204,21,0.12),rgba(14,165,233,0.06))] p-5 shadow-sm">
+            <div
+              data-testid="mindmeld-current-clue"
+              className="rounded-[1.75rem] border bg-[linear-gradient(145deg,rgba(250,204,21,0.12),rgba(14,165,233,0.06))] p-5 shadow-sm"
+            >
               <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
                 Current clue
               </div>
@@ -683,6 +697,7 @@ function PlayingScreen({
                   <span>{round.spectrum.right}</span>
                 </div>
                 <input
+                  data-testid="mindmeld-guess-slider"
                   type="range"
                   min={0}
                   max={100}
@@ -708,6 +723,7 @@ function PlayingScreen({
                 </div>
               </div>
               <button
+                data-testid="mindmeld-lock-guess"
                 onClick={() => onSubmitGuess(guess)}
                 className="bg-foreground text-background mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90"
               >
@@ -729,7 +745,10 @@ function PlayingScreen({
           )}
 
           {round.phase === 'reveal' && (
-            <div className="bg-background/95 rounded-[1.75rem] border p-5 shadow-sm">
+            <div
+              data-testid="mindmeld-reveal"
+              className="bg-background/95 rounded-[1.75rem] border p-5 shadow-sm"
+            >
               <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
                 Reveal
               </div>
@@ -751,7 +770,10 @@ function PlayingScreen({
                   </div>
                 </div>
               </div>
-              <div className="mt-4 rounded-2xl border bg-[linear-gradient(145deg,rgba(250,204,21,0.12),rgba(74,222,128,0.08))] px-4 py-4">
+              <div
+                data-testid="mindmeld-round-score"
+                className="mt-4 rounded-2xl border bg-[linear-gradient(145deg,rgba(250,204,21,0.12),rgba(74,222,128,0.08))] px-4 py-4"
+              >
                 <div className="text-muted-foreground text-sm">
                   {lockedBy ? `${lockedBy} locked the dial.` : 'The team locked the dial.'}
                 </div>
@@ -777,6 +799,7 @@ function PlayingScreen({
 
               {isHost ? (
                 <button
+                  data-testid="mindmeld-next-round"
                   onClick={onNextRound}
                   className="bg-foreground text-background mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90"
                 >
@@ -820,7 +843,10 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
 
   return (
     <div className="animate-mindmeld-fade-up flex w-full max-w-3xl flex-col gap-5">
-      <div className="overflow-hidden rounded-[2rem] border border-amber-500/20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_35%),linear-gradient(160deg,rgba(24,24,27,0.96),rgba(39,39,42,0.92))] p-8 text-white shadow-2xl">
+      <div
+        data-testid="mindmeld-finished"
+        className="overflow-hidden rounded-[2rem] border border-amber-500/20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_35%),linear-gradient(160deg,rgba(24,24,27,0.96),rgba(39,39,42,0.92))] p-8 text-white shadow-2xl"
+      >
         <div className="text-5xl">{youWon ? '🏆' : '🧠'}</div>
         <h2 className="mt-4 text-4xl font-black tracking-tight">{winnerNames} win!</h2>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70">
@@ -830,7 +856,10 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
         </p>
       </div>
 
-      <div className="bg-background/95 rounded-[1.75rem] border p-5 shadow-sm">
+      <div
+        data-testid="mindmeld-final-leaderboard"
+        className="bg-background/95 rounded-[1.75rem] border p-5 shadow-sm"
+      >
         <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
           Final leaderboard
         </div>

@@ -69,6 +69,17 @@ pnpm test:coverage  # coverage report (>=80% required on logic files)
 pnpm build          # static export -> /out
 ```
 
+## E2E testing
+
+Playwright E2E tests cover multiplayer room flows, game smoke paths, race conditions, and reconnect behavior with a deterministic fake Supabase backend. See `docs/e2e.md` for local commands, fake backend details, selector conventions, CI artifacts, and debugging tips.
+
+```bash
+pnpm e2e        # run Playwright headless
+pnpm e2e:ui     # open Playwright UI mode
+pnpm e2e:debug  # run with Playwright debugger
+pnpm e2e:ci     # CI reporter format
+```
+
 ## Architecture
 
 Each game follows a strict split between pure logic and UI:
