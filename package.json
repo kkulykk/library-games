@@ -21,7 +21,7 @@
     "**/*.{js,jsx,ts,tsx,json,md,css,yaml,yml}": "prettier --write"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.102.1",
+    "@supabase/supabase-js": "^2.103.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.7.0",
