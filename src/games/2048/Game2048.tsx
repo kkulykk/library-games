@@ -139,6 +139,7 @@ export function Game2048() {
 
       {/* Grid */}
       <div
+        data-testid="2048-board"
         className="relative w-full rounded-2xl bg-zinc-300 p-2 dark:bg-zinc-700"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}

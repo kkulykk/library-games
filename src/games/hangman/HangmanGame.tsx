@@ -132,7 +132,7 @@ export function HangmanGame() {
       </p>
 
       {/* Word display */}
-      <div className="flex flex-wrap justify-center gap-2">
+      <div data-testid="hangman-board" className="flex flex-wrap justify-center gap-2">
         {masked.map((char, i) => (
           <div key={i} className="flex flex-col items-center">
             <span className="text-foreground min-w-[1.5rem] text-center text-2xl font-bold tracking-widest uppercase">
