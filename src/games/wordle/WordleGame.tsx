@@ -184,7 +184,7 @@ export function WordleGame() {
       </div>
 
       {/* Grid */}
-      <div className="flex flex-col gap-1.5">
+      <div data-testid="wordle-board" className="flex flex-col gap-1.5">
         {rows.map((row, ri) => (
           <div
             key={ri}

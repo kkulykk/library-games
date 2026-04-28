@@ -576,6 +576,7 @@ export default function BounceGame() {
   return (
     <div className="flex flex-col items-center gap-3">
       <canvas
+        data-testid="bounce-board"
         ref={canvasRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
