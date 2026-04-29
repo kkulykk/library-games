@@ -6,10 +6,13 @@ const baseURL = `http://${HOST}:${PORT}/library-games`
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  // The fake-Supabase server holds a single shared state and resets it before
+  // each test, so any parallelism across the suite produces resets that race
+  // with in-flight tests. Run serially.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? [['github'], ['line']] : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,

@@ -1,8 +1,7 @@
 import type { BrowserContext, Route } from '@playwright/test'
-import { createRoom, joinRoom, startGame } from './helpers/assertions'
 import { fakeSupabaseQuery, test, expect } from './helpers/fakeSupabase'
-import { gotoGame } from './helpers/navigation'
 import { closePlayers, createPlayer } from './helpers/players'
+import { SkribblPage, UnoPage } from './pages'
 
 const fakeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321'
 
@@ -181,16 +180,19 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
     page,
     browser,
   }) => {
-    const host = { page, name: 'Race Host' }
+    const hostName = 'Race Host'
+    const hostPage = new UnoPage(page)
     const guestOne = await createPlayer(browser, 'Race Guest One')
     const guestTwo = await createPlayer(browser, 'Race Guest Two')
+    const guestOnePage = new UnoPage(guestOne.page)
+    const guestTwoPage = new UnoPage(guestTwo.page)
 
     try {
-      await gotoGame(host.page, 'uno')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
-      await gotoGame(guestOne.page, 'uno')
-      await gotoGame(guestTwo.page, 'uno')
+      await guestOnePage.goto()
+      await guestTwoPage.goto()
 
       await installQueryBarrier([guestOne.context, guestTwo.context], (payload) => {
         return (
@@ -202,8 +204,8 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
       })
 
       await Promise.allSettled([
-        joinRoom(guestOne.page, roomCode, guestOne.name),
-        joinRoom(guestTwo.page, roomCode, guestTwo.name),
+        guestOnePage.joinRoom(roomCode, guestOne.name),
+        guestTwoPage.joinRoom(roomCode, guestTwo.name),
       ])
 
       const finalRoom = await readRoom<UnoState>('uno_rooms', roomCode)
@@ -212,21 +214,22 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
         (name) => name === guestOne.name || name === guestTwo.name
       )
 
-      expect(names).toContain(host.name)
+      expect(names).toContain(hostName)
       expect(finalRoom.state.players).toHaveLength(2)
       expect(new Set(names).size).toBe(names.length)
       expect(joinedGuestNames).toHaveLength(1)
 
       const guestOneJoined = names.includes(guestOne.name)
-      const winningGuest = guestOneJoined ? guestOne : guestTwo
-      const losingGuest = guestOneJoined ? guestTwo : guestOne
+      const winningGuestName = guestOneJoined ? guestOne.name : guestTwo.name
+      const losingGuest = guestOneJoined ? guestTwoPage : guestOnePage
+      const winningGuest = guestOneJoined ? guestOnePage : guestTwoPage
 
-      await expect(winningGuest.page.getByTestId('room-code')).toContainText(roomCode)
-      await expect(losingGuest.page.getByTestId('room-error')).toContainText(
-        'Failed to join room. Try again.'
+      await expect(winningGuest.roomCodeDisplay).toContainText(roomCode)
+      await losingGuest.expectError('Failed to join room. Try again.')
+      await expect(hostPage.playerRoster).toContainText(winningGuestName)
+      await expect(hostPage.playerRoster).not.toContainText(
+        guestOneJoined ? guestTwo.name : guestOne.name
       )
-      await expect(host.page.getByTestId('player-roster')).toContainText(winningGuest.name)
-      await expect(host.page.getByTestId('player-roster')).not.toContainText(losingGuest.name)
     } finally {
       await closePlayers([guestOne, guestTwo])
     }
@@ -236,21 +239,24 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
     page,
     browser,
   }) => {
-    const host = { page, name: 'Race Drawer' }
+    const hostName = 'Race Drawer'
+    const hostPage = new SkribblPage(page)
     const guesserOne = await createPlayer(browser, 'Race Guess One')
     const guesserTwo = await createPlayer(browser, 'Race Guess Two')
+    const guesserOnePage = new SkribblPage(guesserOne.page)
+    const guesserTwoPage = new SkribblPage(guesserTwo.page)
 
     try {
-      await gotoGame(host.page, 'skribbl')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
-      await gotoGame(guesserOne.page, 'skribbl')
-      await joinRoom(guesserOne.page, roomCode, guesserOne.name)
+      await guesserOnePage.goto()
+      await guesserOnePage.joinRoom(roomCode, guesserOne.name)
 
-      await gotoGame(guesserTwo.page, 'skribbl')
-      await joinRoom(guesserTwo.page, roomCode, guesserTwo.name)
+      await guesserTwoPage.goto()
+      await guesserTwoPage.joinRoom(roomCode, guesserTwo.name)
 
-      await startGame(host.page)
+      await hostPage.startGame()
       const startedRoom = await readRoom<SkribblState>('skribbl_rooms', roomCode)
       await updateRoom(
         'skribbl_rooms',
@@ -259,8 +265,8 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
         seededDrawingState(startedRoom.state.players)
       )
 
-      await expect(guesserOne.page.getByTestId('skribbl-hint-mask')).toContainText('_ _ _ _ _')
-      await expect(guesserTwo.page.getByTestId('skribbl-hint-mask')).toContainText('_ _ _ _ _')
+      await expect(guesserOnePage.hintMask).toContainText('_ _ _ _ _')
+      await expect(guesserTwoPage.hintMask).toContainText('_ _ _ _ _')
 
       await installQueryBarrier([guesserOne.context, guesserTwo.context], (payload) => {
         const state = payload.values?.state as Partial<SkribblState> | undefined
@@ -274,18 +280,9 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
         )
       })
 
-      await Promise.all([
-        guesserOne.page
-          .getByTestId('skribbl-guess-input')
-          .fill('apple')
-          .then(() => guesserOne.page.getByTestId('skribbl-guess-input').press('Enter')),
-        guesserTwo.page
-          .getByTestId('skribbl-guess-input')
-          .fill('apple')
-          .then(() => guesserTwo.page.getByTestId('skribbl-guess-input').press('Enter')),
-      ])
+      await Promise.all([guesserOnePage.submitGuess('apple'), guesserTwoPage.submitGuess('apple')])
 
-      await expect(host.page.getByTestId('skribbl-round-end')).toBeVisible()
+      await expect(hostPage.roundEnd).toBeVisible()
       const finalRoom = await readRoom<SkribblState>('skribbl_rooms', roomCode)
       const finalNamesById = new Map(
         finalRoom.state.players.map((player) => [player.name, player.id])
@@ -303,7 +300,7 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
           `${guesserTwo.name} guessed the word!`,
         ])
       )
-      await expect(host.page.getByTestId('skribbl-round-word')).toContainText('apple')
+      await expect(hostPage.roundWord).toContainText('apple')
     } finally {
       await closePlayers([guesserOne, guesserTwo])
     }
@@ -313,55 +310,42 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
     page,
     browser,
   }) => {
-    const host = { page, name: 'Restore Host' }
+    const hostName = 'Restore Host'
+    const hostPage = new UnoPage(page)
     const guest = await createPlayer(browser, 'Restore Guest')
+    const guestPage = new UnoPage(guest.page)
 
     try {
-      await gotoGame(host.page, 'uno')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
-      await gotoGame(guest.page, 'uno')
-      await joinRoom(guest.page, roomCode, guest.name)
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
 
       await guest.page.reload()
-      const playButton = guest.page.getByTestId('play-game-button')
-      if (await playButton.isVisible().catch(() => false)) {
-        await playButton.click()
-      }
+      await guestPage.dismissPlayGate()
       const resumeButton = guest.page.getByRole('button', { name: /resume/i })
-      await expect(resumeButton.or(guest.page.getByTestId('room-code'))).toBeVisible()
-      if (
-        !(await guest.page
-          .getByTestId('room-code')
-          .isVisible()
-          .catch(() => false))
-      ) {
+      await expect(resumeButton.or(guestPage.roomCodeDisplay)).toBeVisible()
+      if (!(await guestPage.roomCodeDisplay.isVisible().catch(() => false))) {
         await resumeButton.click()
       }
 
-      await expect(guest.page.getByTestId('room-code')).toContainText(roomCode)
-      await expect(guest.page.getByTestId('player-roster')).toContainText(host.name)
-      await expect(guest.page.getByTestId('player-roster')).toContainText(guest.name)
+      await expect(guestPage.roomCodeDisplay).toContainText(roomCode)
+      await expect(guestPage.playerRoster).toContainText(hostName)
+      await expect(guestPage.playerRoster).toContainText(guest.name)
 
-      await startGame(host.page)
-      await expect(guest.page.getByTestId('uno-status')).toBeVisible()
+      await hostPage.startGame()
+      await expect(guestPage.status).toBeVisible()
 
-      await guest.page.getByTestId('leave-room-button').click()
-      await expect(
-        guest.page.getByTestId('create-room-button').filter({ visible: true }).first()
-      ).toBeVisible()
+      await guestPage.leaveRoom()
+      await guestPage.expectAtEntry()
       await expect
         .poll(() => guest.page.evaluate(() => localStorage.getItem('uno_session')))
         .toBeNull()
 
       await guest.page.reload()
-      if (await playButton.isVisible().catch(() => false)) {
-        await playButton.click()
-      }
-      await expect(guest.page.getByTestId('room-code')).toHaveCount(0)
-      await expect(
-        guest.page.getByTestId('create-room-button').filter({ visible: true }).first()
-      ).toBeVisible()
+      await guestPage.dismissPlayGate()
+      await guestPage.expectAtEntry()
     } finally {
       await closePlayers([guest])
     }
