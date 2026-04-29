@@ -1,7 +1,6 @@
-import { createRoom, joinRoom } from '../helpers/assertions'
 import { fakeSupabaseQuery, test, expect } from '../helpers/fakeSupabase'
-import { gotoGame } from '../helpers/navigation'
 import { closePlayers, createPlayer } from '../helpers/players'
+import { CodenamesPage } from '../pages'
 
 type Team = 'red' | 'blue'
 type CardType = 'red' | 'blue' | 'neutral' | 'assassin'
@@ -111,18 +110,21 @@ test.describe('Codenames gameplay smoke', () => {
     page,
     browser,
   }) => {
-    const host = { page, name: 'Red Spy' }
+    const hostName = 'Red Spy'
+    const hostPage = new CodenamesPage(page)
     const redOperative = await createPlayer(browser, 'Red Op')
     const blueSpymaster = await createPlayer(browser, 'Blue Spy')
     const blueOperative = await createPlayer(browser, 'Blue Op')
+    const redOperativePage = new CodenamesPage(redOperative.page)
 
     try {
-      await gotoGame(host.page, 'codenames')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
       for (const player of [redOperative, blueSpymaster, blueOperative]) {
-        await gotoGame(player.page, 'codenames')
-        await joinRoom(player.page, roomCode, player.name)
+        const lobby = new CodenamesPage(player.page)
+        await lobby.goto()
+        await lobby.joinRoom(roomCode, player.name)
       }
 
       const createdRoom = await readCodenamesRoom(roomCode)
@@ -132,26 +134,25 @@ test.describe('Codenames gameplay smoke', () => {
         seededPlayingState(createdRoom.state.players)
       )
 
-      await expect(host.page.getByTestId('codenames-status')).toContainText('Your turn')
-      await expect(host.page.getByTestId('codenames-board-card').first()).toContainText('red')
-      await expect(redOperative.page.getByTestId('codenames-board-card').first()).not.toContainText(
-        'red'
-      )
+      await hostPage.expectStatus('Your turn')
+      await expect(hostPage.boardCards.first()).toContainText('red')
+      await expect(redOperativePage.boardCards.first()).not.toContainText('red')
 
-      await host.page.getByTestId('codenames-clue-input').fill('fruit')
-      await host.page.getByTestId('codenames-clue-count').selectOption('1')
-      await host.page.getByTestId('codenames-send-clue').click()
+      await hostPage.giveClue('fruit', '1')
 
-      await expect(redOperative.page.getByTestId('codenames-status')).toContainText('FRUIT')
-      await redOperative.page.getByTestId('codenames-board-card').first().click()
-      await expect(host.page.getByTestId('codenames-red-remaining')).toContainText('11')
-      await expect(host.page.getByTestId('codenames-log')).toContainText('correct')
+      await redOperativePage.expectStatus('FRUIT')
+      await redOperativePage.revealCard(0)
+      await expect(hostPage.redRemaining).toContainText('11')
+      await expect(hostPage.log).toContainText('correct')
 
-      await redOperative.page.getByTestId('codenames-board-card').nth(3).click()
-      await expect(host.page.getByTestId('codenames-finished')).toContainText('BLUE team wins')
-      await expect(redOperative.page.getByTestId('codenames-finished')).toContainText(
-        'BLUE team wins'
-      )
+      await redOperativePage.revealCard(3)
+      await hostPage.expectFinished('BLUE team wins')
+      await redOperativePage.expectFinished('BLUE team wins')
+
+      const finalRoom = await readCodenamesRoom(roomCode)
+      expect(finalRoom.state.phase).toBe('finished')
+      expect(finalRoom.state.winningTeam).toBe('blue')
+      expect(finalRoom.state.board[3].revealed).toBe(true)
     } finally {
       await closePlayers([redOperative, blueSpymaster, blueOperative])
     }

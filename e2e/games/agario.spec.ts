@@ -1,7 +1,6 @@
-import { createRoom, expectPlayerVisible, joinRoom, startGame } from '../helpers/assertions'
 import { fakeSupabaseQuery, test, expect } from '../helpers/fakeSupabase'
-import { gotoGame } from '../helpers/navigation'
 import { closePlayers, createPlayer } from '../helpers/players'
+import { AgarioPage } from '../pages'
 
 type AgarioPlayer = {
   id: string
@@ -106,26 +105,28 @@ test.describe('Agario gameplay smoke', () => {
     page,
     browser,
   }) => {
-    const host = { page, name: 'Agario Host' }
+    const hostName = 'Agario Host'
+    const hostPage = new AgarioPage(page)
     const guest = await createPlayer(browser, 'Agario Guest')
+    const guestPage = new AgarioPage(guest.page)
 
     try {
-      await gotoGame(host.page, 'agario')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
-      await gotoGame(guest.page, 'agario')
-      await joinRoom(guest.page, roomCode, guest.name)
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
 
-      await expectPlayerVisible(host.page, host.name)
-      await expectPlayerVisible(host.page, guest.name)
-      await expectPlayerVisible(guest.page, host.name)
-      await expectPlayerVisible(guest.page, guest.name)
+      await hostPage.expectPlayerVisible(hostName)
+      await hostPage.expectPlayerVisible(guest.name)
+      await guestPage.expectPlayerVisible(hostName)
+      await guestPage.expectPlayerVisible(guest.name)
 
       const lobbyRoom = await readAgarioRoom(roomCode)
       expect(lobbyRoom.state.phase).toBe('lobby')
       expect(lobbyRoom.state.players).toHaveLength(2)
 
-      await startGame(host.page)
+      await hostPage.startGame()
       await broadcastAgario(roomCode, {
         type: 'game_start',
         startTime: Date.now(),
@@ -133,41 +134,34 @@ test.describe('Agario gameplay smoke', () => {
         nextFoodId: 20,
       })
 
-      await expect(host.page.getByTestId('agario-canvas')).toBeVisible()
-      await expect(guest.page.getByTestId('agario-canvas')).toBeVisible()
-      await expect(host.page.getByTestId('agario-leaderboard')).toContainText(host.name)
-      await expect(guest.page.getByTestId('agario-leaderboard')).toContainText(guest.name)
+      await hostPage.expectInGame()
+      await guestPage.expectInGame()
+      await hostPage.expectLeaderboardContains(hostName)
+      await guestPage.expectLeaderboardContains(guest.name)
 
-      const hostCanvas = host.page.getByTestId('agario-canvas')
-      const guestCanvas = guest.page.getByTestId('agario-canvas')
+      await hostPage.canvas.hover()
+      await page.mouse.move(500, 350)
+      await page.mouse.down()
+      await page.mouse.up()
 
-      await hostCanvas.hover()
-      await host.page.mouse.move(500, 350)
-      await host.page.mouse.down()
-      await host.page.waitForTimeout(250)
-      await host.page.mouse.up()
-
-      await guestCanvas.hover()
+      await guestPage.canvas.hover()
       await guest.page.mouse.move(450, 320)
-      await guest.page.keyboard.down('Space')
-      await guest.page.waitForTimeout(250)
-      await guest.page.keyboard.up('Space')
+      await guest.page.keyboard.press('Space')
 
-      await expect(host.page.getByTestId('agario-leaderboard')).toContainText(guest.name, {
-        timeout: 10_000,
-      })
-      await expect(guest.page.getByTestId('agario-leaderboard')).toContainText(host.name, {
-        timeout: 10_000,
-      })
+      await hostPage.expectLeaderboardContains(guest.name, { timeout: 10_000 })
+      await guestPage.expectLeaderboardContains(hostName, { timeout: 10_000 })
 
       await broadcastAgario(roomCode, { type: 'game_end' })
 
-      await expect(host.page.getByTestId('agario-finished')).toContainText('Game Over')
-      await expect(guest.page.getByTestId('agario-finished')).toContainText('Game Over')
-      await expect(host.page.getByTestId('agario-final-scores')).toContainText(host.name)
-      await expect(host.page.getByTestId('agario-final-scores')).toContainText(guest.name)
-      await expect(guest.page.getByTestId('agario-final-scores')).toContainText(host.name)
-      await expect(guest.page.getByTestId('agario-final-scores')).toContainText(guest.name)
+      await hostPage.expectFinished('Game Over')
+      await guestPage.expectFinished('Game Over')
+      await hostPage.expectFinalScoreContains(hostName)
+      await hostPage.expectFinalScoreContains(guest.name)
+      await guestPage.expectFinalScoreContains(hostName)
+      await guestPage.expectFinalScoreContains(guest.name)
+
+      const finalRoom = await readAgarioRoom(roomCode)
+      expect(finalRoom.state.players).toHaveLength(2)
     } finally {
       await closePlayers([guest])
     }
