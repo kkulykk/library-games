@@ -1,7 +1,6 @@
-import { createRoom, joinRoom, startGame } from '../helpers/assertions'
 import { fakeSupabaseQuery, test, expect } from '../helpers/fakeSupabase'
-import { gotoGame } from '../helpers/navigation'
 import { closePlayers, createPlayer } from '../helpers/players'
+import { MindmeldPage } from '../pages'
 
 type MindmeldPlayer = {
   id: string
@@ -126,42 +125,44 @@ test.describe('Mindmeld gameplay smoke', () => {
     page,
     browser,
   }) => {
-    const host = { page, name: 'Host Mindmeld' }
+    const hostName = 'Host Mindmeld'
+    const hostPage = new MindmeldPage(page)
     const guest = await createPlayer(browser, 'Guest Mindmeld')
+    const guestPage = new MindmeldPage(guest.page)
 
     try {
-      await gotoGame(host.page, 'mindmeld')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
-      await gotoGame(guest.page, 'mindmeld')
-      await joinRoom(guest.page, roomCode, guest.name)
-      await startGame(host.page)
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
+      await hostPage.startGame()
 
       const startedRoom = await readMindmeldRoom(roomCode)
       await updateMindmeldRoom(roomCode, startedRoom, seededClueState(startedRoom.state.players))
 
-      await expect(host.page.getByTestId('mindmeld-status')).toContainText('you are up')
-      await expect(host.page.getByTestId('mindmeld-private-target')).toContainText('64')
-      await expect(guest.page.getByTestId('mindmeld-status')).toContainText('is the Psychic')
-      await expect(guest.page.getByTestId('mindmeld-waiting-clue')).toContainText(
-        'Waiting for the clue'
-      )
+      await hostPage.expectStatus('you are up')
+      await expect(hostPage.privateTarget).toContainText('64')
+      await guestPage.expectStatus('is the Psychic')
+      await expect(guestPage.waitingClue).toContainText('Waiting for the clue')
 
-      await host.page.getByTestId('mindmeld-clue-input').fill('campfire')
-      await host.page.getByTestId('mindmeld-send-clue').click()
+      await hostPage.submitClue('campfire')
 
-      await expect(guest.page.getByTestId('mindmeld-current-clue')).toContainText('campfire')
-      await guest.page.getByTestId('mindmeld-guess-slider').fill('67')
-      await guest.page.getByTestId('mindmeld-lock-guess').click()
+      await expect(guestPage.currentClue).toContainText('campfire')
+      await guestPage.submitGuess('67')
 
-      await expect(host.page.getByTestId('mindmeld-reveal')).toContainText('64')
-      await expect(host.page.getByTestId('mindmeld-reveal')).toContainText('67')
-      await expect(host.page.getByTestId('mindmeld-round-score')).toContainText('+4')
-      await expect(guest.page.getByTestId('mindmeld-round-score')).toContainText('+4')
-      await expect(host.page.getByTestId('mindmeld-leaderboard')).toContainText('Host Mindmeld · 4')
+      await expect(hostPage.reveal).toContainText('64')
+      await expect(hostPage.reveal).toContainText('67')
+      await expect(hostPage.roundScore).toContainText('+4')
+      await expect(guestPage.roundScore).toContainText('+4')
+      await expect(hostPage.leaderboard).toContainText('Host Mindmeld · 4')
 
-      await host.page.getByTestId('mindmeld-next-round').click()
-      await expect(guest.page.getByTestId('mindmeld-status')).toContainText('you are up')
+      const midRoundRoom = await readMindmeldRoom(roomCode)
+      expect(midRoundRoom.state.currentRound?.phase).toBe('reveal')
+      expect(midRoundRoom.state.currentRound?.teamGuess).toBe(67)
+
+      await hostPage.advanceRound()
+      await guestPage.expectStatus('you are up')
 
       const secondRound = await readMindmeldRoom(roomCode)
       await updateMindmeldRoom(
@@ -169,15 +170,14 @@ test.describe('Mindmeld gameplay smoke', () => {
         secondRound,
         seededFinalRevealState(secondRound.state.players)
       )
-      await host.page.getByTestId('mindmeld-next-round').click()
+      await hostPage.advanceRound()
 
-      await expect(host.page.getByTestId('mindmeld-finished')).toContainText('win')
-      await expect(host.page.getByTestId('mindmeld-final-leaderboard')).toContainText(
-        'Host Mindmeld'
-      )
-      await expect(guest.page.getByTestId('mindmeld-final-leaderboard')).toContainText(
-        'Guest Mindmeld'
-      )
+      await expect(hostPage.finishedBanner).toContainText('win')
+      await expect(hostPage.finalLeaderboard).toContainText('Host Mindmeld')
+      await expect(guestPage.finalLeaderboard).toContainText('Guest Mindmeld')
+
+      const finalRoom = await readMindmeldRoom(roomCode)
+      expect(finalRoom.state.phase).toBe('finished')
     } finally {
       await closePlayers([guest])
     }
