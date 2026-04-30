@@ -51,13 +51,17 @@ The fake backend is shared across browser contexts, so tests can model multiple 
 
 1. Add shared create/join coverage to `e2e/multiplayer-room-contract.spec.ts` when adding a new live multiplayer game.
 2. Add game-specific smoke coverage in `e2e/games/<slug>.spec.ts`.
-3. Use helpers from:
-   - `e2e/helpers/players.ts`
-   - `e2e/helpers/navigation.ts`
-   - `e2e/helpers/assertions.ts`
-   - `e2e/helpers/fakeSupabase.ts`
-4. Start from the real UI flow where practical: create room, join room, start game.
-5. Use fake Supabase direct state setup only for deterministic deep-game states that would be slow, random, or time-based to reach through the UI.
+3. Drive flows through the Page Object Model:
+   - Extend `RoomLobbyPage` from `e2e/pages/RoomLobbyPage.ts` to get create/join/start/leave actions for free.
+   - Add a per-game POM at `e2e/pages/<Game>Page.ts` that exposes locators and high-level actions.
+   - Re-export the new POM from `e2e/pages/index.ts`.
+4. Use helpers from:
+   - `e2e/helpers/players.ts` for multi-context players
+   - `e2e/helpers/navigation.ts` for routing
+   - `e2e/helpers/fakeSupabase.ts` for direct state seeding/reads
+5. Start from the real UI flow where practical: create room, join room, start game.
+6. Use fake Supabase direct state setup only for deterministic deep-game states that would be slow, random, or time-based to reach through the UI.
+7. Assert both UI text _and_ the underlying fake-Supabase state at the end of a flow so a UI-only or state-only regression both fail.
 
 ## Selector conventions
 

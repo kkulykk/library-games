@@ -17,7 +17,7 @@ export function GameLayout({ title, slug, children, score }: GameLayoutProps) {
   return (
     <div className="game-page">
       <nav className="topnav">
-        <Link href="/" className="game-back">
+        <Link href="/" className="game-back" data-testid="game-back">
           <ArrowLeft className="h-4 w-4" />
           BACK TO LIBRARY
         </Link>
