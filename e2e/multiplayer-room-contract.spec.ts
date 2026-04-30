@@ -1,55 +1,51 @@
-import {
-  createRoom,
-  expectPlayerVisible,
-  joinRoom,
-  readInviteLink,
-  startGame,
-} from './helpers/assertions'
 import { fakeSupabaseQuery, test, expect } from './helpers/fakeSupabase'
-import { gotoGame } from './helpers/navigation'
 import { closePlayers, createPlayer } from './helpers/players'
+import { RoomLobbyPage, type MultiplayerSlug } from './pages'
 
-const multiplayerGames = [
+const multiplayerGames: MultiplayerSlug[] = [
   'skribbl',
   'uno',
   'agario',
   'cards-against-humanity',
   'codenames',
   'mindmeld',
-] as const
+]
 
 test.describe.configure({ mode: 'serial' })
 
 test.describe('multiplayer room contract', () => {
   for (const slug of multiplayerGames) {
     test(`${slug} can create a room with host roster and invite link`, async ({ page }) => {
-      await gotoGame(page, slug)
+      const lobby = new RoomLobbyPage(page, slug)
+      await lobby.goto()
 
       const hostName = `Host ${slug.slice(0, 6)}`
-      const roomCode = await createRoom(page, hostName)
+      const roomCode = await lobby.createRoom(hostName)
 
       expect(roomCode).toMatch(/^[A-Z0-9]{4}$/)
-      await expectPlayerVisible(page, hostName)
+      await lobby.expectPlayerVisible(hostName)
 
-      const inviteLink = await readInviteLink(page)
+      const inviteLink = await lobby.readInviteLink()
       expect(inviteLink).toContain(`/library-games/games/${slug}?code=${roomCode}`)
     })
 
     test(`${slug} allows a second player to join and sync roster`, async ({ page, browser }) => {
-      const host = { page, name: `Host ${slug.slice(0, 6)}` }
+      const hostName = `Host ${slug.slice(0, 6)}`
+      const hostLobby = new RoomLobbyPage(page, slug)
       const guest = await createPlayer(browser, `Guest ${slug.slice(0, 6)}`)
+      const guestLobby = new RoomLobbyPage(guest.page, slug)
 
       try {
-        await gotoGame(host.page, slug)
-        const roomCode = await createRoom(host.page, host.name)
+        await hostLobby.goto()
+        const roomCode = await hostLobby.createRoom(hostName)
 
-        await gotoGame(guest.page, slug)
-        await joinRoom(guest.page, roomCode, guest.name)
+        await guestLobby.goto()
+        await guestLobby.joinRoom(roomCode, guest.name)
 
-        await expectPlayerVisible(host.page, host.name)
-        await expectPlayerVisible(host.page, guest.name)
-        await expectPlayerVisible(guest.page, host.name)
-        await expectPlayerVisible(guest.page, guest.name)
+        await hostLobby.expectPlayerVisible(hostName)
+        await hostLobby.expectPlayerVisible(guest.name)
+        await guestLobby.expectPlayerVisible(hostName)
+        await guestLobby.expectPlayerVisible(guest.name)
       } finally {
         await closePlayers([guest])
       }
@@ -59,67 +55,46 @@ test.describe('multiplayer room contract', () => {
 
 test.describe('multiplayer room edge states', () => {
   test('uno shows error for invalid room code', async ({ page }) => {
-    await gotoGame(page, 'uno')
-
-    const playButton = page.getByTestId('play-game-button')
-    if (await playButton.isVisible().catch(() => false)) {
-      await playButton.click()
-    }
-
-    await page.getByTestId('join-room-button').filter({ visible: true }).first().click()
-    await page.getByTestId('player-name-input').fill('Late Guest')
-    await page.getByTestId('room-code-input').fill('NOPE')
-    await page.getByTestId('join-room-button').filter({ visible: true }).last().click()
-
-    await expect(page.getByTestId('room-error')).toContainText(
-      'Room not found. Check the code and try again.'
-    )
+    const lobby = new RoomLobbyPage(page, 'uno')
+    await lobby.goto()
+    await lobby.joinRoomExpectingError('NOPE', 'Late Guest')
+    await lobby.expectError('Room not found. Check the code and try again.')
   })
 
   test('uno blocks joining after game starts', async ({ page, browser }) => {
-    const host = { page, name: 'Host Uno' }
+    const hostName = 'Host Uno'
+    const hostLobby = new RoomLobbyPage(page, 'uno')
     const guest = await createPlayer(browser, 'Guest Uno')
+    const guestLobby = new RoomLobbyPage(guest.page, 'uno')
     const lateJoiner = await createPlayer(browser, 'Late Uno')
+    const lateLobby = new RoomLobbyPage(lateJoiner.page, 'uno')
 
     try {
-      await gotoGame(host.page, 'uno')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostLobby.goto()
+      const roomCode = await hostLobby.createRoom(hostName)
 
-      await gotoGame(guest.page, 'uno')
-      await joinRoom(guest.page, roomCode, guest.name)
+      await guestLobby.goto()
+      await guestLobby.joinRoom(roomCode, guest.name)
 
-      await startGame(host.page)
+      await hostLobby.startGame()
 
-      await gotoGame(lateJoiner.page, 'uno')
-      const playButton = lateJoiner.page.getByTestId('play-game-button')
-      if (await playButton.isVisible().catch(() => false)) {
-        await playButton.click()
-      }
-
-      await lateJoiner.page
-        .getByTestId('join-room-button')
-        .filter({ visible: true })
-        .first()
-        .click()
-      await lateJoiner.page.getByTestId('player-name-input').fill(lateJoiner.name)
-      await lateJoiner.page.getByTestId('room-code-input').fill(roomCode)
-      await lateJoiner.page.getByTestId('join-room-button').filter({ visible: true }).last().click()
-
-      await expect(lateJoiner.page.getByTestId('room-error')).toContainText(
-        'This game has already started.'
-      )
+      await lateLobby.goto()
+      await lateLobby.joinRoomExpectingError(roomCode, lateJoiner.name)
+      await lateLobby.expectError('This game has already started.')
     } finally {
       await closePlayers([guest, lateJoiner])
     }
   })
 
   test('agario blocks join when room is full', async ({ page, browser }) => {
-    const host = { page, name: 'Host Agario' }
+    const hostName = 'Host Agario'
+    const hostLobby = new RoomLobbyPage(page, 'agario')
     const overflow = await createPlayer(browser, 'Overflow')
+    const overflowLobby = new RoomLobbyPage(overflow.page, 'agario')
 
     try {
-      await gotoGame(host.page, 'agario')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostLobby.goto()
+      const roomCode = await hostLobby.createRoom(hostName)
 
       const selected = await fakeSupabaseQuery<{
         state: {
@@ -167,55 +142,41 @@ test.describe('multiplayer room edge states', () => {
         throw new Error(`Failed to seed full agario room: ${updated.error.message}`)
       }
 
-      await gotoGame(overflow.page, 'agario')
-      const playButton = overflow.page.getByTestId('play-game-button')
-      if (await playButton.isVisible().catch(() => false)) {
-        await playButton.click()
-      }
-
-      await overflow.page.getByTestId('join-room-button').filter({ visible: true }).first().click()
-      await overflow.page.getByTestId('player-name-input').fill(overflow.name)
-      await overflow.page.getByTestId('room-code-input').fill(roomCode)
-      await overflow.page.getByTestId('join-room-button').filter({ visible: true }).last().click()
-
-      await expect(overflow.page.getByTestId('room-error')).toContainText('Room is full.')
+      await overflowLobby.goto()
+      await overflowLobby.joinRoomExpectingError(roomCode, overflow.name)
+      await overflowLobby.expectError('Room is full.')
     } finally {
       await closePlayers([overflow])
     }
   })
 
   test('uno leave room returns to entry and clears session', async ({ page }) => {
-    await gotoGame(page, 'uno')
-    const roomCode = await createRoom(page, 'Host Leave')
+    const lobby = new RoomLobbyPage(page, 'uno')
+    await lobby.goto()
+    const roomCode = await lobby.createRoom('Host Leave')
 
-    await expect(page.getByTestId('room-code')).toContainText(roomCode)
-    await page.getByTestId('leave-room-button').click()
+    await expect(lobby.roomCodeDisplay).toContainText(roomCode)
+    await lobby.leaveRoom()
 
-    await expect(
-      page.getByTestId('create-room-button').filter({ visible: true }).first()
-    ).toBeVisible()
+    await lobby.expectAtEntry()
 
     const sessionValue = await page.evaluate(() => localStorage.getItem('uno_session'))
     expect(sessionValue).toBeNull()
   })
 
   test('uno reload offers restore and reconnects to active session', async ({ page }) => {
-    await gotoGame(page, 'uno')
-    const roomCode = await createRoom(page, 'Host Restore')
+    const lobby = new RoomLobbyPage(page, 'uno')
+    await lobby.goto()
+    const roomCode = await lobby.createRoom('Host Restore')
 
     await page.reload()
+    await lobby.dismissPlayGate()
 
-    const playButton = page.getByTestId('play-game-button')
-    if (await playButton.isVisible().catch(() => false)) {
-      await playButton.click()
-    }
-
-    const roomCodeLocator = page.getByTestId('room-code')
-    if ((await roomCodeLocator.count()) === 0) {
+    if ((await lobby.roomCodeDisplay.count()) === 0) {
       await page.getByRole('button', { name: /resume/i }).click()
     }
 
-    await expect(page.getByTestId('room-code')).toContainText(roomCode)
+    await expect(lobby.roomCodeDisplay).toContainText(roomCode)
   })
 
   test('uno ignores expired or malformed saved session', async ({ page }) => {
@@ -232,30 +193,16 @@ test.describe('multiplayer room edge states', () => {
       )
     })
 
-    await gotoGame(page, 'uno')
-
-    const playButton = page.getByTestId('play-game-button')
-    if (await playButton.isVisible().catch(() => false)) {
-      await playButton.click()
-    }
-
-    await expect(
-      page.getByTestId('create-room-button').filter({ visible: true }).first()
-    ).toBeVisible()
-    await expect(page.getByTestId('room-code')).toHaveCount(0)
+    const lobby = new RoomLobbyPage(page, 'uno')
+    await lobby.goto()
+    await lobby.dismissPlayGate()
+    await lobby.expectAtEntry()
 
     await page.evaluate(() => {
       localStorage.setItem('uno_session', '{bad-json')
     })
     await page.reload()
-
-    if (await playButton.isVisible().catch(() => false)) {
-      await playButton.click()
-    }
-
-    await expect(
-      page.getByTestId('create-room-button').filter({ visible: true }).first()
-    ).toBeVisible()
-    await expect(page.getByTestId('room-code')).toHaveCount(0)
+    await lobby.dismissPlayGate()
+    await lobby.expectAtEntry()
   })
 })

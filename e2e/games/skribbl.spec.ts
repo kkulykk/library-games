@@ -1,7 +1,6 @@
-import { createRoom, joinRoom, startGame } from '../helpers/assertions'
 import { fakeSupabaseQuery, test, expect } from '../helpers/fakeSupabase'
-import { gotoGame } from '../helpers/navigation'
 import { closePlayers, createPlayer } from '../helpers/players'
+import { SkribblPage } from '../pages'
 
 type SkribblPlayer = {
   id: string
@@ -116,60 +115,60 @@ function seededDrawingState(players: SkribblPlayer[]): SkribblState {
 
 test.describe('Skribbl gameplay smoke', () => {
   test('runs a deterministic drawing round and rotates the drawer', async ({ page, browser }) => {
-    const host = { page, name: 'Host Skribbl Smoke' }
+    const hostName = 'Host Skribbl Smoke'
+    const hostPage = new SkribblPage(page)
     const guesserOne = await createPlayer(browser, 'Guesser One')
     const guesserTwo = await createPlayer(browser, 'Guesser Two')
+    const guesserOnePage = new SkribblPage(guesserOne.page)
+    const guesserTwoPage = new SkribblPage(guesserTwo.page)
 
     try {
-      await gotoGame(host.page, 'skribbl')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
-      await gotoGame(guesserOne.page, 'skribbl')
-      await joinRoom(guesserOne.page, roomCode, guesserOne.name)
+      await guesserOnePage.goto()
+      await guesserOnePage.joinRoom(roomCode, guesserOne.name)
 
-      await gotoGame(guesserTwo.page, 'skribbl')
-      await joinRoom(guesserTwo.page, roomCode, guesserTwo.name)
+      await guesserTwoPage.goto()
+      await guesserTwoPage.joinRoom(roomCode, guesserTwo.name)
 
-      await startGame(host.page)
+      await hostPage.startGame()
 
-      await expect(host.page.getByTestId('skribbl-word-option')).toHaveCount(3)
-      await expect(guesserOne.page.getByTestId('skribbl-waiting-picker')).toContainText(
-        /Host Skribbl.*is choosing/
-      )
+      await expect(hostPage.wordOptions).toHaveCount(3)
+      await guesserOnePage.expectWaitingFor(/Host Skribbl.*is choosing/)
 
       const startedRoom = await readSkribblRoom(roomCode)
       await updateSkribblRoom(roomCode, startedRoom, seededDrawingState(startedRoom.state.players))
 
-      await expect(host.page.getByTestId('skribbl-drawer-word')).toContainText('apple')
-      await expect(guesserOne.page.getByTestId('skribbl-hint-mask')).toContainText('_ _ _ _ _')
-      await expect(guesserOne.page.getByTestId('skribbl-drawer-word')).toHaveCount(0)
-      await expect(host.page.getByTestId('skribbl-canvas')).toBeVisible()
-      await expect(guesserOne.page.getByTestId('skribbl-canvas')).toBeVisible()
+      await expect(hostPage.drawerWord).toContainText('apple')
+      await expect(guesserOnePage.hintMask).toContainText('_ _ _ _ _')
+      await expect(guesserOnePage.drawerWord).toHaveCount(0)
+      await expect(hostPage.canvas).toBeVisible()
+      await expect(guesserOnePage.canvas).toBeVisible()
 
-      await guesserOne.page.getByTestId('skribbl-guess-input').fill('banana')
-      await guesserOne.page.getByTestId('skribbl-guess-input').press('Enter')
-      await expect(host.page.getByTestId('skribbl-chat-log')).toContainText('banana')
-      await expect(guesserOne.page.getByTestId('skribbl-scoreboard')).not.toContainText('guessed')
+      await guesserOnePage.submitGuess('banana')
+      await hostPage.expectChatContains('banana')
+      await expect(guesserOnePage.scoreboard).not.toContainText('guessed')
 
-      await guesserOne.page.getByTestId('skribbl-guess-input').fill('apple')
-      await guesserOne.page.getByTestId('skribbl-guess-input').press('Enter')
-      await expect(host.page.getByTestId('skribbl-chat-log')).toContainText(
-        `${guesserOne.name} guessed the word!`
-      )
-      await expect(host.page.getByTestId('skribbl-scoreboard')).toContainText(guesserOne.name)
-      await expect(host.page.getByTestId('skribbl-scoreboard')).toContainText('guessed')
+      await guesserOnePage.submitGuess('apple')
+      await hostPage.expectChatContains(`${guesserOne.name} guessed the word!`)
+      await expect(hostPage.scoreboard).toContainText(guesserOne.name)
+      await expect(hostPage.scoreboard).toContainText('guessed')
 
-      await guesserTwo.page.getByTestId('skribbl-guess-input').fill('apple')
-      await guesserTwo.page.getByTestId('skribbl-guess-input').press('Enter')
-      await expect(host.page.getByTestId('skribbl-round-end')).toBeVisible()
-      await expect(host.page.getByTestId('skribbl-round-word')).toContainText('apple')
-      await expect(guesserOne.page.getByTestId('skribbl-round-word')).toContainText('apple')
+      await guesserTwoPage.submitGuess('apple')
+      await expect(hostPage.roundEnd).toBeVisible()
+      await expect(hostPage.roundWord).toContainText('apple')
+      await expect(guesserOnePage.roundWord).toContainText('apple')
 
-      await host.page.getByTestId('skribbl-next-turn-button').click()
-      await expect(guesserOne.page.getByTestId('skribbl-word-option')).toHaveCount(3)
-      await expect(host.page.getByTestId('skribbl-waiting-picker')).toContainText(
-        `${guesserOne.name} is choosing`
-      )
+      const finalRoom = await readSkribblRoom(roomCode)
+      expect(finalRoom.state.phase).toBe('round-end')
+      const finalIds = new Map(finalRoom.state.players.map((p) => [p.name, p.id]))
+      expect(finalRoom.state.guessedPlayers).toContain(finalIds.get(guesserOne.name))
+      expect(finalRoom.state.guessedPlayers).toContain(finalIds.get(guesserTwo.name))
+
+      await hostPage.advanceToNextTurn()
+      await expect(guesserOnePage.wordOptions).toHaveCount(3)
+      await hostPage.expectWaitingFor(`${guesserOne.name} is choosing`)
     } finally {
       await closePlayers([guesserOne, guesserTwo])
     }

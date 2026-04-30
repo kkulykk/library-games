@@ -1,7 +1,6 @@
-import { createRoom, joinRoom, startGame } from '../helpers/assertions'
 import { fakeSupabaseQuery, test, expect } from '../helpers/fakeSupabase'
-import { gotoGame } from '../helpers/navigation'
 import { closePlayers, createPlayer } from '../helpers/players'
+import { CardsAgainstHumanityPage } from '../pages'
 
 type CAHPlayer = {
   id: string
@@ -124,54 +123,62 @@ function deterministicJudgingState(state: CAHState): CAHState {
 
 test.describe('Cards Against Humanity gameplay smoke', () => {
   test('submits answers, judges a winner, and rotates the Card Czar', async ({ page, browser }) => {
-    const host = { page, name: 'Host CAH' }
+    const hostName = 'Host CAH'
+    const hostPage = new CardsAgainstHumanityPage(page)
     const guestOne = await createPlayer(browser, 'Guest CAH One')
     const guestTwo = await createPlayer(browser, 'Guest CAH Two')
     const guestThree = await createPlayer(browser, 'Guest CAH Three')
+    const guestOnePage = new CardsAgainstHumanityPage(guestOne.page)
+    const guestTwoPage = new CardsAgainstHumanityPage(guestTwo.page)
+    const guestThreePage = new CardsAgainstHumanityPage(guestThree.page)
 
     try {
-      await gotoGame(host.page, 'cards-against-humanity')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
-      for (const guest of [guestOne, guestTwo, guestThree]) {
-        await gotoGame(guest.page, 'cards-against-humanity')
-        await joinRoom(guest.page, roomCode, guest.name)
+      for (const guestPage of [guestOnePage, guestTwoPage, guestThreePage]) {
+        await guestPage.goto()
       }
+      await guestOnePage.joinRoom(roomCode, guestOne.name)
+      await guestTwoPage.joinRoom(roomCode, guestTwo.name)
+      await guestThreePage.joinRoom(roomCode, guestThree.name)
 
-      await startGame(host.page)
+      await hostPage.startGame()
 
       const startedRoom = await readCAHRoom(roomCode)
       await updateCAHRoom(roomCode, startedRoom, seededPlayingState(startedRoom.state.players))
 
-      await expect(host.page.getByTestId('cah-status')).toContainText('You are the Card Czar')
-      await expect(host.page.getByTestId('cah-hand-card')).toHaveCount(0)
-      await expect(guestOne.page.getByTestId('cah-status')).toContainText('Pick 1 card')
-      await expect(guestOne.page.getByTestId('cah-hand-card')).toHaveCount(10)
+      await hostPage.expectStatus('You are the Card Czar')
+      await expect(hostPage.hand).toHaveCount(0)
+      await guestOnePage.expectStatus('Pick 1 card')
+      await expect(guestOnePage.hand).toHaveCount(10)
 
-      for (const guest of [guestOne, guestTwo, guestThree]) {
-        await guest.page.getByTestId('cah-hand-card').first().click()
-        await guest.page.getByTestId('cah-submit-card').click()
+      for (const guestPage of [guestOnePage, guestTwoPage, guestThreePage]) {
+        await guestPage.pickAndSubmit()
       }
 
-      await expect(host.page.getByTestId('cah-status')).toContainText('Tap to reveal answers')
+      await hostPage.expectStatus('Tap to reveal answers')
 
       const submittedRoom = await readCAHRoom(roomCode)
       await updateCAHRoom(roomCode, submittedRoom, deterministicJudgingState(submittedRoom.state))
 
-      await expect(host.page.getByTestId('cah-face-down-submission')).toHaveCount(3)
-      for (let index = 0; index < 3; index += 1) {
-        await host.page.getByTestId('cah-reveal-next').click({ force: true })
-      }
-      await expect(host.page.getByTestId('cah-revealed-submission')).toHaveCount(3)
+      await expect(hostPage.faceDownSubmissions).toHaveCount(3)
+      await hostPage.revealAllSubmissions()
 
-      await host.page.getByTestId('cah-revealed-submission').first().click()
-      await expect(host.page.getByTestId('cah-round-winner')).toContainText(guestOne.name)
-      await expect(guestOne.page.getByTestId('cah-round-winner')).toContainText(guestOne.name)
-      await expect(host.page.getByTestId('cah-scoreboard')).toContainText(/Guest CAH One\s*1/)
+      await hostPage.pickWinner(0)
+      await expect(hostPage.roundWinner).toContainText(guestOne.name)
+      await expect(guestOnePage.roundWinner).toContainText(guestOne.name)
+      await expect(hostPage.scoreboard).toContainText(/Guest CAH One\s*1/)
 
-      await host.page.getByTestId('cah-next-round').click()
-      await expect(guestOne.page.getByTestId('cah-status')).toContainText('You are the Card Czar')
-      await expect(host.page.getByTestId('cah-status')).toContainText('Pick 1 card')
+      const winnerRoom = await readCAHRoom(roomCode)
+      const winnerId = winnerRoom.state.players.find((p) => p.name === guestOne.name)?.id
+      expect(winnerId).toBeDefined()
+      expect(winnerRoom.state.roundWinnerId).toBe(winnerId)
+      expect(winnerRoom.state.scores[winnerId!]).toBe(1)
+
+      await hostPage.advanceRound()
+      await guestOnePage.expectStatus('You are the Card Czar')
+      await hostPage.expectStatus('Pick 1 card')
     } finally {
       await closePlayers([guestOne, guestTwo, guestThree])
     }

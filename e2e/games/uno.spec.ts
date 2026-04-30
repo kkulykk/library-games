@@ -1,7 +1,6 @@
-import { createRoom, joinRoom, startGame } from '../helpers/assertions'
 import { fakeSupabaseQuery, test, expect } from '../helpers/fakeSupabase'
-import { gotoGame } from '../helpers/navigation'
 import { closePlayers, createPlayer } from '../helpers/players'
+import { UnoPage } from '../pages'
 
 type UnoCard = {
   id: string
@@ -132,42 +131,50 @@ test.describe('Uno gameplay smoke', () => {
     page,
     browser,
   }) => {
-    const host = { page, name: 'Host Uno Smoke' }
+    const hostName = 'Host Uno Smoke'
+    const hostPage = new UnoPage(page)
     const guest = await createPlayer(browser, 'Guest Uno Smoke')
+    const guestPage = new UnoPage(guest.page)
 
     try {
-      await gotoGame(host.page, 'uno')
-      const roomCode = await createRoom(host.page, host.name)
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom(hostName)
 
-      await gotoGame(guest.page, 'uno')
-      await joinRoom(guest.page, roomCode, guest.name)
-      await startGame(host.page)
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
+      await hostPage.startGame()
 
       const startedRoom = await readUnoRoom(roomCode)
       const turnState = seededTurnState(startedRoom.state.players)
       await updateUnoRoom(roomCode, startedRoom, turnState)
 
-      await expect(host.page.getByTestId('uno-status')).toContainText('Your turn')
-      await expect(guest.page.getByTestId('uno-status')).toContainText(`${host.name}'s turn`)
-      await expect(host.page.getByTestId('uno-hand-card')).toHaveCount(2)
-      await expect(guest.page.getByTestId('uno-hand-card')).toHaveCount(2)
-      await expect(host.page.getByTestId('uno-draw-pile')).toContainText('3 cards')
-      await expect(host.page.getByTestId('uno-discard-pile')).toContainText('discard')
+      await hostPage.expectStatus('Your turn')
+      await guestPage.expectStatus(`${hostName}'s turn`)
+      await hostPage.expectHandSize(2)
+      await guestPage.expectHandSize(2)
+      await expect(hostPage.drawPile).toContainText('3 cards')
+      await expect(hostPage.discardPile).toContainText('discard')
 
-      await host.page.getByTestId('uno-hand-card').first().click()
+      await hostPage.playCard(0)
 
-      await expect(host.page.getByTestId('uno-status')).toContainText(`${guest.name}'s turn`)
-      await expect(guest.page.getByTestId('uno-status')).toContainText('Your turn')
+      await hostPage.expectStatus(`${guest.name}'s turn`)
+      await guestPage.expectStatus('Your turn')
 
       const afterTurnRoom = await readUnoRoom(roomCode)
       await updateUnoRoom(roomCode, afterTurnRoom, seededNearWinState(afterTurnRoom.state.players))
 
-      await expect(guest.page.getByTestId('uno-status')).toContainText('Your turn')
-      await expect(guest.page.getByTestId('uno-hand-card')).toHaveCount(1)
-      await guest.page.getByTestId('uno-hand-card').first().click()
+      await guestPage.expectStatus('Your turn')
+      await guestPage.expectHandSize(1)
+      await guestPage.playCard(0)
 
-      await expect(guest.page.getByTestId('uno-winner-banner')).toContainText('You win')
-      await expect(host.page.getByTestId('uno-winner-banner')).toContainText(`${guest.name} wins`)
+      await guestPage.expectWinnerText('You win')
+      await hostPage.expectWinnerText(`${guest.name} wins`)
+
+      const finalRoom = await readUnoRoom(roomCode)
+      expect(finalRoom.state.phase).toBe('finished')
+      const finalGuest = finalRoom.state.players.find((p) => p.name === guest.name)
+      expect(finalGuest).toBeDefined()
+      expect(finalRoom.state.winnerId).toBe(finalGuest?.id)
     } finally {
       await closePlayers([guest])
     }
