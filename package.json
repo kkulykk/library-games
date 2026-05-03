@@ -21,15 +21,15 @@
     "**/*.{js,jsx,ts,tsx,json,md,css,yaml,yml}": "prettier --write"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.103.3",
+    "@supabase/supabase-js": "^2.105.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.14.0",
-    "next": "^16.2.3",
+    "next": "^16.2.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "tailwind-merge": "^3.5.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
@@ -41,19 +41,19 @@
     "@types/node": "^25.6.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "eslint": "^9.0.0",
-    "eslint-config-next": "^16.2.3",
+    "eslint": "^10.3.0",
+    "eslint-config-next": "^16.2.4",
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-prettier": "^5.2.1",
     "husky": "^9.1.7",
     "jest": "^30.3.0",
     "jest-environment-jsdom": "^30.3.0",
     "lint-staged": "^16.4.0",
-    "postcss": "^8.5.12",
+    "postcss": "^8.5.13",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
-    "tailwindcss": "^4.2.2",
+    "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.58.1"
+    "typescript-eslint": "^8.59.1"
   }
 }
