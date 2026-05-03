@@ -1059,12 +1059,11 @@ function GameBoard({
         </div>
 
         <div className={styles.piles}>
-          <div className={styles.pile}>
+          <div data-testid="uno-draw-pile" className={styles.pile}>
             <span className={styles.pileLabel}>
               Draw {gameState.pendingDrawCount > 0 && `· must take +${gameState.pendingDrawCount}`}
             </span>
             <div
-              data-testid="uno-draw-pile"
               className={cn(
                 styles.drawStack,
                 (!isMyTurn || hasDrawnCard) && styles.drawStackDisabled,
@@ -1080,12 +1079,12 @@ function GameBoard({
               <span className={styles.cardBack} />
               <span className={styles.cardBack} />
             </div>
-            <span className={styles.drawCount}>{gameState.drawPile.length} left</span>
+            <span className={styles.drawCount}>{gameState.drawPile.length} cards</span>
           </div>
 
-          <div className={styles.pile}>
-            <span className={styles.pileLabel}>Discard</span>
-            <div data-testid="uno-discard-pile" className={styles.discard}>
+          <div data-testid="uno-discard-pile" className={styles.pile}>
+            <span className={styles.pileLabel}>discard</span>
+            <div className={styles.discard}>
               {topCard && (
                 <div key={discardKey} className={styles.pop}>
                   <UnoCard card={topCard} size="lg" />
@@ -1250,7 +1249,7 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
       {isWinner && showConfetti && <ConfettiEffect />}
       <span className={styles.endSub}>/ ROUND OVER · FINAL STANDINGS</span>
       <h2 data-testid="uno-winner-banner" className={styles.endTitle}>
-        {isWinner ? 'YOU WIN' : `${winner?.name?.toUpperCase() ?? 'WINNER'}\n WINS THE ROUND`}
+        {isWinner ? 'You win' : `${winner?.name ?? 'Winner'} wins the round`}
       </h2>
 
       <div className={styles.endBoard}>
