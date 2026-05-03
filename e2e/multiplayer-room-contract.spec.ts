@@ -26,7 +26,7 @@ test.describe('multiplayer room contract', () => {
       await lobby.expectPlayerVisible(hostName)
 
       const inviteLink = await lobby.readInviteLink()
-      expect(inviteLink).toContain(`/library-games/games/${slug}?code=${roomCode}`)
+      expect(inviteLink).toContain(`/library-games/games/${slug}#code=${roomCode}`)
     })
 
     test(`${slug} allows a second player to join and sync roster`, async ({ page, browser }) => {
