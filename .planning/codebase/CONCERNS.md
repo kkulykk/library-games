@@ -95,6 +95,33 @@ The repo has outrun its own docs. Worth reconciling before they mislead future w
 
 `CLAUDE.md`'s "Adding a game" checklist also predates the multiplayer pattern (no `schema.ts` / `use<Name>Room.ts` step for online games, though the Supabase section does cover it separately).
 
+## Maintainability
+
+### Oversized, undecomposed game components
+
+**Severity: Medium** · `src/games/*/*Game.tsx`
+
+Four `'use client'` components carry the bulk of their game's UI, input, animation, and view logic in a single file:
+
+- `src/games/skribbl/SkribblGame.tsx` — 1,586 lines
+- `src/games/agario/AgarioGame.tsx` — 1,567 lines
+- `src/games/uno/UnoGame.tsx` — 1,426 lines
+- `src/games/cards-against-humanity/CardsAgainstHumanityGame.tsx` — 1,120 lines
+
+The pure-logic split keeps `logic.ts` clean, but the _render_ side has not been decomposed. These files concentrate change risk, are hard to review, and sit outside the coverage gate (logic-only). Candidates for extracting subcomponents/hooks.
+
+### Large static data bundled into the client
+
+**Severity: Low** · `src/games/cards-against-humanity/cards.ts`
+
+The CAH deck is a 2,136-line module imported directly, so the full deck ships in the JS bundle for that route with no lazy-loading. Minor for a static site, but it grows the per-game payload.
+
+### Realtime channels only clean up on React unmount
+
+**Severity: Low** · `src/hooks/useGameRoom.ts:464`
+
+Subscriptions unsubscribe via the cleanup `useEffect`, but there are no `beforeunload` / `visibilitychange` / `pagehide` handlers (grep confirms none in `src/`). A user closing the tab (rather than navigating away in-app) may leave a presence/realtime slot lingering until the server times it out.
+
 ## Operational
 
 ### Room cleanup depends on pg_cron being configured
@@ -111,10 +138,11 @@ The repo has outrun its own docs. Worth reconciling before they mislead future w
 
 ## Summary
 
-| Area        | Highest severity | Note                                                                  |
-| ----------- | ---------------- | --------------------------------------------------------------------- |
-| Trust model | High (by design) | No server auth; world-writable rooms — fine for a toy, not for stakes |
-| Concurrency | Medium           | 3-retry CAS can drop actions in busy realtime games                   |
-| Type safety | Low              | `as unknown as` casts at the Supabase seam                            |
-| Testing     | Low              | logic-only coverage; 2 missing schema tests; serial E2E               |
-| Doc drift   | Medium           | Next/Tailwind/Jest versions + game count stale in CLAUDE.md & memory  |
+| Area            | Highest severity | Note                                                                  |
+| --------------- | ---------------- | --------------------------------------------------------------------- |
+| Trust model     | High (by design) | No server auth; world-writable rooms — fine for a toy, not for stakes |
+| Concurrency     | Medium           | 3-retry CAS can drop actions in busy realtime games                   |
+| Type safety     | Low              | `as unknown as` casts at the Supabase seam                            |
+| Testing         | Low              | logic-only coverage; 2 missing schema tests; serial E2E               |
+| Maintainability | Medium           | 4 game components 1.1k–1.6k LOC, undecomposed and uncovered           |
+| Doc drift       | Medium           | Next/Tailwind/Jest versions + game count stale in CLAUDE.md & memory  |
