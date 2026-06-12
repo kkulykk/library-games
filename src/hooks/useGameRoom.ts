@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { generateRoomCode } from '@/lib/room-code'
 import type { ZodType } from 'zod'
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
@@ -35,10 +36,6 @@ function clearSession(key: string) {
   try {
     localStorage.removeItem(key)
   } catch {}
-}
-
-function generateRoomCode(): string {
-  return crypto.randomUUID().replace(/-/g, '').substring(0, 4).toUpperCase()
 }
 
 export type RoomStatus = 'idle' | 'restoring' | 'creating' | 'joining' | 'connected' | 'error'
@@ -224,7 +221,6 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       setError(null)
 
       const id = crypto.randomUUID()
-      const code = generateRoomCode()
       const hostPlayer = cfg.createPlayer({
         id,
         name: playerName,
@@ -234,12 +230,25 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       })
       const initialState = cfg.createLobbyState(hostPlayer)
 
-      const { data: inserted, error: err } = await supabase
-        .from(cfg.tableName)
-        .insert({ code, state: initialState })
-        .select('version')
+      // Codes can collide with an existing room (unique constraint), so retry
+      // with a fresh code instead of surfacing a dead-end error.
+      const MAX_CREATE_ATTEMPTS = 4
+      let code: string | null = null
+      let version = 1
+      for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS && !code; attempt++) {
+        const candidate = generateRoomCode()
+        const { data: inserted, error: err } = await supabase
+          .from(cfg.tableName)
+          .insert({ code: candidate, state: initialState })
+          .select('version')
 
-      if (err || !inserted || inserted.length === 0) {
+        if (!err && inserted && inserted.length > 0) {
+          code = candidate
+          version = inserted[0].version as number
+        }
+      }
+
+      if (!code) {
         setError('Failed to create room. Try again.')
         setStatus('error')
         return
@@ -247,7 +256,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
 
       setPlayerId(id)
       setRoomCode(code)
-      setStateAndRef(initialState, inserted[0].version as number)
+      setStateAndRef(initialState, version)
       setStatus('connected')
       saveSession(cfg.sessionKey, { roomCode: code, playerId: id, playerName })
       subscribeToRoom(code)
