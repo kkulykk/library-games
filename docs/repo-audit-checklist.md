@@ -5,14 +5,19 @@ Quality gates at audit time: `pnpm lint`, `pnpm test`, and `pnpm build` all pass
 
 ## 🔴 High priority
 
-- [ ] **Widen room code space and handle collisions.** `generateRoomCode()` in
-      `src/hooks/useGameRoom.ts` takes the first 4 chars of a UUID, so codes are
+- [x] **Widen room code space and handle collisions.** `generateRoomCode()` in
+      `src/hooks/useGameRoom.ts` took the first 4 chars of a UUID, so codes were
       hex-only — 16⁴ = 65,536 combinations instead of the 36⁴ = 1.6M the RLS
       regex (`^[A-Z0-9]{4}$`) implies. With `SELECT using (true)`, all active
-      rooms are enumerable, and birthday collisions get likely at ~250
-      concurrent rooms. Sample the full `A-Z0-9` alphabet (ideally 6 chars,
-      updating the RLS policies to match) and retry `createRoom` on
-      unique-constraint collisions instead of failing with a dead-end error.
+      rooms were enumerable, and birthday collisions get likely at ~250
+      concurrent rooms.
+      _Done:_ codes now sample the full `A-Z0-9` alphabet via unbiased
+      `crypto.getRandomValues` rejection sampling (`src/lib/room-code.ts`, with
+      tests), and `createRoom` retries with a fresh code on insert failure
+      instead of dead-ending. Kept at 4 chars so codes stay valid under the
+      currently deployed RLS policies.
+      _Optional follow-up:_ move to 6-char codes (2.2B space) — requires
+      updating the RLS insert regex in all six table policies first.
 - [ ] **Make room cleanup real.** CLAUDE.md claims rooms auto-delete after 24h
       via a pg_cron job at `0 * * * *`, but `supabase-schema.sql` only has
       commented-out `delete from …` statements and DELETE is denied by RLS, so
