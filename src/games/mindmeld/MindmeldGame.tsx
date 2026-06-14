@@ -9,6 +9,7 @@ import {
   ResumeSessionButton,
   type SavedSessionSummary,
 } from '@/components/multiplayer/ResumeSessionButton'
+import { normalizeRoomCode } from '@/lib/room-code'
 import { useMindmeldRoom } from './useMindmeldRoom'
 import {
   BULLSEYE_RADIUS,
@@ -188,16 +189,16 @@ function EntryScreen({
           <input
             data-testid="room-code-input"
             value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            placeholder="e.g. AB12"
-            maxLength={4}
+            onChange={(e) => setJoinCode(normalizeRoomCode(e.target.value))}
+            placeholder="e.g. 7H2K9F"
+            maxLength={6}
             className="bg-background focus:ring-primary/40 rounded-xl border px-3 py-2.5 text-sm tracking-[0.35em] uppercase outline-none focus:ring-2"
           />
         </label>
       )}
       <button
         data-testid={isCreate ? 'create-room-button' : 'join-room-button'}
-        disabled={loading || !name.trim() || (!isCreate && joinCode.length < 4)}
+        disabled={loading || !name.trim() || (!isCreate && joinCode.length < 6)}
         onClick={() => {
           savePlayerName(name.trim())
           if (isCreate) onCreate(name.trim())

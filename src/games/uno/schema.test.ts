@@ -58,4 +58,19 @@ describe('UNO GameStateSchema', () => {
     }
     expect(GameStateSchema.safeParse(invalid).success).toBe(false)
   })
+
+  it('accepts a player name with an emoji', () => {
+    const state = { ...validGameState, players: [{ id: 'p1', name: 'player 🎮', isHost: true }] }
+    expect(GameStateSchema.safeParse(state).success).toBe(true)
+  })
+
+  it('rejects a blank player name', () => {
+    const state = { ...validGameState, players: [{ id: 'p1', name: '   ', isHost: true }] }
+    expect(GameStateSchema.safeParse(state).success).toBe(false)
+  })
+
+  it('rejects a 21-char player name', () => {
+    const state = { ...validGameState, players: [{ id: 'p1', name: 'a'.repeat(21), isHost: true }] }
+    expect(GameStateSchema.safeParse(state).success).toBe(false)
+  })
 })

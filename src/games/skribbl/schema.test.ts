@@ -64,4 +64,20 @@ describe('skribbl GameStateSchema', () => {
     }
     expect(GameStateSchema.safeParse(invalid).success).toBe(false)
   })
+
+  it('accepts a player name with an emoji', () => {
+    const state = {
+      ...validGameState,
+      players: [{ id: 'p1', name: 'player 🎮', isHost: true, score: 0, avatar: 0 }],
+    }
+    expect(GameStateSchema.safeParse(state).success).toBe(true)
+  })
+
+  it('rejects a 21-char player name', () => {
+    const invalid = {
+      ...validGameState,
+      players: [{ id: 'p1', name: 'a'.repeat(21), isHost: true, score: 0, avatar: 0 }],
+    }
+    expect(GameStateSchema.safeParse(invalid).success).toBe(false)
+  })
 })
