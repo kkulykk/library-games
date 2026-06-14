@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { createFakeSupabaseClient } from '@/lib/e2e/fake-supabase'
 
-type QueryResult<T> = Promise<{ data: T | null; error: { message: string } | null }>
+type QueryResult<T> = Promise<{
+  data: T | null
+  error: { message: string; code?: string; details?: string; hint?: string } | null
+}>
 
 type QueryBuilderBoundary = {
   insert(values: unknown): QueryBuilderBoundary
@@ -24,9 +27,17 @@ type ChannelBoundary = {
   unsubscribe(): Promise<unknown>
 }
 
+// SECURITY DEFINER RPCs (plan 02-01) use `returns table(...)`, so `data` is an array the
+// caller reads `[0]` from, and `error` carries a stable Postgres `code` (22023/42501/40001/23505).
+type RpcResult = {
+  data: Record<string, unknown>[] | null
+  error: { message: string; code?: string } | null
+}
+
 type SupabaseBoundary = {
   from(table: string): QueryBuilderBoundary
   channel(name: string): ChannelBoundary
+  rpc(fn: string, args?: Record<string, unknown>): Promise<RpcResult>
 }
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
