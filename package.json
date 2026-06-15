@@ -15,6 +15,7 @@
     "e2e:ui": "playwright test --ui",
     "e2e:debug": "playwright test --debug",
     "e2e:ci": "playwright test --reporter=github,line",
+    "test:supabase": "playwright test --config=playwright.integration.config.ts",
     "prepare": "husky"
   },
   "lint-staged": {

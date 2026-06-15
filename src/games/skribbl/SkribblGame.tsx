@@ -14,6 +14,7 @@ import { PlayerRoster } from '@/components/multiplayer/PlayerRoster'
 import { ResultsTable } from '@/components/multiplayer/ResultsTable'
 import { ResumeSessionCard } from '@/components/multiplayer/ResumeSessionCard'
 import { RoomInviteCard } from '@/components/multiplayer/RoomInviteCard'
+import { normalizeRoomCode } from '@/lib/room-code'
 import { useSkribblRoom, type UseSkribblRoomReturn } from './useSkribblRoom'
 import {
   decodeWord,
@@ -653,7 +654,7 @@ function EntryScreen({
     setCode(initialCode)
   }, [initialCode])
 
-  const canSubmit = name.trim().length >= 2 && (mode === 'create' || code.trim().length >= 4)
+  const canSubmit = name.trim().length >= 2 && (mode === 'create' || code.trim().length >= 6)
 
   function submit() {
     if (!canSubmit) return
@@ -777,11 +778,9 @@ function EntryScreen({
             <input
               data-testid="room-code-input"
               value={code}
-              onChange={(event) =>
-                setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
-              }
-              maxLength={4}
-              placeholder="AB23"
+              onChange={(event) => setCode(normalizeRoomCode(event.target.value))}
+              maxLength={6}
+              placeholder="7H2K9F"
               className={cn(arcadeShellStyles.input, styles.codeInput)}
             />
           </label>

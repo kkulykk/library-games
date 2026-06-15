@@ -9,6 +9,7 @@ import { ArcadeShell, arcadeShellStyles } from '@/components/multiplayer/ArcadeS
 import { LobbyActions } from '@/components/multiplayer/LobbyActions'
 import { ResumeSessionCard } from '@/components/multiplayer/ResumeSessionCard'
 import type { SavedSessionSummary } from '@/components/multiplayer/ResumeSessionButton'
+import { normalizeRoomCode } from '@/lib/room-code'
 import { useUnoRoom } from './useUnoRoom'
 import {
   getPlayableCards,
@@ -465,7 +466,7 @@ function EntryScreen({
     setJoinCode(initialCode)
   }, [initialCode])
 
-  const canSubmit = name.trim().length >= 2 && (mode === 'create' || joinCode.trim().length >= 4)
+  const canSubmit = name.trim().length >= 2 && (mode === 'create' || joinCode.trim().length >= 6)
 
   function submit() {
     if (!canSubmit) return
@@ -603,16 +604,9 @@ function EntryScreen({
             <input
               data-testid="room-code-input"
               value={joinCode}
-              onChange={(e) =>
-                setJoinCode(
-                  e.target.value
-                    .toUpperCase()
-                    .replace(/[^A-Z0-9]/g, '')
-                    .slice(0, 4)
-                )
-              }
-              placeholder="X7K2"
-              maxLength={4}
+              onChange={(e) => setJoinCode(normalizeRoomCode(e.target.value))}
+              placeholder="7H2K9F"
+              maxLength={6}
               className={cn(arcadeShellStyles.input, styles.codeInput)}
             />
           </label>

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
+import { normalizeRoomCode } from '@/lib/room-code'
 import { useAgarioRoom } from './useAgarioRoom'
 import {
   MAP_WIDTH,
@@ -1537,10 +1538,10 @@ export function AgarioGame() {
           <input
             data-testid="room-code-input"
             type="text"
-            placeholder="Room code"
+            placeholder="7H2K9F"
             value={codeInput}
-            onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-            maxLength={4}
+            onChange={(e) => setCodeInput(normalizeRoomCode(e.target.value))}
+            maxLength={6}
             className="border-input bg-background rounded-lg border px-3 py-2 text-center font-mono text-lg tracking-widest"
           />
           <div className="flex gap-2">
@@ -1554,7 +1555,7 @@ export function AgarioGame() {
             <button
               type="submit"
               data-testid="join-room-button"
-              disabled={!nameInput.trim() || codeInput.length < 4}
+              disabled={!nameInput.trim() || codeInput.length < 6}
               className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
             >
               Join

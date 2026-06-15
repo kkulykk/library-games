@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { playerNameSchema } from '@/lib/player-name'
+
 const PositionSchema = z.object({
   x: z.number(),
   y: z.number(),
@@ -7,7 +9,7 @@ const PositionSchema = z.object({
 
 const LobbyPlayerSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: playerNameSchema,
   isHost: z.boolean(),
   color: z.string(),
 })
@@ -20,7 +22,7 @@ export const GameStateSchema = z.object({
 
 const SnakeStateSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: playerNameSchema,
   color: z.string(),
   segments: z.array(PositionSchema),
   angle: z.number(),

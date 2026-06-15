@@ -1,8 +1,10 @@
 import { z } from 'zod'
 
+import { playerNameSchema } from '@/lib/player-name'
+
 const PlayerSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: playerNameSchema,
   isHost: z.boolean(),
   score: z.number().int(),
 })

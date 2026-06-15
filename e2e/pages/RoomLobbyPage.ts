@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 import { gotoGame } from '../helpers/navigation'
 
-const ROOM_CODE_PATTERN = /[A-Z0-9]{4}/
+const ROOM_CODE_PATTERN = /[0-9A-HJKMNP-TV-Z]{6}/
 
 export type MultiplayerSlug =
   | 'skribbl'
@@ -135,7 +135,7 @@ export class RoomLobbyPage {
     const text = (await this.roomCodeDisplay.innerText()).trim()
     const match = text.match(ROOM_CODE_PATTERN)
     if (!match) {
-      throw new Error(`Could not find a 4-character room code in: ${text}`)
+      throw new Error(`Could not find a 6-character room code in: ${text}`)
     }
     return match[0]
   }
