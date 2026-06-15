@@ -126,6 +126,41 @@ function seededNearWinState(players: UnoPlayer[]): UnoState {
   }
 }
 
+test.describe('Uno room creation collision retry', () => {
+  test('regenerates and creates a room when the first code collides (23505)', async ({ page }) => {
+    // A valid 6-char Crockford code we will both seed into the fake DB AND force
+    // the in-browser generator to return on its FIRST createRoom attempt, so the
+    // insert hits the unique `code` constraint (23505) and must retry. See the
+    // E2E forced-code seam in src/lib/room-code.ts (Open Question Q3 option a).
+    const collidingCode = 'ABC123'
+
+    // 1. Pre-seed a row occupying `collidingCode` so the first insert collides.
+    const seeded = await fakeSupabaseQuery({
+      op: 'insert',
+      table: 'uno_rooms',
+      values: { code: collidingCode, state: { phase: 'lobby', players: [] } },
+    })
+    expect(seeded.error).toBeNull()
+
+    // 2. Force the page's generator to return the colliding code once, then fall
+    //    back to the real CSPRNG (queue drains after the first call).
+    await page.addInitScript((code) => {
+      ;(globalThis as { __E2E_FORCED_ROOM_CODES__?: string[] }).__E2E_FORCED_ROOM_CODES__ = [code]
+    }, collidingCode)
+
+    const hostPage = new UnoPage(page)
+    await hostPage.goto()
+
+    // 3. Create succeeds via retry — no flat 'Failed to create room' — with a
+    //    DIFFERENT 6-char code than the seeded colliding one.
+    const roomCode = await hostPage.createRoom('Collision Host')
+
+    await expect(hostPage.errorBanner).toHaveCount(0)
+    expect(roomCode).toMatch(/^[0-9A-HJKMNP-TV-Z]{6}$/)
+    expect(roomCode).not.toBe(collidingCode)
+  })
+})
+
 test.describe('Uno gameplay smoke', () => {
   test('plays a deterministic turn and syncs a final-card win to both players', async ({
     page,

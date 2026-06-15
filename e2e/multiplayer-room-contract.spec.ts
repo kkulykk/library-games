@@ -22,7 +22,7 @@ test.describe('multiplayer room contract', () => {
       const hostName = `Host ${slug.slice(0, 6)}`
       const roomCode = await lobby.createRoom(hostName)
 
-      expect(roomCode).toMatch(/^[A-Z0-9]{4}$/)
+      expect(roomCode).toMatch(/^[0-9A-HJKMNP-TV-Z]{6}$/)
       await lobby.expectPlayerVisible(hostName)
 
       const inviteLink = await lobby.readInviteLink()
@@ -57,7 +57,7 @@ test.describe('multiplayer room edge states', () => {
   test('uno shows error for invalid room code', async ({ page }) => {
     const lobby = new RoomLobbyPage(page, 'uno')
     await lobby.goto()
-    await lobby.joinRoomExpectingError('NOPE', 'Late Guest')
+    await lobby.joinRoomExpectingError('7H2K9F', 'Late Guest')
     await lobby.expectError('Room not found. Check the code and try again.')
   })
 

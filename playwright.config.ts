@@ -6,6 +6,11 @@ const baseURL = `http://${HOST}:${PORT}/library-games`
 
 export default defineConfig({
   testDir: './e2e',
+  // The opt-in real-Supabase canary (e2e/integration/**) is excluded from the
+  // default `pnpm e2e` / `e2e:ci` run. It talks to a real Supabase project and
+  // self-skips when SUPABASE_TEST_URL is unset; run it on demand via
+  // `pnpm test:supabase`, never as part of the CI chain (D-13).
+  testIgnore: ['**/integration/**'],
   // The fake-Supabase server holds a single shared state and resets it before
   // each test, so any parallelism across the suite produces resets that race
   // with in-flight tests. Run serially.

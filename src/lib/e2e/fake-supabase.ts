@@ -1,5 +1,13 @@
 type QueryResult<T> = { data: T | null; error: { message: string } | null }
 
+// Mirrors the real supabase-js rpc() envelope. Our SECURITY DEFINER RPCs use
+// `returns table(...)`, so `data` is an array the caller reads `[0]` from, and
+// `error` carries a Postgres `code` (22023 / 42501 / 40001 / 23505).
+type RpcResult = {
+  data: Record<string, unknown>[] | null
+  error: { code?: string; message: string } | null
+}
+
 type Filter = { column: string; value: unknown }
 
 type RealtimeStatus = 'SUBSCRIBED'
@@ -245,6 +253,9 @@ export function createFakeSupabaseClient() {
     },
     channel(name: string) {
       return new FakeRealtimeChannel(name)
+    },
+    rpc(fn: string, args?: Record<string, unknown>): Promise<RpcResult> {
+      return post<RpcResult>('/rpc', { fn, args })
     },
   }
 }
