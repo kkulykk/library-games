@@ -17,6 +17,14 @@ Run a single spec:
 pnpm e2e -- e2e/multiplayer-room-contract.spec.ts
 pnpm e2e -- e2e/games/uno.spec.ts
 pnpm e2e -- e2e/race-conditions.spec.ts
+pnpm e2e -- e2e/accessibility.spec.ts
+pnpm e2e -- e2e/visual-regression.spec.ts
+```
+
+Update visual snapshots intentionally after reviewing the UI change:
+
+```bash
+pnpm exec playwright test e2e/visual-regression.spec.ts --update-snapshots
 ```
 
 View the HTML report:
@@ -62,6 +70,12 @@ The fake backend is shared across browser contexts, so tests can model multiple 
 5. Start from the real UI flow where practical: create room, join room, start game.
 6. Use fake Supabase direct state setup only for deterministic deep-game states that would be slow, random, or time-based to reach through the UI.
 7. Assert both UI text _and_ the underlying fake-Supabase state at the end of a flow so a UI-only or state-only regression both fail.
+
+## Visual regression and accessibility checks
+
+`e2e/visual-regression.spec.ts` captures stable screenshots for home/catalog and representative game screens. These snapshots are committed under the Playwright snapshot directory next to the spec. If a screenshot diff is expected, run the update command above and review the image change before committing.
+
+`e2e/accessibility.spec.ts` runs axe against the same representative screens using WCAG 2 A/AA and WCAG 2.1 A/AA rules. Keep scans focused and deterministic; add deeper scans as pages gain stable states.
 
 ## Selector conventions
 
