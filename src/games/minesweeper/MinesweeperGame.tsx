@@ -88,6 +88,19 @@ export function MinesweeperGame() {
   )
 
   const flagsUsed = countFlags(board)
+  const getCellLabel = (row: number, col: number) => {
+    const cell = board[row][col]
+    const position = `row ${row + 1}, column ${col + 1}`
+
+    if (cell.state === 'flagged') return `Flagged cell at ${position}`
+    if (cell.state !== 'revealed') return `Hidden cell at ${position}`
+    if (cell.isMine) return `Mine at ${position}`
+    if (cell.adjacentMines > 0) {
+      return `Revealed cell at ${position}, ${cell.adjacentMines} adjacent mines`
+    }
+
+    return `Revealed empty cell at ${position}`
+  }
   const cellSize =
     difficulty === 'easy'
       ? 'w-8 h-8 text-sm'
@@ -141,6 +154,7 @@ export function MinesweeperGame() {
       {/* Board */}
       <div
         data-testid="minesweeper-board"
+        aria-label={`Minesweeper ${difficulty} board`}
         className="bg-border inline-grid gap-px overflow-hidden rounded border"
         style={{ gridTemplateColumns: `repeat(${config.cols}, minmax(0, 1fr))` }}
       >
@@ -151,6 +165,8 @@ export function MinesweeperGame() {
             return (
               <button
                 key={`${ri}-${ci}`}
+                type="button"
+                aria-label={getCellLabel(ri, ci)}
                 onClick={() => handleCellClick(ri, ci)}
                 onContextMenu={(e) => handleRightClick(e, ri, ci)}
                 className={cn(
