@@ -1,0 +1,50 @@
+.indicator {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: color-mix(in oklch, var(--bg-2) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius, 4px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--ink) 12%, transparent);
+  /* Non-blocking: the pill must never trap clicks on the game UI behind it. */
+  pointer-events: none;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--amber);
+  animation: desync-blink 1.2s infinite;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  /* Amber fails WCAG AA on --bg-2 in the light theme (L0.82 on L0.93);
+     per 04-UI-SPEC the label uses --ink and amber is kept for dot + border. */
+  color: var(--ink);
+}
+
+@keyframes desync-blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}

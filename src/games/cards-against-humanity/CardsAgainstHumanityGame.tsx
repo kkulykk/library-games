@@ -9,6 +9,7 @@ import {
   ResumeSessionButton,
   type SavedSessionSummary,
 } from '@/components/multiplayer/ResumeSessionButton'
+import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { normalizeRoomCode } from '@/lib/room-code'
 import { useCAHRoom } from './useCAHRoom'
 import {
@@ -1046,6 +1047,7 @@ export function CardsAgainstHumanityGame() {
     roomCode,
     status,
     error,
+    connectionStatus,
     savedSession,
     createRoom,
     joinRoom,
@@ -1107,6 +1109,7 @@ export function CardsAgainstHumanityGame() {
   return (
     <>
       <CAHStyles />
+      <DesyncIndicator active={connectionStatus === 'desynced'} />
       <GameBoard
         gameState={gameState}
         playerId={playerId}

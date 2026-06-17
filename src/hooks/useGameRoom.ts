@@ -2,10 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import type { RoomRpcRow } from '@/lib/supabase'
 import { generateRoomCode } from '@/lib/room-code'
 import type { ZodType } from 'zod'
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
+
+// Runtime guard for presence rows crossing the (untrusted) presence channel into React.
+// Strictly stronger than the previous unchecked player_id cast: a malformed presence row is
+// now filtered out instead of blindly trusted (T-04-02).
+function hasPlayerId(p: unknown): p is { player_id: string } {
+  return (
+    typeof p === 'object' &&
+    p !== null &&
+    typeof (p as { player_id?: unknown }).player_id === 'string'
+  )
+}
 
 interface Session {
   roomCode: string
@@ -40,7 +52,10 @@ function loadSession(key: string): Session | null {
 
 // Derive a Phase-2 RPC name from a room table: `<game>_rooms` + op -> `<op>_<game>`
 // e.g. rpcName('uno_rooms', 'dispatch') === 'dispatch_uno'. (ACCESS-02)
-function rpcName(tableName: string, op: 'create' | 'join' | 'restore' | 'dispatch'): string {
+function rpcName(
+  tableName: string,
+  op: 'create' | 'join' | 'restore' | 'dispatch' | 'get'
+): string {
   return `${op}_${tableName.replace('_rooms', '')}`
 }
 
@@ -100,6 +115,7 @@ export interface GameRoomConfig<TState extends BaseGameState, TAction, TBroadcas
     gameState: TState | null
     roomCode: string | null
     playerId: string | null
+    roomToken: string
     tableName: string
     applyAction: (state: TState, action: TAction) => TState
     stateSchema: ZodType<TState>
@@ -114,6 +130,9 @@ export interface UseGameRoomReturn<TState, TAction, TBroadcast = never> {
   error: string | null
   savedSession: Session | null
   onlinePlayerIds: string[]
+  // CLIENT-01: 'desynced' when a realtime payload fails Zod safeParse or the channel reports
+  // CHANNEL_ERROR/TIMED_OUT/CLOSED; auto-clears to 'live' on the next valid apply or SUBSCRIBED.
+  connectionStatus: 'live' | 'desynced'
   createRoom: (playerName: string, extras?: Record<string, unknown>) => Promise<void>
   joinRoom: (code: string, playerName: string, extras?: Record<string, unknown>) => Promise<void>
   restoreSession: () => Promise<void>
@@ -135,6 +154,10 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   const [error, setError] = useState<string | null>(null)
   const [savedSession, setSavedSession] = useState<Session | null>(null)
   const [onlinePlayerIds, setOnlinePlayerIds] = useState<string[]>([])
+  // CLIENT-01 (D-02/D-03): visible, self-healing realtime-trouble flag. Set 'desynced' at the
+  // four trigger sites (invalid apply, invalid broadcast, state-channel error, presence error);
+  // cleared back to 'live' only at the two recovery points (valid apply, SUBSCRIBED) — Pitfall 5.
+  const [connectionStatus, setConnectionStatus] = useState<'live' | 'desynced'>('live')
   const stateChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null)
   const broadcastChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(
     null
@@ -156,32 +179,53 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     setSavedSession(loadSession(configRef.current.sessionKey))
   }, [])
 
-  // Track presence to show which players are online
-  useEffect(() => {
-    if (!playerId || !roomCode || !supabase) return
+  // Create (or recreate) the presence channel and start tracking this player. Extracted from the
+  // presence effect so the CLIENT-02 tab-close `visible` path can re-establish presence too:
+  // teardown() nulls presenceChannelRef, and subscribeToRoom only recreates state+broadcast, so
+  // without this the returning player would stay invisible to peers (Pitfall 4). Idempotent:
+  // unsubscribes any existing presence channel first (null-checked) before opening a new one.
+  const subscribeToPresence = useCallback((pid: string, code: string) => {
+    if (!supabase) return
     const { channelPrefix } = configRef.current
+    presenceChannelRef.current?.unsubscribe()
     const channel = supabase
-      .channel(`${channelPrefix}-presence:${roomCode}`)
+      .channel(`${channelPrefix}-presence:${code}`)
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState()
         const ids = Object.values(state)
           .flat()
-          .map((p) => (p as unknown as { player_id: string }).player_id)
+          .filter(hasPlayerId)
+          .map((p) => p.player_id)
           .filter(Boolean)
         setOnlinePlayerIds(ids)
       })
       .subscribe(async (s: string) => {
+        if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED') {
+          console.error(`[presence] channel ${s}`)
+          setConnectionStatus('desynced')
+          return
+        }
         if (s === 'SUBSCRIBED') {
-          await channel.track({ player_id: playerId })
+          // CR-02: do NOT clear connectionStatus here. Presence re-subscribing says nothing
+          // about the STATE channel's health; clearing on presence SUBSCRIBED produces a
+          // false-healthy signal (amber pill hidden) while the state channel is still dead.
+          // Only the state channel's SUBSCRIBED / valid-apply paths may clear the desync flag.
+          await channel.track({ player_id: pid })
         }
       })
     presenceChannelRef.current = channel
+  }, [])
+
+  // Track presence to show which players are online
+  useEffect(() => {
+    if (!playerId || !roomCode || !supabase) return
+    subscribeToPresence(playerId, roomCode)
     return () => {
-      channel.unsubscribe()
+      presenceChannelRef.current?.unsubscribe()
       presenceChannelRef.current = null
       setOnlinePlayerIds([])
     }
-  }, [playerId, roomCode])
+  }, [playerId, roomCode, subscribeToPresence])
 
   const setStateAndRef = useCallback((state: TState | null, version?: number) => {
     gameStateRef.current = state
@@ -202,9 +246,13 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         const parsed = stateSchema.safeParse(rawState)
         if (!parsed.success) {
           console.error(`[${channelPrefix}] Invalid GameState payload:`, parsed.error)
+          // D-02: an invalid payload is a recoverable desync — surface it (not just console).
+          setConnectionStatus('desynced')
           return
         }
         setStateAndRef(parsed.data, version)
+        // D-03: a valid apply means we are back in sync — auto-clear (no manual reload).
+        setConnectionStatus('live')
       }
 
       const supabaseClient = supabase
@@ -217,12 +265,9 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       // huge version can't freeze the room because the forged version is never written
       // to versionRef (only the value returned by the authoritative SELECT is).
       const refetchAuthoritativeState = async () => {
-        const { data } = await supabaseClient
-          .from(tableName)
-          .select('state, version')
-          .eq('code', code)
-          .single()
-        if (data) applyIfNewer(data.state, data.version)
+        const { data } = await supabaseClient.rpc(rpcName(tableName, 'get'), { p_code: code })
+        const row = data && data.length > 0 ? data[0] : null
+        if (row) applyIfNewer(row.state, row.version)
       }
 
       // State sync is broadcast-signalled now (ACCESS-05, D-08): the postgres_changes UPDATE
@@ -238,7 +283,16 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         // through the still-permissive SELECT (additive window), recovering any signal
         // missed while disconnected. No postgres_changes backstop.
         .subscribe(async (s: string) => {
+          // D-02: channel trouble is the other failure class. Compare against the literal status
+          // strings (RESEARCH anti-pattern: do NOT import REALTIME_SUBSCRIBE_STATES across the seam).
+          if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED') {
+            console.error(`[${channelPrefix}] State channel ${s}`)
+            setConnectionStatus('desynced')
+            return
+          }
           if (s !== 'SUBSCRIBED') return
+          // D-03: (re)subscribe means we are reconnected — clear, then recover missed state.
+          setConnectionStatus('live')
           await refetchAuthoritativeState()
         })
 
@@ -251,6 +305,8 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
               const parsed = broadcastCfg.schema.safeParse(payload.payload)
               if (!parsed.success) {
                 console.error(`[${channelPrefix}] Invalid broadcast payload:`, parsed.error)
+                // D-02: malformed broadcast is the same recoverable desync class as a bad state.
+                setConnectionStatus('desynced')
                 return
               }
               onBroadcastRef.current(parsed.data)
@@ -292,7 +348,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       // bounded to 3 attempts, mirroring the dispatch() CAS retry idiom (MAX_RETRIES = 3). Any
       // other error (network/22023 invalid name) fails fast. (CODE-02, ACCESS-02)
       const MAX_CREATE_ATTEMPTS = 3
-      let inserted: Record<string, unknown> | null = null
+      let inserted: RoomRpcRow | null = null
       let landedCode = ''
       let lastErrCode: string | undefined
 
@@ -319,11 +375,11 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         return
       }
 
-      const roomToken = (inserted.room_token as string) ?? ''
+      const roomToken = inserted.room_token ?? ''
       roomTokenRef.current = roomToken
       setPlayerId(id)
       setRoomCode(landedCode)
-      setStateAndRef(initialState, inserted.version as number)
+      setStateAndRef(initialState, inserted.version)
       setStatus('connected')
       saveSession(cfg.sessionKey, { roomCode: landedCode, playerId: id, playerName, roomToken })
       subscribeToRoom(landedCode)
@@ -339,19 +395,18 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       setError(null)
 
       const normalizedCode = code.trim().toUpperCase()
-      const { data, error: err } = await supabase
-        .from(cfg.tableName)
-        .select('state, version')
-        .eq('code', normalizedCode)
-        .single()
+      const { data, error: err } = await supabase.rpc(rpcName(cfg.tableName, 'get'), {
+        p_code: normalizedCode,
+      })
+      const row = data && data.length > 0 ? data[0] : null
 
-      if (err || !data) {
+      if (err || !row) {
         setError('Room not found. Check the code and try again.')
         setStatus('error')
         return
       }
 
-      const parsedCurrent = cfg.stateSchema.safeParse(data.state)
+      const parsedCurrent = cfg.stateSchema.safeParse(row.state)
       if (!parsedCurrent.success) {
         console.error(`[${cfg.channelPrefix}] Invalid GameState in joinRoom:`, parsedCurrent.error)
         setError('Room data is invalid. Try again.')
@@ -382,10 +437,10 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         return
       }
 
-      // Additive window: the SELECT above (still-permissive policy) computes newState/version,
-      // but the WRITE goes through the join_<game> RPC, which CAS-updates and returns the
-      // room_token (D-02). (ACCESS-02)
-      const currentVersion = data.version as number
+      // The code-gated get_<game> read above computes newState/version, but the WRITE goes
+      // through the join_<game> RPC, which CAS-updates and returns the room_token (D-02).
+      // (ACCESS-02)
+      const currentVersion = row.version
       const { data: updated, error: updateErr } = await supabase.rpc(
         rpcName(cfg.tableName, 'join'),
         {
@@ -411,11 +466,11 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         return
       }
 
-      const roomToken = (updated[0].room_token as string) ?? ''
+      const roomToken = updated[0].room_token ?? ''
       roomTokenRef.current = roomToken
       setPlayerId(id)
       setRoomCode(normalizedCode)
-      setStateAndRef(newState, (updated[0].version as number) ?? currentVersion + 1)
+      setStateAndRef(newState, updated[0].version ?? currentVersion + 1)
       setStatus('connected')
       saveSession(cfg.sessionKey, { roomCode: normalizedCode, playerId: id, playerName, roomToken })
       subscribeToRoom(normalizedCode)
@@ -457,7 +512,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     }
     const state = parsedState.data
 
-    const roomToken = (row.room_token as string) ?? ''
+    const roomToken = row.room_token ?? ''
     roomTokenRef.current = roomToken
     saveSession(cfg.sessionKey, {
       roomCode: session.roomCode,
@@ -467,7 +522,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     })
     setPlayerId(session.playerId)
     setRoomCode(session.roomCode)
-    setStateAndRef(state, row.version as number)
+    setStateAndRef(state, row.version)
     setStatus('connected')
     subscribeToRoom(session.roomCode)
   }, [subscribeToRoom, setStateAndRef])
@@ -501,7 +556,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         if (data && data.length > 0) {
           // Apply the accepted state locally right away so controls feel instant
           // instead of waiting for the realtime broadcast echo from Supabase.
-          setStateAndRef(newState, (data[0].version as number) ?? currentVersion + 1)
+          setStateAndRef(newState, data[0].version ?? currentVersion + 1)
           return
         }
 
@@ -512,13 +567,12 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         }
 
         if (attempt < MAX_RETRIES) {
-          const { data: fresh } = await supabase
-            .from(cfg.tableName)
-            .select('state, version')
-            .eq('code', roomCode)
-            .single()
-          if (!fresh) return
-          const parsedFresh = cfg.stateSchema.safeParse(fresh.state)
+          const { data: fresh } = await supabase.rpc(rpcName(cfg.tableName, 'get'), {
+            p_code: roomCode,
+          })
+          const freshRow = fresh && fresh.length > 0 ? fresh[0] : null
+          if (!freshRow) return
+          const parsedFresh = cfg.stateSchema.safeParse(freshRow.state)
           if (!parsedFresh.success) {
             console.error(
               `[${cfg.channelPrefix}] Invalid GameState in dispatch retry:`,
@@ -527,10 +581,13 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
             return
           }
           currentState = parsedFresh.data
-          currentVersion = fresh.version as number
+          currentVersion = freshRow.version
           setStateAndRef(currentState, currentVersion)
         } else {
           setError('Action failed due to a conflict. Please try again.')
+          // BL-02: MAX_RETRIES CAS conflicts exhausted means local {state, version} is
+          // known-stale. Surface the desync indicator so the player knows they are out of sync.
+          setConnectionStatus('desynced')
         }
       }
     },
@@ -545,6 +602,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           gameState: gameStateRef.current,
           roomCode,
           playerId,
+          roomToken: roomTokenRef.current,
           tableName: cfg.tableName,
           applyAction: cfg.applyAction,
           stateSchema: cfg.stateSchema,
@@ -569,6 +627,46 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     }
   }, [roomCode, playerId, setStateAndRef])
 
+  // CLIENT-02 (D-05..D-08): tear down realtime/broadcast/presence channels on tab close/hide
+  // (`pagehide` / `visibilitychange→hidden`), NOT only on React unmount, and re-subscribe on
+  // return (`→visible`). This is a GENTLE, channel-only teardown: it deliberately PRESERVES the
+  // 24h localStorage session, status, playerId, gameState and onlinePlayerIds — a full leaveRoom
+  // would be hostile because `hidden` fires on every routine mobile backgrounding (Pitfall 1).
+  useEffect(() => {
+    if (!roomCode || !playerId) return
+
+    // Channel-only teardown (D-05). Null the refs after `?.unsubscribe()` so a second call —
+    // both events firing, or an event followed by the unmount cleanup below — is a no-op (D-08).
+    // MUST NOT clearSession / setStatus / setPlayerId / setGameState / setOnlinePlayerIds.
+    const teardown = () => {
+      stateChannelRef.current?.unsubscribe()
+      stateChannelRef.current = null
+      broadcastChannelRef.current?.unsubscribe()
+      broadcastChannelRef.current = null
+      presenceChannelRef.current?.unsubscribe()
+      presenceChannelRef.current = null
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        teardown()
+      } else if (document.visibilityState === 'visible') {
+        // D-07: re-establish state+broadcast (subscribeToRoom re-reads authoritative {state,version}
+        // on SUBSCRIBED — Phase 2 D-10) AND presence (Pitfall 4 — presence is a separate channel
+        // that subscribeToRoom does not recreate).
+        subscribeToRoom(roomCode)
+        subscribeToPresence(playerId, roomCode)
+      }
+    }
+
+    document.addEventListener('pagehide', teardown)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      document.removeEventListener('pagehide', teardown)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [roomCode, playerId, subscribeToRoom, subscribeToPresence])
+
   useEffect(() => {
     return () => {
       stateChannelRef.current?.unsubscribe()
@@ -585,6 +683,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     error,
     savedSession,
     onlinePlayerIds,
+    connectionStatus,
     createRoom,
     joinRoom,
     restoreSession,

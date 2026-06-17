@@ -60,13 +60,23 @@ describe('3-layer agreement', () => {
   })
 })
 
+// Post-Phase-3 seal: the permissive insert-CHECK policies (which carried the
+// room-code regex as `code ~ '<regex>'`) were dropped; INSERT is now RPC-only.
+// SQL-side room-code validation therefore lives entirely in the SECURITY DEFINER
+// RPC bodies as `p_code !~ '<regex>'` — one per RPC across 6 games × 5 RPC
+// families (create/join/restore/dispatch/get) = 30. This guard keeps those 30
+// literals from drifting off ROOM_CODE_REGEX_SQL (CODE-03).
 describe('SQL drift guard', () => {
   const schemaPath = path.resolve(__dirname, '../../supabase-schema.sql')
   const sql = fs.readFileSync(schemaPath, 'utf8')
-  const literals = [...sql.matchAll(/code ~ '([^']+)'/g)].map((m) => m[1])
+  const literals = [...sql.matchAll(/p_code !~ '([^']+)'/g)].map((m) => m[1])
 
-  it('finds exactly 6 insert-CHECK code regex literals', () => {
-    expect(literals).toHaveLength(6)
+  it('finds exactly 30 RPC code-validation regex literals (6 games × 5 RPC families)', () => {
+    expect(literals).toHaveLength(30)
+  })
+
+  it('has no permissive insert-CHECK code literals left after the seal', () => {
+    expect([...sql.matchAll(/code ~ '([^']+)'/g)]).toHaveLength(0)
   })
 
   it('every SQL code regex literal is byte-identical to ROOM_CODE_REGEX_SQL', () => {
@@ -94,9 +104,12 @@ describe('schema templating drift guard (MIGR-03 / ACCESS-04)', () => {
     expect(countMatches(/_broadcast_state after update on public\./g)).toBe(6)
   })
 
-  it.each(['create', 'join', 'restore', 'dispatch'])('defines the %s_<game> RPC 6×', (op) => {
-    expect(countMatches(new RegExp(`create or replace function public\\.${op}_`, 'g'))).toBe(6)
-  })
+  it.each(['create', 'join', 'restore', 'dispatch', 'get'])(
+    'defines the %s_<game> RPC 6×',
+    (op) => {
+      expect(countMatches(new RegExp(`create or replace function public\\.${op}_`, 'g'))).toBe(6)
+    }
+  )
 
   it('pins search_path on every `security definer` function (definer hygiene, lint 0011)', () => {
     // Every SECURITY DEFINER function MUST pin search_path to '' (Advisor 0011). Some
