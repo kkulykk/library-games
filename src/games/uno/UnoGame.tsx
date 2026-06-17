@@ -9,6 +9,7 @@ import { ArcadeShell, arcadeShellStyles } from '@/components/multiplayer/ArcadeS
 import { LobbyActions } from '@/components/multiplayer/LobbyActions'
 import { ResumeSessionCard } from '@/components/multiplayer/ResumeSessionCard'
 import type { SavedSessionSummary } from '@/components/multiplayer/ResumeSessionButton'
+import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { normalizeRoomCode } from '@/lib/room-code'
 import { useUnoRoom } from './useUnoRoom'
 import {
@@ -1329,6 +1330,7 @@ export function UnoGame() {
     roomCode,
     status,
     error,
+    connectionStatus,
     savedSession,
     onlinePlayerIds,
     createRoom,
@@ -1363,6 +1365,7 @@ export function UnoGame() {
   return (
     <ArcadeShell title="Uno" crumb={crumb} centered={!inGame}>
       <UnoStyles />
+      {!isEntryState && <DesyncIndicator active={connectionStatus === 'desynced'} />}
       {!isSupabaseConfigured ? (
         <SetupRequired />
       ) : isResolvingInvite ? (

@@ -9,6 +9,7 @@ import {
   ResumeSessionButton,
   type SavedSessionSummary,
 } from '@/components/multiplayer/ResumeSessionButton'
+import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { normalizeRoomCode } from '@/lib/room-code'
 import { useCodenamesRoom } from './useCodenamesRoom'
 import {
@@ -709,6 +710,7 @@ export function CodenamesGame() {
     roomCode,
     status,
     error,
+    connectionStatus,
     savedSession,
     createRoom,
     joinRoom,
@@ -780,6 +782,7 @@ export function CodenamesGame() {
   return (
     <>
       <CodenamesStyles />
+      <DesyncIndicator active={connectionStatus === 'desynced'} />
       <GameBoard
         gameState={redactedState!}
         playerId={playerId}
