@@ -9,6 +9,7 @@ import {
   ResumeSessionButton,
   type SavedSessionSummary,
 } from '@/components/multiplayer/ResumeSessionButton'
+import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { normalizeRoomCode } from '@/lib/room-code'
 import { useMindmeldRoom } from './useMindmeldRoom'
 import {
@@ -916,6 +917,7 @@ export function MindmeldGame() {
     roomCode,
     status,
     error,
+    connectionStatus,
     savedSession,
     createRoom,
     joinRoom,
@@ -982,6 +984,7 @@ export function MindmeldGame() {
   return (
     <>
       <MindmeldStyles />
+      <DesyncIndicator active={connectionStatus === 'desynced'} />
       <PlayingScreen
         gameState={redactedState}
         playerId={playerId}

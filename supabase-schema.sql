@@ -50,24 +50,19 @@ create or replace trigger uno_rooms_protect_immutable
 -- The anon key is public by design (like Firebase API keys).
 -- RLS is the real security layer. Room codes act as access tokens —
 -- you must know the code to read or mutate a room.
+--
+-- SEALED (Phase 3, ACCESS-01): RLS is ENABLED with NO permissive policies, so
+-- this table is default-deny for anon — a direct .from('uno_rooms').select()
+-- returns zero rows and direct writes are denied. All legitimate access flows
+-- through the SECURITY DEFINER RPCs (create/join/restore/dispatch/get_<game>),
+-- which bypass RLS as the table owner. The code-gated get_<game>(p_code) read
+-- RPC prevents enumeration without Supabase Auth (requires the exact code,
+-- returns at most one row). Any pre-existing permissive select/update/insert
+-- using(true) policies are dropped by the SEAL block further below (so
+-- re-pasting this file onto an existing deployment actually seals it); rollback
+-- lives in supabase-migration-seal-rls-rollback.sql. DELETE has no policy
+-- (pg_cron-only cleanup).
 alter table uno_rooms enable row level security;
-
--- SELECT: allow reads (room codes are the access tokens; you must know the code
--- to query). RLS cannot inspect PostgREST query parameters, so to fully prevent
--- enumeration, use Supabase Auth with user-scoped rooms.
-create policy "select rooms" on uno_rooms for select using (true);
-
--- INSERT: enforce 6-char Crockford base-32 room code format
-create policy "insert with valid code" on uno_rooms
-  for insert with check (
-    code ~ '^[0-9A-HJKMNP-TV-Z]{6}$'
-    and state is not null
-  );
-
--- UPDATE: allow state changes (immutable column protection is enforced by trigger)
-create policy "update rooms" on uno_rooms for update using (true);
-
--- DELETE: no policy = denied with RLS enabled. Rooms are cleaned up by pg_cron only.
 
 -- Optional: auto-delete rooms older than 24 hours
 -- (run manually or schedule via pg_cron if you have it)
@@ -93,17 +88,9 @@ create or replace trigger skribbl_rooms_protect_immutable
 
 alter publication supabase_realtime add table skribbl_rooms;
 
+-- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
+-- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table skribbl_rooms enable row level security;
-
-create policy "select skribbl rooms" on skribbl_rooms for select using (true);
-
-create policy "insert skribbl rooms" on skribbl_rooms
-  for insert with check (
-    code ~ '^[0-9A-HJKMNP-TV-Z]{6}$'
-    and state is not null
-  );
-
-create policy "update skribbl rooms" on skribbl_rooms for update using (true);
 
 -- delete from skribbl_rooms where updated_at < now() - interval '24 hours';
 
@@ -127,17 +114,9 @@ create or replace trigger agario_rooms_protect_immutable
 
 alter publication supabase_realtime add table agario_rooms;
 
+-- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
+-- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table agario_rooms enable row level security;
-
-create policy "select agario rooms" on agario_rooms for select using (true);
-
-create policy "insert agario rooms" on agario_rooms
-  for insert with check (
-    code ~ '^[0-9A-HJKMNP-TV-Z]{6}$'
-    and state is not null
-  );
-
-create policy "update agario rooms" on agario_rooms for update using (true);
 
 -- delete from agario_rooms where updated_at < now() - interval '24 hours';
 
@@ -161,17 +140,9 @@ create or replace trigger cah_rooms_protect_immutable
 
 alter publication supabase_realtime add table cah_rooms;
 
+-- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
+-- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table cah_rooms enable row level security;
-
-create policy "select cah rooms" on cah_rooms for select using (true);
-
-create policy "insert cah rooms" on cah_rooms
-  for insert with check (
-    code ~ '^[0-9A-HJKMNP-TV-Z]{6}$'
-    and state is not null
-  );
-
-create policy "update cah rooms" on cah_rooms for update using (true);
 
 -- delete from cah_rooms where updated_at < now() - interval '24 hours';
 
@@ -195,17 +166,9 @@ create or replace trigger codenames_rooms_protect_immutable
 
 alter publication supabase_realtime add table codenames_rooms;
 
+-- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
+-- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table codenames_rooms enable row level security;
-
-create policy "select codenames rooms" on codenames_rooms for select using (true);
-
-create policy "insert codenames rooms" on codenames_rooms
-  for insert with check (
-    code ~ '^[0-9A-HJKMNP-TV-Z]{6}$'
-    and state is not null
-  );
-
-create policy "update codenames rooms" on codenames_rooms for update using (true);
 
 -- delete from codenames_rooms where updated_at < now() - interval '24 hours';
 
@@ -229,19 +192,42 @@ create or replace trigger mindmeld_rooms_protect_immutable
 
 alter publication supabase_realtime add table mindmeld_rooms;
 
+-- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
+-- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table mindmeld_rooms enable row level security;
 
-create policy "select mindmeld rooms" on mindmeld_rooms for select using (true);
-
-create policy "insert mindmeld rooms" on mindmeld_rooms
-  for insert with check (
-    code ~ '^[0-9A-HJKMNP-TV-Z]{6}$'
-    and state is not null
-  );
-
-create policy "update mindmeld rooms" on mindmeld_rooms for update using (true);
-
 -- delete from mindmeld_rooms where updated_at < now() - interval '24 hours';
+
+-- ─── SEAL: drop any pre-existing permissive policies (Phase 3, ACCESS-01) ─────
+-- On a FRESH project this is a no-op (no policies were ever created). On an
+-- EXISTING project that ran an earlier version of this schema, the old
+-- permissive SELECT/UPDATE/INSERT `using(true)` policies SURVIVE a re-paste —
+-- PostgreSQL keeps policies until an explicit DROP — which would leave anon
+-- direct table access open and defeat the seal. This block drops them
+-- name-agnostically (policy names diverge across tables), so pasting this file
+-- actually seals an existing deployment. RLS stays ENABLED throughout (never
+-- disabled — that would re-open world-read). DELETE has no policy (pg_cron-only
+-- cleanup) and is left untouched. Standalone + rollback equivalents:
+-- supabase-migration-seal-rls.sql / supabase-migration-seal-rls-rollback.sql
+do $$
+declare
+  t text;
+  pol record;
+begin
+  foreach t in array array[
+    'uno_rooms', 'skribbl_rooms', 'agario_rooms',
+    'cah_rooms', 'codenames_rooms', 'mindmeld_rooms'
+  ] loop
+    for pol in
+      select policyname from pg_policies
+       where schemaname = 'public'
+         and tablename = t
+         and cmd in ('SELECT', 'UPDATE', 'INSERT')
+    loop
+      execute format('drop policy if exists %I on public.%I', pol.policyname, t);
+    end loop;
+  end loop;
+end $$;
 
 -- ─── Migration: add version column to existing tables ───────────────────────
 -- Run this once if your tables already exist (the CREATE TABLE statements above
@@ -254,12 +240,13 @@ create policy "update mindmeld rooms" on mindmeld_rooms for update using (true);
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- Phase 2 (ADDITIVE): member-scoped RPCs, broadcast delivery, server-side
--- validation. Everything below is additive — the permissive `using(true)`
--- SELECT/UPDATE policies above stay in place (sealing is Phase 3, never this
--- phase). Each block is independently reversible (drop column / drop trigger /
--- drop function) and does not break in-flight rooms or stale cached clients.
--- Applied identically across all 6 room tables from one templated source
--- (MIGR-03 / D-15).
+-- validation. These RPCs are the sanctioned access path. (Phase 3 then SEALED
+-- the tables — the previously-permissive `using(true)` SELECT/UPDATE/INSERT
+-- policies have been dropped above; RLS stays enabled, default-deny for anon, so
+-- these SECURITY DEFINER RPCs are now the ONLY way to touch a room.) Each block
+-- is independently reversible (drop column / drop trigger / drop function) and
+-- does not break in-flight rooms or stale cached clients. Applied identically
+-- across all 6 room tables from one templated source (MIGR-03 / D-15).
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- ─── room_token column (×6) ─────────────────────────────────────────────────
@@ -1394,3 +1381,137 @@ $$;
 
 revoke all on function public.dispatch_mindmeld(text, uuid, jsonb, integer) from public;
 grant execute on function public.dispatch_mindmeld(text, uuid, jsonb, integer) to anon;
+
+-- ─── Code-gated read RPCs (ACCESS-01) ─────────────────────────────────────────
+-- get_<game>(p_code) is the sealed-world read primitive. It requires the EXACT
+-- room code and returns at most one room's { state, version } — there is no list
+-- capability and no wildcard, so it is NOT a re-opening of the world-readable
+-- `select using(true)` path. SECURITY DEFINER lets a code-holder read a room once
+-- the permissive SELECT policy is dropped (Plan 03 seal). An unknown code returns
+-- ZERO rows (NOT a raised error), preserving the "Room not found" UX (D-01).
+
+create or replace function public.get_uno(p_code text)
+returns table(state jsonb, version integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  return query
+  select public.uno_rooms.state, public.uno_rooms.version
+    from public.uno_rooms
+   where public.uno_rooms.code = p_code;
+  -- NO `if not found` raise: unknown code → zero rows (preserves "Room not found" UX).
+end;
+$$;
+
+revoke all on function public.get_uno(text) from public;
+grant execute on function public.get_uno(text) to anon;
+
+create or replace function public.get_skribbl(p_code text)
+returns table(state jsonb, version integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  return query
+  select public.skribbl_rooms.state, public.skribbl_rooms.version
+    from public.skribbl_rooms
+   where public.skribbl_rooms.code = p_code;
+  -- NO `if not found` raise: unknown code → zero rows (preserves "Room not found" UX).
+end;
+$$;
+
+revoke all on function public.get_skribbl(text) from public;
+grant execute on function public.get_skribbl(text) to anon;
+
+create or replace function public.get_agario(p_code text)
+returns table(state jsonb, version integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  return query
+  select public.agario_rooms.state, public.agario_rooms.version
+    from public.agario_rooms
+   where public.agario_rooms.code = p_code;
+  -- NO `if not found` raise: unknown code → zero rows (preserves "Room not found" UX).
+end;
+$$;
+
+revoke all on function public.get_agario(text) from public;
+grant execute on function public.get_agario(text) to anon;
+
+create or replace function public.get_cah(p_code text)
+returns table(state jsonb, version integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  return query
+  select public.cah_rooms.state, public.cah_rooms.version
+    from public.cah_rooms
+   where public.cah_rooms.code = p_code;
+  -- NO `if not found` raise: unknown code → zero rows (preserves "Room not found" UX).
+end;
+$$;
+
+revoke all on function public.get_cah(text) from public;
+grant execute on function public.get_cah(text) to anon;
+
+create or replace function public.get_codenames(p_code text)
+returns table(state jsonb, version integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  return query
+  select public.codenames_rooms.state, public.codenames_rooms.version
+    from public.codenames_rooms
+   where public.codenames_rooms.code = p_code;
+  -- NO `if not found` raise: unknown code → zero rows (preserves "Room not found" UX).
+end;
+$$;
+
+revoke all on function public.get_codenames(text) from public;
+grant execute on function public.get_codenames(text) to anon;
+
+create or replace function public.get_mindmeld(p_code text)
+returns table(state jsonb, version integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  return query
+  select public.mindmeld_rooms.state, public.mindmeld_rooms.version
+    from public.mindmeld_rooms
+   where public.mindmeld_rooms.code = p_code;
+  -- NO `if not found` raise: unknown code → zero rows (preserves "Room not found" UX).
+end;
+$$;
+
+revoke all on function public.get_mindmeld(text) from public;
+grant execute on function public.get_mindmeld(text) to anon;

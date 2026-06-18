@@ -14,6 +14,7 @@ import { PlayerRoster } from '@/components/multiplayer/PlayerRoster'
 import { ResultsTable } from '@/components/multiplayer/ResultsTable'
 import { ResumeSessionCard } from '@/components/multiplayer/ResumeSessionCard'
 import { RoomInviteCard } from '@/components/multiplayer/RoomInviteCard'
+import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { normalizeRoomCode } from '@/lib/room-code'
 import { useSkribblRoom, type UseSkribblRoomReturn } from './useSkribblRoom'
 import {
@@ -1454,6 +1455,7 @@ export function SkribblGame() {
     process.env.NEXT_PUBLIC_E2E_FAKE_SUPABASE === '1' ? 'entry' : 'howto'
   )
   const {
+    connectionStatus,
     createRoom,
     dispatch,
     error,
@@ -1506,6 +1508,7 @@ export function SkribblGame() {
 
   return (
     <ArcadeShell title="Skribbl" crumb={crumb} centered={centered}>
+      {!isEntryState && <DesyncIndicator active={connectionStatus === 'desynced'} />}
       {!isSupabaseConfigured ? (
         <SetupRequired />
       ) : isResolvingInvite ? (

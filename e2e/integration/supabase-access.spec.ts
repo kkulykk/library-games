@@ -20,11 +20,18 @@
 //   - SUPABASE_TEST_URL       real Supabase project URL
 //   - SUPABASE_TEST_ANON_KEY  that project's anon key
 //
-// NOTE — Phase-3 deferral (D-14): the enumeration-prevention assertion (that a
-// non-member cannot SELECT/enumerate rooms) is intentionally NOT asserted here.
-// In this additive phase the table SELECT policy is still `using (true)`
-// (permissive), so enumeration is still possible by design until Phase 3 seals
-// SELECT. That assertion belongs to Phase 3 and is added there.
+// Phase 3 (ACCESS-01): the enumeration-prevention assertion is now ACTIVE below.
+// After the seal (supabase-migration-seal-rls.sql drops the permissive SELECT/UPDATE/INSERT policies,
+// RLS stays enabled), a direct anon `.from(table).select()` returns zero rows even
+// though the row exists, while the code-gated get_<game>(p_code) still returns it.
+//
+// Phase 3 (03-05): the in-memory E2E fake now ALSO emulates this seal — an anon
+// direct `/query` `select`/`update`/`insert` on a `*_rooms` table returns empty/
+// no-op (RLS default-deny), so the fake and this live canary finally agree. Test
+// fixtures moved to the privileged out-of-band `/admin/query` endpoint, so a
+// production-path direct-table regression (BLOCKER-1-style) would now FAIL the
+// Playwright suite instead of being masked. These canary tests hit the REAL
+// Supabase project via createClient (not the fake), so they are unchanged.
 
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
@@ -45,6 +52,36 @@ function freshUnoState(playerId: string) {
 }
 
 test.describe('real Supabase access control (canary)', () => {
+  test('anon cannot enumerate or directly read a sealed room (ACCESS-01)', async () => {
+    const url = SUPABASE_TEST_URL!
+    const key = SUPABASE_TEST_ANON_KEY!
+    const client = createClient(url, key)
+
+    const code = generateRoomCode()
+    const playerId = `p_${Math.random().toString(36).slice(2, 10)}`
+
+    // (1) Create a real room via the definer RPC (succeeds under the seal). Pitfall 6:
+    // the row MUST exist first — an empty-table select would be vacuously empty.
+    const { error: createErr } = await client.rpc('create_uno', {
+      p_code: code,
+      p_state: freshUnoState(playerId),
+    })
+    expect(createErr).toBeNull()
+
+    // (2) Seal proof: a direct anon read of the table returns ZERO rows even though
+    // the row exists — enumeration/world-read is closed (RLS default-deny).
+    const { data: leaked } = await client.from('uno_rooms').select('code, state, version')
+    expect(leaked ?? []).toHaveLength(0)
+
+    // (3) Code-gated read still works for a code-holder via the SECURITY DEFINER RPC.
+    const { data: viaRpc, error: rpcErr } = await client.rpc('get_uno', { p_code: code })
+    expect(rpcErr).toBeNull()
+    const row = Array.isArray(viaRpc) ? viaRpc[0] : viaRpc
+    expect(row?.version).toBeDefined()
+
+    await client.removeAllChannels()
+  })
+
   test('a second subscriber receives the broadcast on room:CODE (ACCESS-05)', async () => {
     const url = SUPABASE_TEST_URL!
     const key = SUPABASE_TEST_ANON_KEY!
