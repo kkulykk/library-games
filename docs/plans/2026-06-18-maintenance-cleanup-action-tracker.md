@@ -21,14 +21,14 @@ verification command that proves the item is complete.
 
 | Area                            | Done | Partial | Active | Todo | Blocked |
 | ------------------------------- | ---: | ------: | -----: | ---: | ------: |
-| Phase 0: baseline safety        |    0 |       1 |      0 |    5 |       0 |
+| Phase 0: baseline safety        |    4 |       0 |      0 |    2 |       0 |
 | Phase 1: high-churn files       |    0 |       0 |      0 |    5 |       0 |
 | Phase 2: multiplayer hardening  |    0 |       1 |      0 |    6 |       0 |
 | Phase 3: UI robustness          |    0 |       0 |      0 |    4 |       0 |
 | Phase 4: tooling and CI         |    2 |       1 |      0 |    4 |       0 |
 | Phase 5: game cleanup campaigns |    0 |       0 |      0 |    6 |       0 |
 
-Overall: **2 Done, 3 Partial, 0 Active, 30 Todo, 0 Blocked**.
+Overall: **6 Done, 2 Partial, 0 Active, 27 Todo, 0 Blocked**.
 
 Baseline observed on 2026-06-18:
 
@@ -44,32 +44,35 @@ Baseline observed on 2026-06-18:
 
 ## Next PR Queue
 
-1. `P0-01` + `P0-02` + `P0-05`: add `typecheck`, wire it into CI, and document the minimum
-   local/CI gate.
-2. `P0-03` + `P0-04`: add the audit command and architecture fitness checklist.
-3. `P2-01` + `P2-04`: document canonical Supabase operations and resolve the current room-cleanup
+1. `P0-03` + `P0-04`: add the audit command and architecture fitness checklist.
+2. `P2-01` + `P2-04`: document canonical Supabase operations and resolve the current room-cleanup
    docs mismatch.
-4. `P2-02`: add high-value negative-path tests to `useGameRoom.test.ts`.
-5. `P3-02` + `P5-01`: extract Agar.io lifecycle helpers and use that cleanup as the first game
+3. `P2-02`: add high-value negative-path tests to `useGameRoom.test.ts`.
+4. `P3-02` + `P5-01`: extract Agar.io lifecycle helpers and use that cleanup as the first game
    campaign template.
 
 ## Phase 0 - Baseline And Safety Net
 
 Priority: P0. Complete before large refactors.
 
-| ID    | Status  | Action                            | Deliverable                                                                   | Verification                                      |
-| ----- | ------- | --------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------- |
-| P0-01 | Todo    | Add explicit TypeScript gate      | Add `typecheck: tsc --noEmit` to `package.json`.                              | `pnpm typecheck`                                  |
-| P0-02 | Todo    | Run typecheck in CI               | Add a CI step after Prettier and before coverage tests.                       | GitHub Actions lint-and-test job includes it.     |
-| P0-03 | Todo    | Add dependency audit command      | Add `audit` script or document why audits are manual/warning-only.            | `pnpm audit` or documented replacement.           |
-| P0-04 | Todo    | Create architecture checklist     | Add a checklist for Supabase writes, route wrappers, schema tests, smoke E2E. | Checklist exists and is linked from roadmap docs. |
-| P0-05 | Todo    | Document minimum pre-merge gate   | README/guide names lint, typecheck, coverage, E2E, and build expectations.    | `pnpm lint`, `pnpm typecheck`, coverage, build.   |
-| P0-06 | Partial | Capture baseline maintenance data | Static inventory captured above; command results still need a fresh run.      | Record dated lint, coverage, E2E, and build runs. |
+| ID    | Status | Action                            | Deliverable                                                                   | Verification                                      |
+| ----- | ------ | --------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------- |
+| P0-01 | Done   | Add explicit TypeScript gate      | Add `typecheck: tsc --noEmit` to `package.json`.                              | `pnpm typecheck`                                  |
+| P0-02 | Done   | Run typecheck in CI               | Add a CI step after Prettier and before coverage tests.                       | GitHub Actions lint-and-test job includes it.     |
+| P0-03 | Todo   | Add dependency audit command      | Add `audit` script or document why audits are manual/warning-only.            | `pnpm audit` or documented replacement.           |
+| P0-04 | Todo   | Create architecture checklist     | Add a checklist for Supabase writes, route wrappers, schema tests, smoke E2E. | Checklist exists and is linked from roadmap docs. |
+| P0-05 | Done   | Document minimum pre-merge gate   | README/guide names lint, typecheck, coverage, E2E, and build expectations.    | `pnpm lint`, `pnpm typecheck`, coverage, build.   |
+| P0-06 | Done   | Capture baseline maintenance data | Static inventory captured above; command results recorded in progress notes.  | Dated lint, coverage, E2E, and build runs.        |
 
 Notes:
 
 - 2026-06-18: CI has lint, Prettier, coverage, E2E, build, and deploy jobs, but no explicit
   `typecheck` or `audit` script.
+- 2026-06-18: Completed `P0-01`, `P0-02`, and `P0-05` by adding `pnpm typecheck`,
+  running it in CI after Prettier, and documenting the minimum local/CI gate in `README.md`.
+  Verification: `pnpm typecheck`.
+- 2026-06-18: Completed `P0-06` fresh baseline command capture. Verification: `pnpm lint`,
+  `pnpm typecheck`, `pnpm test:coverage`, `CI=1 pnpm e2e:ci`, and `pnpm build`.
 
 ## Phase 1 - High-Churn File Decomposition
 
@@ -168,3 +171,6 @@ The maintenance program is complete when all of these are true:
 ## Progress Notes
 
 - 2026-06-18: Created tracker from the roadmap and recorded initial repo-observed status.
+- 2026-06-18: Added the explicit TypeScript gate and pre-merge documentation for `P0-01`,
+  `P0-02`, and `P0-05`. Local verification recorded in the PR: `pnpm lint`, `pnpm typecheck`,
+  `pnpm test:coverage`, `CI=1 pnpm e2e:ci`, and `pnpm build`.

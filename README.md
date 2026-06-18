@@ -63,11 +63,27 @@ pnpm dev        # http://localhost:3000/library-games
 ```bash
 pnpm lint           # ESLint + Prettier check
 pnpm lint:fix       # auto-fix lint & formatting
+pnpm typecheck      # TypeScript check without emitting files
 pnpm test           # run all tests
 pnpm test:watch     # watch mode
 pnpm test:coverage  # coverage report (>=80% required on logic files)
 pnpm build          # static export -> /out
 ```
+
+## Pre-merge verification
+
+Before opening or merging a PR, run the same minimum gate CI expects:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test:coverage
+pnpm e2e:ci
+pnpm build
+```
+
+Pull request CI runs lint/format checks, TypeScript typecheck, coverage tests, E2E tests, and the
+static export build before deploy is allowed from `main`.
 
 ## E2E testing
 
