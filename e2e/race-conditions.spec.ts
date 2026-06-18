@@ -15,6 +15,10 @@ type QueryPayload = {
   filters?: Array<{ column: string; value: unknown }>
   columns?: string
   single?: boolean
+  // RPC payloads (posted to /rpc as { fn, args }) — the join pre-read now flows
+  // through the code-gated get_<game> SECURITY DEFINER RPC, not a direct select.
+  fn?: string
+  args?: Record<string, unknown>
 }
 
 type RoomRow<TState> = {
@@ -93,25 +97,30 @@ async function installQueryBarrier(
   const waiting: Route[] = []
   let released = false
 
+  const handler = async (route: Route) => {
+    const payload = route.request().postDataJSON() as QueryPayload
+
+    if (!released && predicate(payload)) {
+      waiting.push(route)
+
+      if (waiting.length === contexts.length) {
+        released = true
+        await Promise.all(waiting.splice(0).map((blocked) => blocked.continue()))
+      }
+
+      return
+    }
+
+    await route.continue()
+  }
+
   await Promise.all(
-    contexts.map((context) =>
-      context.route(`${fakeSupabaseUrl}/query`, async (route) => {
-        const payload = route.request().postDataJSON() as QueryPayload
-
-        if (!released && predicate(payload)) {
-          waiting.push(route)
-
-          if (waiting.length === contexts.length) {
-            released = true
-            await Promise.all(waiting.splice(0).map((blocked) => blocked.continue()))
-          }
-
-          return
-        }
-
-        await route.continue()
-      })
-    )
+    contexts.flatMap((context) => [
+      // The barrier gates both endpoints: `/query` for direct selects/updates and
+      // `/rpc` for the SECURITY DEFINER RPC reads (e.g. the get_<game> join pre-read).
+      context.route(`${fakeSupabaseUrl}/query`, handler),
+      context.route(`${fakeSupabaseUrl}/rpc`, handler),
+    ])
   )
 }
 
@@ -195,12 +204,9 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
       await guestTwoPage.goto()
 
       await installQueryBarrier([guestOne.context, guestTwo.context], (payload) => {
-        return (
-          payload.op === 'select' &&
-          payload.table === 'uno_rooms' &&
-          payload.single === true &&
-          hasFilter(payload, 'code', roomCode)
-        )
+        // joinRoom's pre-read now goes through the code-gated get_uno RPC
+        // (replacing the old direct .from('uno_rooms').select().single()).
+        return payload.fn === 'get_uno' && payload.args?.p_code === roomCode
       })
 
       await Promise.allSettled([

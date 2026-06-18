@@ -90,8 +90,11 @@ function presenceState(channel) {
   return grouped
 }
 
-async function handleQuery(req, res) {
-  const body = await readBody(req)
+// Shared query body (no RLS gate). Both the gated anon `/query` handler and the
+// ungated privileged `/admin/query` fixture handler converge here, so the
+// insert/select/update branches — including the room-row UPDATE broadcast mirror —
+// exist exactly once.
+function runQueryBody(body, res) {
   const { op, table, values, filters = [], columns } = body
   const rows = tableRows(table)
 
@@ -165,6 +168,42 @@ async function handleQuery(req, res) {
   sendJson(res, 400, { data: null, error: { message: `Unsupported op: ${op}` } })
 }
 
+// Anon `/query` handler. Emulates the Phase 3 seal: post-seal, anon direct table
+// access on `*_rooms` tables is RLS default-denied — `select` returns zero rows,
+// `update`/`insert` are no-ops (nothing written, no broadcast). This makes the
+// harness honest: a production-path direct `.from(*_rooms).select()/.update()`
+// regression (BLOCKER-1-style) now hits this sealed path and observes empty,
+// so the suite can FAIL instead of masking it. Non-`_rooms` tables and the RPC
+// path are unaffected. Fixtures route through the ungated `/admin/query` instead.
+async function handleQuery(req, res) {
+  const body = await readBody(req)
+  const { op, table } = body
+  if (
+    typeof table === 'string' &&
+    table.endsWith('_rooms') &&
+    (op === 'select' || op === 'update' || op === 'insert')
+  ) {
+    if (op === 'select' && body.single) {
+      sendJson(res, 200, { data: null, error: null })
+      return
+    }
+    sendJson(res, 200, { data: [], error: null })
+    return
+  }
+  runQueryBody(body, res)
+}
+
+// Privileged, out-of-band fixture endpoint. Serves select/update/insert on ANY
+// table WITHOUT the anon RLS-deny gate, via the same shared `runQueryBody`. This
+// is the test backdoor for seeding room rows and reading state for assertions.
+// The production fake client (src/lib/supabase.ts) only ever posts to `/query`
+// and `/rpc`, never `/admin/query`, so this path cannot re-open the seal for the
+// app under test.
+async function handleAdminQuery(req, res) {
+  const body = await readBody(req)
+  runQueryBody(body, res)
+}
+
 // Crockford 6-char room-code regex, mirroring ROOM_CODE_REGEX_SQL in
 // src/lib/room-code.ts (this file lives outside src/, no @ import).
 const ROOM_CODE_RE = /^[0-9A-HJKMNP-TV-Z]{6}$/
@@ -205,7 +244,7 @@ function rpcError(res, code, message) {
 
 // Derive the room table from the RPC name suffix: `<op>_<game>` → `<game>_rooms`.
 function tableForFn(fn) {
-  const match = /^(create|join|restore|dispatch)_(.+)$/.exec(fn)
+  const match = /^(create|join|restore|dispatch|get)_(.+)$/.exec(fn)
   if (!match) return null
   return { op: match[1], table: `${match[2]}_rooms` }
 }
@@ -343,6 +382,23 @@ async function handleRpc(req, res) {
     return
   }
 
+  if (op === 'get') {
+    const code = args.p_code
+    if (typeof code !== 'string' || !ROOM_CODE_RE.test(code)) {
+      rpcError(res, '22023', 'invalid code')
+      return
+    }
+    const row = rows.find((r) => r.code === code)
+    // Unknown code → empty array (mirrors the real get_<game> RPC's zero-row return),
+    // NOT a 42501 error. This preserves the "Room not found" UX the hook expects and is
+    // the deliberate contrast with the `restore` branch above (which raises 42501).
+    sendJson(res, 200, {
+      data: row ? [{ state: row.state, version: row.version }] : [],
+      error: null,
+    })
+    return
+  }
+
   if (op === 'dispatch') {
     const code = args.p_code
     if (typeof code !== 'string' || !ROOM_CODE_RE.test(code)) {
@@ -440,6 +496,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/query') {
       await handleQuery(req, res)
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/admin/query') {
+      await handleAdminQuery(req, res)
       return
     }
 

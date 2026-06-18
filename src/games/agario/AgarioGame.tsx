@@ -6,6 +6,7 @@ import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { normalizeRoomCode } from '@/lib/room-code'
+import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { useAgarioRoom } from './useAgarioRoom'
 import {
   MAP_WIDTH,
@@ -859,6 +860,7 @@ export function AgarioGame() {
     roomCode,
     status,
     error,
+    connectionStatus,
     savedSession,
     createRoom,
     joinRoom,
@@ -1359,6 +1361,7 @@ export function AgarioGame() {
   if (isPlaying && mySnakeState && playerId) {
     return (
       <div className="relative flex flex-col items-center">
+        <DesyncIndicator active={connectionStatus === 'desynced'} />
         <div
           data-testid="agario-game-area"
           className="relative overflow-hidden rounded-lg border border-white/10"

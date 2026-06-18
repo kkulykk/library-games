@@ -26,14 +26,14 @@ export async function resetFakeSupabase(): Promise<void> {
 export async function fakeSupabaseQuery<T = unknown>(
   payload: FakeSupabaseQueryPayload
 ): Promise<FakeSupabaseQueryResult<T>> {
-  const response = await fetch(`${fakeSupabaseUrl}/query`, {
+  const response = await fetch(`${fakeSupabaseUrl}/admin/query`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
   })
 
   if (!response.ok) {
-    throw new Error(`Fake Supabase /query failed: ${response.status} ${response.statusText}`)
+    throw new Error(`Fake Supabase /admin/query failed: ${response.status} ${response.statusText}`)
   }
 
   return (await response.json()) as FakeSupabaseQueryResult<T>
