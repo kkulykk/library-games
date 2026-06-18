@@ -21,7 +21,7 @@
 //   - SUPABASE_TEST_ANON_KEY  that project's anon key
 //
 // Phase 3 (ACCESS-01): the enumeration-prevention assertion is now ACTIVE below.
-// After the seal (seal-up.sql drops the permissive SELECT/UPDATE/INSERT policies,
+// After the seal (supabase-migration-seal-rls.sql drops the permissive SELECT/UPDATE/INSERT policies,
 // RLS stays enabled), a direct anon `.from(table).select()` returns zero rows even
 // though the row exists, while the code-gated get_<game>(p_code) still returns it.
 //
