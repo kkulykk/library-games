@@ -1515,3 +1515,14 @@ $$;
 
 revoke all on function public.get_mindmeld(text) from public;
 grant execute on function public.get_mindmeld(text) to anon;
+
+-- ─── Lock down internal trigger functions (advisor cleanup) ──────────────────
+-- The functions below are fired by Postgres internally (row + statement
+-- triggers) and must NOT be reachable via PostgREST RPC. Functions default to
+-- PUBLIC EXECUTE, which exposed them at /rest/v1/rpc as anon/authenticated
+-- SECURITY DEFINER endpoints (Supabase advisor: *_security_definer_function_executable).
+-- Revoking EXECUTE removes that exposure; triggers still fire normally (a trigger
+-- runs as the table owner regardless of role-level EXECUTE grants).
+revoke all on function public.broadcast_room_state() from public, anon, authenticated;
+revoke all on function public.update_updated_at() from public, anon, authenticated;
+revoke all on function public.protect_immutable_columns() from public, anon, authenticated;
