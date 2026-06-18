@@ -93,7 +93,7 @@ Online games use Supabase as a real-time state bus — no custom WebSocket serve
 
 Single workflow (`.github/workflows/ci.yml`), jobs run as a chain:
 
-1. **lint-and-test** — ESLint + Prettier + `pnpm test:coverage`; runs on every push and PR
+1. **lint-and-test** — ESLint + Prettier + `pnpm typecheck` + `pnpm test:coverage`; runs on every push and PR
 2. **e2e** — Playwright (`pnpm e2e:ci`) against the fake Supabase server; `needs: lint-and-test`
 3. **build** — static export; `needs: e2e`; injects Supabase secrets
 4. **deploy** — GitHub Pages; `needs: build`
