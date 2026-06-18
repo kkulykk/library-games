@@ -57,9 +57,11 @@ create or replace trigger uno_rooms_protect_immutable
 -- through the SECURITY DEFINER RPCs (create/join/restore/dispatch/get_<game>),
 -- which bypass RLS as the table owner. The code-gated get_<game>(p_code) read
 -- RPC prevents enumeration without Supabase Auth (requires the exact code,
--- returns at most one row). The previous permissive select/update/insert
--- using(true) policies were dropped by seal-up.sql; seal-down.sql re-creates
--- them for rollback. DELETE has no policy (pg_cron-only cleanup).
+-- returns at most one row). Any pre-existing permissive select/update/insert
+-- using(true) policies are dropped by the SEAL block further below (so
+-- re-pasting this file onto an existing deployment actually seals it); rollback
+-- lives in supabase-migration-seal-rls-rollback.sql. DELETE has no policy
+-- (pg_cron-only cleanup).
 alter table uno_rooms enable row level security;
 
 -- Optional: auto-delete rooms older than 24 hours
@@ -195,6 +197,37 @@ alter publication supabase_realtime add table mindmeld_rooms;
 alter table mindmeld_rooms enable row level security;
 
 -- delete from mindmeld_rooms where updated_at < now() - interval '24 hours';
+
+-- ─── SEAL: drop any pre-existing permissive policies (Phase 3, ACCESS-01) ─────
+-- On a FRESH project this is a no-op (no policies were ever created). On an
+-- EXISTING project that ran an earlier version of this schema, the old
+-- permissive SELECT/UPDATE/INSERT `using(true)` policies SURVIVE a re-paste —
+-- PostgreSQL keeps policies until an explicit DROP — which would leave anon
+-- direct table access open and defeat the seal. This block drops them
+-- name-agnostically (policy names diverge across tables), so pasting this file
+-- actually seals an existing deployment. RLS stays ENABLED throughout (never
+-- disabled — that would re-open world-read). DELETE has no policy (pg_cron-only
+-- cleanup) and is left untouched. Standalone + rollback equivalents:
+-- supabase-migration-seal-rls.sql / supabase-migration-seal-rls-rollback.sql
+do $$
+declare
+  t text;
+  pol record;
+begin
+  foreach t in array array[
+    'uno_rooms', 'skribbl_rooms', 'agario_rooms',
+    'cah_rooms', 'codenames_rooms', 'mindmeld_rooms'
+  ] loop
+    for pol in
+      select policyname from pg_policies
+       where schemaname = 'public'
+         and tablename = t
+         and cmd in ('SELECT', 'UPDATE', 'INSERT')
+    loop
+      execute format('drop policy if exists %I on public.%I', pol.policyname, t);
+    end loop;
+  end loop;
+end $$;
 
 -- ─── Migration: add version column to existing tables ───────────────────────
 -- Run this once if your tables already exist (the CREATE TABLE statements above
