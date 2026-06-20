@@ -5,6 +5,7 @@ import {
   addPlayer,
   applyAction,
   createLobbyState,
+  redactForPlayer,
   type GameAction,
   type GameState,
   type Player,
@@ -29,5 +30,6 @@ export function useCodenamesRoom(): UseCodenamesRoomReturn {
     createPlayer: ({ id, name, isHost }) =>
       ({ id, name, isHost, team: null, role: null }) as Player,
     addPlayer,
+    redact: redactForPlayer,
   })
 }

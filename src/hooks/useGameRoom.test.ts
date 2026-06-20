@@ -56,7 +56,10 @@ function makeChannel(name: string): ChannelDouble {
 // Authoritative {state, version} the get_<game> RPC returns to refetchAuthoritativeState.
 let authoritativeRow: { state: unknown; version: number } | null = null
 
-const rpc = jest.fn(async (fn: string) => {
+// Default: create succeeds, get returns the authoritative row, every other RPC (notably
+// dispatch_<game>) returns { data: null } → a CAS conflict. Extracted + restored in beforeEach so
+// a test that overrides it (e.g. to make dispatch_ succeed) can't leak into the next test.
+const defaultRpcImpl = async (fn: string) => {
   if (fn.startsWith('create_')) {
     return {
       data: [{ state: { phase: 'lobby', players: [] }, version: 1, room_token: 'tok' }],
@@ -67,7 +70,9 @@ const rpc = jest.fn(async (fn: string) => {
     return { data: authoritativeRow ? [authoritativeRow] : [], error: null }
   }
   return { data: null, error: null }
-})
+}
+
+const rpc = jest.fn(defaultRpcImpl)
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
@@ -112,7 +117,8 @@ function presenceChannel() {
 beforeEach(() => {
   channels.length = 0
   authoritativeRow = null
-  rpc.mockClear()
+  rpc.mockReset()
+  rpc.mockImplementation(defaultRpcImpl)
   localStorage.clear()
 })
 
@@ -397,5 +403,141 @@ describe('useGameRoom tab-close teardown lifecycle (CLIENT-02)', () => {
     expect(removeSpy).toHaveBeenCalledWith('pagehide', expect.any(Function))
     expect(removeSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
     removeSpy.mockRestore()
+  })
+})
+
+// Candidate A: the leave-time write runs through the SAME shared commit as dispatch, declared
+// once via config.leaveAction — adapters no longer hand-roll the CAS retry loop in onBeforeLeave.
+describe('useGameRoom leaveAction (shared commit on leave)', () => {
+  // applyAction always returns a new ref so the leave action enters the CAS loop (doesn't
+  // early-return on the identity check), mirroring a real REMOVE_PLAYER reducer.
+  const leaveConfig: GameRoomConfig<State, Action> = {
+    ...config,
+    applyAction: (s) => ({ ...s, players: [...s.players] }),
+    leaveAction: () => ({ type: 'noop' }),
+  }
+
+  function dispatchCalls() {
+    return rpc.mock.calls.filter(([fn]) => String(fn).startsWith('dispatch_'))
+  }
+
+  async function connect(cfg: GameRoomConfig<State, Action>) {
+    const hook = renderHook(() => useGameRoom<State, Action>(cfg))
+    await act(async () => {
+      await hook.result.current.createRoom('Alice')
+    })
+    return hook
+  }
+
+  it('issues the leave action through dispatch_<game> and then tears the room down', async () => {
+    rpc.mockImplementation(async (fn: string) => {
+      if (fn.startsWith('dispatch_')) return { data: [{ version: 2 }], error: null }
+      return defaultRpcImpl(fn)
+    })
+    const hook = await connect(leaveConfig)
+
+    await act(async () => {
+      await hook.result.current.leaveRoom()
+    })
+
+    expect(dispatchCalls()).toHaveLength(1)
+    // Teardown completed regardless.
+    expect(hook.result.current.status).toBe('idle')
+    expect(hook.result.current.roomCode).toBeNull()
+    expect(localStorage.getItem('test_session')).toBeNull()
+  })
+
+  it('stays silent on a conflicting leave — no error UI, no desync flag — and still tears down', async () => {
+    // dispatch_ keeps returning { data: null } (default conflict); get_ returns a valid, newer row
+    // so the loop refetches and retries until MAX_RETRIES is exhausted.
+    authoritativeRow = { state: { phase: 'play', players: [{ id: 'a' }] }, version: 999 }
+    const hook = await connect(leaveConfig)
+
+    await act(async () => {
+      await hook.result.current.leaveRoom()
+    })
+
+    // The CAS loop ran and exhausted...
+    expect(dispatchCalls().length).toBeGreaterThan(1)
+    // ...but a player who is leaving must NOT be shown a conflict toast or the desync pill.
+    expect(hook.result.current.error).toBeNull()
+    expect(hook.result.current.connectionStatus).toBe('live')
+    // Teardown happened anyway.
+    expect(hook.result.current.status).toBe('idle')
+    expect(hook.result.current.roomCode).toBeNull()
+  })
+
+  it('skips the write when leaveAction returns null, but still tears down', async () => {
+    const hook = await connect({ ...leaveConfig, leaveAction: () => null })
+
+    await act(async () => {
+      await hook.result.current.leaveRoom()
+    })
+
+    expect(dispatchCalls()).toHaveLength(0)
+    expect(hook.result.current.status).toBe('idle')
+    expect(hook.result.current.roomCode).toBeNull()
+  })
+
+  it('makes no leave-time write for a game without leaveAction (the 4 games unchanged)', async () => {
+    const hook = await connect(config) // base config: no leaveAction
+
+    await act(async () => {
+      await hook.result.current.leaveRoom()
+    })
+
+    expect(dispatchCalls()).toHaveLength(0)
+    expect(hook.result.current.status).toBe('idle')
+    expect(hook.result.current.roomCode).toBeNull()
+  })
+})
+
+// Candidate B: redaction is display-only (D-09). The hook redacts what it RETURNS; the internal
+// ref stays full, so commit always writes the unredacted state to the wire.
+describe('useGameRoom redact seam (display-only, D-09)', () => {
+  const redactConfig: GameRoomConfig<State, Action> = {
+    ...config,
+    applyAction: (s) => ({ ...s, players: [...s.players, { id: 'added' }] }),
+    redact: (s) => ({ ...s, phase: `redacted-${s.phase}` }),
+  }
+
+  async function connect() {
+    const hook = renderHook(() => useGameRoom<State, Action>(redactConfig))
+    await act(async () => {
+      await hook.result.current.createRoom('Alice')
+    })
+    return hook
+  }
+
+  it('returns the redacted state to consumers', async () => {
+    const hook = await connect()
+    expect(hook.result.current.gameState?.phase).toBe('redacted-lobby')
+  })
+
+  it('writes the FULL unredacted state through commit — redaction never reaches the wire', async () => {
+    rpc.mockImplementation(async (fn: string) => {
+      if (fn.startsWith('dispatch_')) return { data: [{ version: 2 }], error: null }
+      return defaultRpcImpl(fn)
+    })
+    const hook = await connect()
+
+    await act(async () => {
+      await hook.result.current.dispatch({ type: 'noop' })
+    })
+
+    const dispatchCall = rpc.mock.calls.find(([fn]) => String(fn).startsWith('dispatch_'))
+    expect(dispatchCall).toBeDefined()
+    const payload = dispatchCall![1] as { p_new_state: State }
+    // The committed state is full — NOT the 'redacted-' view the consumer sees.
+    expect(payload.p_new_state.phase).toBe('lobby')
+    expect(payload.p_new_state.players).toContainEqual({ id: 'added' })
+  })
+
+  it('returns state untouched when no redact is configured', async () => {
+    const hook = renderHook(() => useGameRoom<State, Action>(config))
+    await act(async () => {
+      await hook.result.current.createRoom('Alice')
+    })
+    expect(hook.result.current.gameState?.phase).toBe('lobby')
   })
 })
