@@ -16,7 +16,6 @@ import {
   getPlayableCards,
   getCurrentPlayer,
   getTopCard,
-  redactForPlayer,
   type Card,
   type CardColor,
   type CardValue,
@@ -1344,11 +1343,6 @@ export function UnoGame() {
     if (inviteCode) setEntryMode('entry')
   }, [inviteCode])
 
-  const redactedState = useMemo(
-    () => (gameState && playerId ? redactForPlayer(gameState, playerId) : gameState),
-    [gameState, playerId]
-  )
-
   const crumb = makeCrumb(gameState, roomCode, playerId, inviteCode)
   const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
   const isEntryState = !gameState || !playerId || !roomCode
@@ -1403,7 +1397,7 @@ export function UnoGame() {
         />
       ) : (
         <GameBoard
-          gameState={redactedState!}
+          gameState={gameState!}
           playerId={playerId}
           onlinePlayerIds={onlinePlayerIds}
           onDispatch={(cardId, chosenColor) =>

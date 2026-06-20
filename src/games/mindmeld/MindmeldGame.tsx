@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -25,7 +25,6 @@ import {
   getSpectra,
   getWinners,
   isPsychic,
-  redactForPlayer,
   type GameState,
   type Player,
 } from './logic'
@@ -926,16 +925,11 @@ export function MindmeldGame() {
     leaveRoom,
   } = useMindmeldRoom()
 
-  const redactedState = useMemo(
-    () => (gameState && playerId ? redactForPlayer(gameState, playerId) : gameState),
-    [gameState, playerId]
-  )
-
   if (!isSupabaseConfigured) return <SetupRequired />
 
   const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
 
-  if (!redactedState || !playerId || !roomCode) {
+  if (!gameState || !playerId || !roomCode) {
     return (
       <>
         <MindmeldStyles />
@@ -952,12 +946,12 @@ export function MindmeldGame() {
     )
   }
 
-  if (redactedState.phase === 'lobby') {
+  if (gameState.phase === 'lobby') {
     return (
       <>
         <MindmeldStyles />
         <LobbyScreen
-          gameState={redactedState}
+          gameState={gameState}
           playerId={playerId}
           roomCode={roomCode}
           onStart={() => dispatch({ type: 'START_GAME', playerId })}
@@ -967,12 +961,12 @@ export function MindmeldGame() {
     )
   }
 
-  if (redactedState.phase === 'finished') {
+  if (gameState.phase === 'finished') {
     return (
       <>
         <MindmeldStyles />
         <FinishedScreen
-          gameState={redactedState}
+          gameState={gameState}
           playerId={playerId}
           onPlayAgain={() => dispatch({ type: 'PLAY_AGAIN', playerId })}
           onLeave={leaveRoom}
@@ -986,7 +980,7 @@ export function MindmeldGame() {
       <MindmeldStyles />
       <DesyncIndicator active={connectionStatus === 'desynced'} />
       <PlayingScreen
-        gameState={redactedState}
+        gameState={gameState}
         playerId={playerId}
         onSubmitClue={(clue) => dispatch({ type: 'SUBMIT_CLUE', playerId, clue })}
         onSubmitGuess={(guess) => dispatch({ type: 'SUBMIT_GUESS', playerId, guess })}

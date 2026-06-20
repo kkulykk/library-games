@@ -5,6 +5,7 @@ import {
   addPlayer,
   applyAction,
   createLobbyState,
+  redactForPlayer,
   type GameAction,
   type GameState,
   type Player,
@@ -28,5 +29,6 @@ export function useUnoRoom(): UseUnoRoomReturn {
     createLobbyState: (host) => createLobbyState(host as Player),
     createPlayer: ({ id, name, isHost }) => ({ id, name, isHost }) as Player,
     addPlayer,
+    redact: redactForPlayer,
   })
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -17,7 +17,6 @@ import {
   getSpymaster,
   getOperatives,
   getPlayerTeam,
-  redactForPlayer,
   type GameState,
   type Team,
   type PlayerRole,
@@ -719,15 +718,6 @@ export function CodenamesGame() {
     leaveRoom,
   } = useCodenamesRoom()
 
-  // NOTE: Redaction is client-side only. The full game state (including all card types) is
-  // visible to all Supabase Realtime subscribers via DevTools. This is a known limitation of
-  // the single-jsonb-column architecture — suitable for casual/trusted-group play, not
-  // competitive environments.
-  const redactedState = useMemo(
-    () => (gameState && playerId ? redactForPlayer(gameState, playerId) : gameState),
-    [gameState, playerId]
-  )
-
   if (!isSupabaseConfigured) return <SetupRequired />
 
   const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
@@ -784,7 +774,7 @@ export function CodenamesGame() {
       <CodenamesStyles />
       <DesyncIndicator active={connectionStatus === 'desynced'} />
       <GameBoard
-        gameState={redactedState!}
+        gameState={gameState}
         playerId={playerId}
         onGuess={(cardIndex) => dispatch({ type: 'GUESS_CARD', playerId, cardIndex })}
         onEndGuessing={() => dispatch({ type: 'END_GUESSING', playerId })}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { RoomRpcRow } from '@/lib/supabase'
 import { generateRoomCode } from '@/lib/room-code'
@@ -111,15 +111,14 @@ export interface GameRoomConfig<TState extends BaseGameState, TAction, TBroadcas
   }) => TState['players'][number]
   addPlayer: (state: TState, player: TState['players'][number]) => TState
   broadcast?: BroadcastConfig<TBroadcast>
-  onBeforeLeave?: (ctx: {
-    gameState: TState | null
-    roomCode: string | null
-    playerId: string | null
-    roomToken: string
-    tableName: string
-    applyAction: (state: TState, action: TAction) => TState
-    stateSchema: ZodType<TState>
-  }) => Promise<void>
+  // The single action representing this player leaving the room (typically removing themselves).
+  // The hook runs it through the shared commit (CAS retry) on leaveRoom — adapters no longer
+  // hand-roll the loop. Return null to skip the leave-time write (nothing to commit).
+  leaveAction?: (state: TState, playerId: string) => TAction | null
+  // Hide other players' secret info from the LOCAL view. Display-only (D-09): the full state is
+  // broadcast to every client, so this only governs what is rendered, never what is written —
+  // commit always uses the unredacted ref. Omit when a game has nothing to hide.
+  redact?: (state: TState, playerId: string) => TState
 }
 
 export interface UseGameRoomReturn<TState, TAction, TBroadcast = never> {
@@ -527,22 +526,31 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     subscribeToRoom(session.roomCode)
   }, [subscribeToRoom, setStateAndRef])
 
-  const dispatch = useCallback(
-    async (action: TAction) => {
-      if (!roomCode || !supabase) return
+  // Internal compare-and-swap commit. The single write path every state change funnels through —
+  // both dispatch() and the leave path (ACCESS-02/ACCESS-03). Runs the bounded CAS retry loop and
+  // returns the outcome; the CALLER decides how to reflect it in React state. In `silent` mode it
+  // touches NO React state — used during teardown, where reflecting an outcome we're about to null
+  // would be wasted work and could flash a stale error at a player who is already leaving.
+  const commitAction = useCallback(
+    async (
+      action: TAction,
+      opts?: { silent?: boolean }
+    ): Promise<'ok' | 'denied' | 'conflict' | 'noop'> => {
+      if (!roomCode || !supabase) return 'noop'
       const cfg = configRef.current
+      const silent = opts?.silent ?? false
 
       const MAX_RETRIES = 3
       let currentState = gameStateRef.current
       let currentVersion = versionRef.current
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (!currentState) return
+        if (!currentState) return 'noop'
         const newState = cfg.applyAction(currentState, action)
-        if (newState === currentState) return
+        if (newState === currentState) return 'noop'
 
-        // Token-gated write through the dispatch_<game> RPC (ACCESS-02/ACCESS-03). The server
-        // CAS-updates on p_expected_version and raises 42501 (bad/missing token), 40001 (conflict).
+        // Token-gated write through the dispatch_<game> RPC. The server CAS-updates on
+        // p_expected_version and raises 42501 (bad/missing token), 40001 (conflict).
         const { data, error: dispatchErr } = await supabase.rpc(
           rpcName(cfg.tableName, 'dispatch'),
           {
@@ -556,57 +564,61 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         if (data && data.length > 0) {
           // Apply the accepted state locally right away so controls feel instant
           // instead of waiting for the realtime broadcast echo from Supabase.
-          setStateAndRef(newState, data[0].version ?? currentVersion + 1)
-          return
+          if (!silent) setStateAndRef(newState, data[0].version ?? currentVersion + 1)
+          return 'ok'
         }
 
         // 42501 (not a member / bad token) is terminal — no retry can fix it.
-        if (dispatchErr?.code === '42501') {
-          setError('You are not a member of this room.')
-          return
-        }
+        if (dispatchErr?.code === '42501') return 'denied'
 
         if (attempt < MAX_RETRIES) {
           const { data: fresh } = await supabase.rpc(rpcName(cfg.tableName, 'get'), {
             p_code: roomCode,
           })
           const freshRow = fresh && fresh.length > 0 ? fresh[0] : null
-          if (!freshRow) return
+          if (!freshRow) return 'noop'
           const parsedFresh = cfg.stateSchema.safeParse(freshRow.state)
           if (!parsedFresh.success) {
             console.error(
-              `[${cfg.channelPrefix}] Invalid GameState in dispatch retry:`,
+              `[${cfg.channelPrefix}] Invalid GameState in commit retry:`,
               parsedFresh.error
             )
-            return
+            return 'noop'
           }
           currentState = parsedFresh.data
           currentVersion = freshRow.version
-          setStateAndRef(currentState, currentVersion)
-        } else {
-          setError('Action failed due to a conflict. Please try again.')
-          // BL-02: MAX_RETRIES CAS conflicts exhausted means local {state, version} is
-          // known-stale. Surface the desync indicator so the player knows they are out of sync.
-          setConnectionStatus('desynced')
+          if (!silent) setStateAndRef(currentState, currentVersion)
         }
       }
+      return 'conflict'
     },
     [roomCode, setStateAndRef]
+  )
+
+  const dispatch = useCallback(
+    async (action: TAction) => {
+      const result = await commitAction(action)
+      if (result === 'denied') {
+        setError('You are not a member of this room.')
+      } else if (result === 'conflict') {
+        setError('Action failed due to a conflict. Please try again.')
+        // BL-02: MAX_RETRIES CAS conflicts exhausted means local {state, version} is
+        // known-stale. Surface the desync indicator so the player knows they are out of sync.
+        setConnectionStatus('desynced')
+      }
+    },
+    [commitAction]
   )
 
   const leaveRoom = useCallback(async () => {
     const cfg = configRef.current
     try {
-      if (cfg.onBeforeLeave) {
-        await cfg.onBeforeLeave({
-          gameState: gameStateRef.current,
-          roomCode,
-          playerId,
-          roomToken: roomTokenRef.current,
-          tableName: cfg.tableName,
-          applyAction: cfg.applyAction,
-          stateSchema: cfg.stateSchema,
-        })
+      const state = gameStateRef.current
+      if (cfg.leaveAction && state && playerId) {
+        const action = cfg.leaveAction(state, playerId)
+        // Best-effort removal through the shared commit; teardown proceeds regardless of the
+        // outcome (silent: no error UI for a player who is already leaving).
+        if (action !== null) await commitAction(action, { silent: true })
       }
     } finally {
       stateChannelRef.current?.unsubscribe()
@@ -625,7 +637,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       clearSession(cfg.sessionKey)
       setSavedSession(null)
     }
-  }, [roomCode, playerId, setStateAndRef])
+  }, [playerId, commitAction, setStateAndRef])
 
   // CLIENT-02 (D-05..D-08): tear down realtime/broadcast/presence channels on tab close/hide
   // (`pagehide` / `visibilitychange→hidden`), NOT only on React unmount, and re-subscribe on
@@ -675,8 +687,18 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     }
   }, [])
 
+  // Redact the RETURNED state for the local player (display-only, D-09). The internal ref stays
+  // full, so commit always writes the unredacted state. Memoized to preserve the recompute cadence
+  // the per-game components had before redaction moved behind the seam. `config.redact` is fixed
+  // per game for the hook's lifetime, so it's read off the ref and left out of the deps.
+  const redactedGameState = useMemo(() => {
+    const redact = configRef.current.redact
+    if (!redact || !gameState || !playerId) return gameState
+    return redact(gameState, playerId)
+  }, [gameState, playerId])
+
   return {
-    gameState,
+    gameState: redactedGameState,
     playerId,
     roomCode,
     status,
