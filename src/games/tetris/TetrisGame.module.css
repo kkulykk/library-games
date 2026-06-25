@@ -1,0 +1,447 @@
+/* =========================================================================
+   TETRIS — board + chrome. Ported from the Library Games design system.
+   Reuses global tokens (--bg / --ink / --acid / --line …). Adds a board-local
+   --field / --cellbg so the playfield reads correctly in every theme.
+   ========================================================================= */
+
+.root {
+  --field: oklch(0.99 0.003 85);
+  --cellbg: oklch(0.95 0.004 85);
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+:global(body[data-theme='dark']) .root,
+:global(body[data-theme='warm']) .root,
+:global(body[data-theme='cool']) .root {
+  --field: oklch(0.12 0.01 85);
+  --cellbg: color-mix(in oklch, var(--field) 88%, var(--ink));
+}
+
+/* ─── Board layout ─────────────────────────────────────────── */
+.board {
+  position: relative;
+  display: grid;
+  grid-template-columns: 168px auto 188px;
+  align-items: start;
+  gap: 22px;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.panel {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 14px;
+}
+.panelLabel {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin-bottom: 10px;
+}
+
+/* stats */
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 0;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.stat:last-child {
+  border-bottom: 0;
+}
+.statLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.statValue {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Playfield ────────────────────────────────────────────── */
+.fieldwrap {
+  position: relative;
+  border: 1px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  background: var(--field);
+  line-height: 0;
+}
+.field {
+  --cell: clamp(14px, calc((100vh - 280px) / 20), 30px);
+  display: grid;
+  grid-template-columns: repeat(10, var(--cell));
+  grid-template-rows: repeat(20, var(--cell));
+  gap: 1px;
+  padding: 1px;
+  background: color-mix(in oklch, var(--ink) 16%, transparent);
+}
+.cell {
+  background: var(--cellbg);
+}
+.filled {
+  background: var(--blk);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklch, var(--blk) 60%, black),
+    inset 2px 2px 0 color-mix(in oklch, var(--blk) 75%, white);
+}
+.ghost {
+  background: transparent !important;
+  box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--blk) 55%, transparent);
+}
+
+/* ─── Mini pieces (hold / next) ────────────────────────────── */
+.slot {
+  display: flex;
+  flex-direction: column;
+}
+.mini {
+  display: grid;
+  place-items: center;
+  min-height: 56px;
+}
+.miniEmpty {
+  min-height: 56px;
+}
+.miniGrid {
+  display: grid;
+  gap: 2px;
+  width: 72px;
+  max-width: 72px;
+}
+.mini .cell {
+  width: 100%;
+  aspect-ratio: 1;
+  background: transparent;
+}
+.mini .filled {
+  border-radius: 1px;
+}
+
+.next {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nextRow {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+:global(body[data-theme='dark']) .nextRow,
+:global(body[data-theme='warm']) .nextRow,
+:global(body[data-theme='cool']) .nextRow {
+  background: var(--bg);
+}
+.nextLead {
+  border-color: var(--acid);
+}
+.nextLead .miniGrid {
+  width: 88px;
+  max-width: 88px;
+}
+
+/* ─── On-screen controls ───────────────────────────────────── */
+.controls {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.cbtn {
+  height: 44px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  display: grid;
+  place-items: center;
+  transition: all 0.12s;
+  user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.cbtn:hover {
+  border-color: var(--ink);
+}
+.cbtn:active {
+  background: var(--acid);
+  color: var(--acid-ink);
+  border-color: var(--ink);
+  transform: translateY(1px);
+}
+.cbtnWide {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.pausebtn {
+  height: 38px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: all 0.12s;
+}
+.pausebtn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.pausebtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ─── Overlays (pause / game over) ─────────────────────────── */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--bg) 72%, transparent);
+  backdrop-filter: blur(3px);
+}
+.overCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 32px;
+  background: var(--bg-2);
+  border: 1px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  text-align: center;
+  min-width: 240px;
+}
+.overKicker {
+  color: oklch(0.45 0.18 130);
+}
+:global(body[data-theme='dark']) .overKicker,
+:global(body[data-theme='warm']) .overKicker,
+:global(body[data-theme='cool']) .overKicker {
+  color: var(--acid);
+}
+.overTitle {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 46px;
+  letter-spacing: -0.03em;
+  margin: 0;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.overStats {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.pb {
+  color: oklch(0.45 0.18 130);
+}
+:global(body[data-theme='dark']) .pb,
+:global(body[data-theme='warm']) .pb,
+:global(body[data-theme='cool']) .pb {
+  color: var(--acid);
+}
+.overActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.overMeta {
+  color: var(--ink-mute);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* overlay buttons */
+.btn {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--acid);
+}
+.btnGhost {
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.78rem;
+  padding: 0.55rem 0.85rem;
+}
+.btnGhost:hover {
+  box-shadow: none;
+  border-color: var(--acid);
+  transform: none;
+}
+
+/* ─── Mobile / portrait layout ─────────────────────────────── */
+.mobile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+}
+.mbar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.mslot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  min-width: 72px;
+}
+.mslot .panelLabel {
+  margin: 0;
+}
+.mslot .mini {
+  min-height: 30px;
+}
+.mslot .miniGrid {
+  width: 44px;
+  max-width: 44px;
+}
+.mnext {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mstats {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  padding: 6px 8px;
+}
+.mobile .stat {
+  padding: 2px 6px;
+  border: 0;
+  align-items: center;
+  text-align: center;
+}
+.mobile .statValue {
+  font-size: 21px;
+}
+.mobile .field {
+  --cell: min(8.4vw, calc((100dvh - 360px) / 20));
+}
+.mpad {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.mbtn {
+  height: 54px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  transition:
+    background 0.08s,
+    transform 0.08s;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.mbtn:active {
+  background: var(--acid);
+  color: var(--acid-ink);
+  border-color: var(--ink);
+  transform: translateY(1px);
+}
+.mbtnDrop {
+  grid-column: 1 / span 2;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.mbtnDrop:active {
+  background: var(--acid);
+  color: var(--acid-ink);
+}
+.mbtnPause {
+  grid-column: 3;
+  font-size: 16px;
+}
+
+/* ─── Desktop shrink (between mobile switch and full width) ─── */
+@media (max-width: 760px) and (min-width: 681px) {
+  .board {
+    grid-template-columns: 150px auto 168px;
+    gap: 16px;
+  }
+}

@@ -3,19 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Eraser, PencilLine, Trash2, Undo2 } from 'lucide-react'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
-import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
+import { copyText } from '@/lib/clipboard'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { ArcadeAvatar } from '@/components/multiplayer/ArcadeAvatar'
 import { ArcadeShell, arcadeShellStyles } from '@/components/multiplayer/ArcadeShell'
-import { AvatarPicker } from '@/components/multiplayer/AvatarPicker'
 import { LobbyActions } from '@/components/multiplayer/LobbyActions'
 import { PlayerRoster } from '@/components/multiplayer/PlayerRoster'
 import { ResultsTable } from '@/components/multiplayer/ResultsTable'
 import { ResumeSessionCard } from '@/components/multiplayer/ResumeSessionCard'
 import { RoomInviteCard } from '@/components/multiplayer/RoomInviteCard'
+import { RoomEntry } from '@/components/multiplayer/RoomEntry'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
-import { normalizeRoomCode } from '@/lib/room-code'
 import { useSkribblRoom, type UseSkribblRoomReturn } from './useSkribblRoom'
 import {
   decodeWord,
@@ -53,23 +52,6 @@ const COLORS = [
 const BRUSH_SIZES = [3, 6, 12, 22]
 const WORD_PICKER_SECONDS = 15
 const ROUND_END_DELAY = 5
-const AVATAR_STORAGE_KEY = 'library-games:skribbl-avatar'
-
-function getSavedAvatar(): number {
-  if (typeof window === 'undefined') return 0
-  try {
-    const raw = Number(localStorage.getItem(AVATAR_STORAGE_KEY) ?? '0')
-    if (Number.isInteger(raw) && raw >= 0 && raw <= 7) return raw
-  } catch {}
-  return 0
-}
-
-function saveAvatar(index: number) {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(AVATAR_STORAGE_KEY, String(index))
-  } catch {}
-}
 
 function makeCrumb(
   gameState: GameState | null,
@@ -644,43 +626,30 @@ function EntryScreen({
   onRestore: () => void
   savedSession: UseSkribblRoomReturn['savedSession']
 }) {
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
-  const [name, setName] = useState(getSavedPlayerName)
-  const [avatar, setAvatar] = useState(getSavedAvatar)
-  const [code, setCode] = useState(initialCode ?? '')
-
-  useEffect(() => {
-    if (!initialCode) return
-    setMode('join')
-    setCode(initialCode)
-  }, [initialCode])
-
-  const canSubmit = name.trim().length >= 2 && (mode === 'create' || code.trim().length >= 6)
-
-  function submit() {
-    if (!canSubmit) return
-
-    const trimmedName = name.trim()
-    savePlayerName(trimmedName)
-    saveAvatar(avatar)
-
-    if (mode === 'create') {
-      onCreate(trimmedName, avatar)
-      return
-    }
-
-    onJoin(code.trim().toUpperCase(), trimmedName, avatar)
-  }
-
-  if (mode === 'choose') {
-    return (
-      <div className={styles.entryShell}>
-        <div className={styles.entryHead}>
-          <h2>Ready to play?</h2>
-          <p>Host a new room or jump into a friend&apos;s game with a code.</p>
-        </div>
-
-        {savedSession && (
+  return (
+    <RoomEntry
+      withAvatar
+      loading={loading}
+      error={error}
+      initialCode={initialCode}
+      onCreate={onCreate}
+      onJoin={onJoin}
+      onBack={onBackToHowTo}
+      copy={{
+        chooseTitle: 'Ready to play?',
+        chooseSubtitle: "Host a new room or jump into a friend's game with a code.",
+        createTitle: 'Create Room',
+        createHint: 'Host a private game',
+        joinTitle: 'Join Room',
+        joinHint: 'Enter a 4-char code',
+        createFormTitle: 'Create a room',
+        createFormSubtitle: "You'll be the host.",
+        joinFormTitle: 'Join a room',
+        joinFormSubtitle: 'Ask the host for the room code.',
+        backLabel: '← Back to how it works',
+      }}
+      resume={
+        savedSession ? (
           <ResumeSessionCard
             session={savedSession}
             onResume={onRestore}
@@ -689,128 +658,9 @@ function EntryScreen({
             descriptionClassName={styles.resumeCopy}
             actionClassName={cn(arcadeShellStyles.button, arcadeShellStyles.buttonSmall)}
           />
-        )}
-
-        <div className={styles.entryChoiceGrid}>
-          <button
-            type="button"
-            data-testid="create-room-button"
-            className={cn(styles.entryCard, styles.entryCardAccent)}
-            onClick={() => setMode('create')}
-          >
-            <div className={styles.entryCardTitle}>Create Room</div>
-            <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
-              Host a private game
-            </div>
-          </button>
-
-          <button
-            type="button"
-            data-testid="join-room-button"
-            className={styles.entryCard}
-            onClick={() => setMode('join')}
-          >
-            <div className={styles.entryCardTitle}>Join Room</div>
-            <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
-              Enter a 4-char code
-            </div>
-          </button>
-        </div>
-
-        {onBackToHowTo && (
-          <div className={styles.entryActions}>
-            <button
-              type="button"
-              className={cn(
-                arcadeShellStyles.button,
-                arcadeShellStyles.buttonGhost,
-                arcadeShellStyles.buttonSmall
-              )}
-              onClick={onBackToHowTo}
-            >
-              ← Back to how it works
-            </button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className={styles.entryShell}>
-      <div className={styles.entryHead}>
-        <h2>{mode === 'create' ? 'Create a room' : 'Join a room'}</h2>
-        <p>{mode === 'create' ? "You'll be the host." : 'Ask the host for the room code.'}</p>
-      </div>
-
-      <div className={styles.entryForm}>
-        {error && (
-          <div data-testid="room-error" className={styles.error}>
-            {error}
-          </div>
-        )}
-
-        <label className={styles.field}>
-          <span className={cn(styles.label, arcadeShellStyles.mono)}>Your name</span>
-          <input
-            data-testid="player-name-input"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            maxLength={16}
-            placeholder="e.g. Marble"
-            className={arcadeShellStyles.input}
-          />
-        </label>
-
-        <div className={styles.field}>
-          <span className={cn(styles.label, arcadeShellStyles.mono)}>Pick an avatar</span>
-          <AvatarPicker
-            selectedIndex={avatar}
-            onSelect={setAvatar}
-            className={styles.avatarGrid}
-            buttonClassName={styles.avatarButton}
-            selectedButtonClassName={styles.avatarButtonActive}
-          />
-        </div>
-
-        {mode === 'join' && (
-          <label className={styles.field}>
-            <span className={cn(styles.label, arcadeShellStyles.mono)}>Room code</span>
-            <input
-              data-testid="room-code-input"
-              value={code}
-              onChange={(event) => setCode(normalizeRoomCode(event.target.value))}
-              maxLength={6}
-              placeholder="7H2K9F"
-              className={cn(arcadeShellStyles.input, styles.codeInput)}
-            />
-          </label>
-        )}
-
-        <div className={styles.entryActions}>
-          <button
-            type="button"
-            className={cn(
-              arcadeShellStyles.button,
-              arcadeShellStyles.buttonGhost,
-              arcadeShellStyles.buttonSmall
-            )}
-            onClick={() => setMode('choose')}
-          >
-            ← Back
-          </button>
-          <button
-            type="button"
-            data-testid={mode === 'create' ? 'create-room-button' : 'join-room-button'}
-            onClick={submit}
-            disabled={loading || !canSubmit}
-            className={arcadeShellStyles.button}
-          >
-            {loading ? 'Connecting...' : mode === 'create' ? 'Create room' : 'Join room'}
-          </button>
-        </div>
-      </div>
-    </div>
+        ) : null
+      }
+    />
   )
 }
 
@@ -837,7 +687,7 @@ function LobbyScreen({
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function copyValue(value: string, kind: 'code' | 'link') {
-    navigator.clipboard?.writeText(value).then(
+    copyText(value).then(
       () => {
         setCopied(kind)
         window.setTimeout(() => setCopied(null), 1800)

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { GameRulesGate } from '@/components/GameRulesGate'
+import { GameHowTo } from '@/components/GameHowTo'
 import { games } from '@/data/games'
 
 interface GameLayoutProps {
@@ -48,13 +48,7 @@ export function GameLayout({ title, slug, children, score }: GameLayoutProps) {
         }}
       >
         <ErrorBoundary>
-          {game ? (
-            <GameRulesGate emoji={game.emoji} title={game.title} rules={game.rules}>
-              {children}
-            </GameRulesGate>
-          ) : (
-            children
-          )}
+          {game ? <GameHowTo game={game}>{children}</GameHowTo> : children}
         </ErrorBoundary>
       </main>
     </div>
