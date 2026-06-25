@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { cn } from '@/lib/utils'
-import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
+import { copyText } from '@/lib/clipboard'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { ArcadeShell, arcadeShellStyles } from '@/components/multiplayer/ArcadeShell'
 import { LobbyActions } from '@/components/multiplayer/LobbyActions'
 import { ResumeSessionCard } from '@/components/multiplayer/ResumeSessionCard'
+import { RoomEntry } from '@/components/multiplayer/RoomEntry'
 import type { SavedSessionSummary } from '@/components/multiplayer/ResumeSessionButton'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
-import { normalizeRoomCode } from '@/lib/room-code'
 import { useUnoRoom } from './useUnoRoom'
 import {
   getPlayableCards,
@@ -457,38 +457,31 @@ function EntryScreen({
   initialCode,
   onBackToHowTo,
 }: EntryScreenProps) {
-  const [name, setName] = useState(getSavedPlayerName)
-  const [joinCode, setJoinCode] = useState(initialCode ?? '')
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
-
-  useEffect(() => {
-    if (!initialCode) return
-    setMode('join')
-    setJoinCode(initialCode)
-  }, [initialCode])
-
-  const canSubmit = name.trim().length >= 2 && (mode === 'create' || joinCode.trim().length >= 6)
-
-  function submit() {
-    if (!canSubmit) return
-    const trimmedName = name.trim()
-    savePlayerName(trimmedName)
-    if (mode === 'create') {
-      onCreate(trimmedName)
-      return
-    }
-    onJoin(joinCode.trim().toUpperCase(), trimmedName)
-  }
-
-  if (mode === 'choose') {
-    return (
-      <div className={styles.entryShell}>
-        <div className={styles.entryHead}>
-          <h2>Ready to deal?</h2>
-          <p>Host a private table or join a friend&apos;s room with a code.</p>
-        </div>
-
-        {savedSession && onRestore && (
+  return (
+    <RoomEntry
+      loading={loading}
+      error={error}
+      initialCode={initialCode}
+      onCreate={(name) => onCreate(name)}
+      onJoin={(code, name) => onJoin(code, name)}
+      onBack={onBackToHowTo}
+      copy={{
+        chooseTitle: 'Ready to deal?',
+        chooseSubtitle: "Host a private table or join a friend's room with a code.",
+        createTitle: 'Create Table',
+        createHint: 'Host a private game',
+        joinTitle: 'Join Table',
+        joinHint: 'Enter a 4-char code',
+        createFormTitle: 'New table',
+        createFormSubtitle: "You'll get a code to share.",
+        joinFormTitle: 'Join a table',
+        joinFormSubtitle: 'Enter the code your friend shared.',
+        backLabel: '← Back to how to play',
+        createSubmitLabel: 'Create table',
+        joinSubmitLabel: 'Join table',
+      }}
+      resume={
+        savedSession && onRestore ? (
           <ResumeSessionCard
             session={savedSession}
             onResume={onRestore}
@@ -497,146 +490,9 @@ function EntryScreen({
             descriptionClassName={styles.resumeCopy}
             actionClassName={cn(arcadeShellStyles.button, arcadeShellStyles.buttonSmall)}
           />
-        )}
-
-        <div className={styles.entryChoiceGrid}>
-          <button
-            type="button"
-            data-testid="create-room-button"
-            className={cn(styles.entryCard, styles.entryCardAccent)}
-            onClick={() => setMode('create')}
-          >
-            <span className={styles.entryCardIcon}>
-              <svg
-                viewBox="0 0 40 40"
-                width="22"
-                height="22"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M 20 8 L 20 32 M 8 20 L 32 20" />
-              </svg>
-            </span>
-            <div>
-              <div className={styles.entryCardTitle}>Create Table</div>
-              <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
-                Host a private game
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            data-testid="join-room-button"
-            className={styles.entryCard}
-            onClick={() => setMode('join')}
-          >
-            <span className={styles.entryCardIcon}>
-              <svg
-                viewBox="0 0 40 40"
-                width="22"
-                height="22"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M 8 20 L 32 20 M 24 12 L 32 20 L 24 28" />
-              </svg>
-            </span>
-            <div>
-              <div className={styles.entryCardTitle}>Join Table</div>
-              <div className={cn(styles.entryCardCopy, arcadeShellStyles.mono)}>
-                Enter a 4-char code
-              </div>
-            </div>
-          </button>
-        </div>
-
-        {onBackToHowTo && (
-          <div className={styles.entryActions}>
-            <button
-              type="button"
-              className={cn(
-                arcadeShellStyles.button,
-                arcadeShellStyles.buttonGhost,
-                arcadeShellStyles.buttonSmall
-              )}
-              onClick={onBackToHowTo}
-            >
-              ← Back to how to play
-            </button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const isCreate = mode === 'create'
-  return (
-    <div className={styles.entryShell}>
-      <div className={styles.entryHead}>
-        <h2>{isCreate ? 'New table' : 'Join a table'}</h2>
-        <p>{isCreate ? "You'll get a code to share." : 'Enter the code your friend shared.'}</p>
-      </div>
-
-      <div className={styles.entryForm}>
-        {error && (
-          <div data-testid="room-error" className={styles.error}>
-            {error}
-          </div>
-        )}
-
-        <label className={styles.field}>
-          <span className={cn(styles.label, arcadeShellStyles.mono)}>Your nickname</span>
-          <input
-            data-testid="player-name-input"
-            value={name}
-            onChange={(e) => setName(e.target.value.slice(0, 16))}
-            placeholder="e.g. queen of clubs"
-            autoFocus
-            className={arcadeShellStyles.input}
-          />
-        </label>
-
-        {!isCreate && (
-          <label className={styles.field}>
-            <span className={cn(styles.label, arcadeShellStyles.mono)}>Room code</span>
-            <input
-              data-testid="room-code-input"
-              value={joinCode}
-              onChange={(e) => setJoinCode(normalizeRoomCode(e.target.value))}
-              placeholder="7H2K9F"
-              maxLength={6}
-              className={cn(arcadeShellStyles.input, styles.codeInput)}
-            />
-          </label>
-        )}
-
-        <div className={cn(styles.entryActions, styles.entryActionsBetween)}>
-          <button
-            type="button"
-            className={cn(
-              arcadeShellStyles.button,
-              arcadeShellStyles.buttonGhost,
-              arcadeShellStyles.buttonSmall
-            )}
-            onClick={() => setMode('choose')}
-          >
-            ← Back
-          </button>
-          <button
-            type="button"
-            data-testid={isCreate ? 'create-room-button' : 'join-room-button'}
-            disabled={loading || !canSubmit}
-            onClick={submit}
-            className={arcadeShellStyles.button}
-          >
-            {loading ? 'Connecting…' : isCreate ? 'Create →' : 'Join →'}
-          </button>
-        </div>
-      </div>
-    </div>
+        ) : null
+      }
+    />
   )
 }
 
@@ -664,8 +520,7 @@ function LobbyScreen({
   const inviteLink = getInviteLink('uno', roomCode)
 
   function copyValue(value: string, kind: 'code' | 'link') {
-    if (!navigator.clipboard) return
-    navigator.clipboard.writeText(value).then(
+    copyText(value).then(
       () => {
         setCopied(kind)
         window.setTimeout(() => setCopied(null), 1400)

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { RoomRpcRow } from '@/lib/supabase'
 import { generateRoomCode } from '@/lib/room-code'
+import { randomId } from '@/lib/uuid'
 import type { ZodType } from 'zod'
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
@@ -333,7 +334,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       setStatus('creating')
       setError(null)
 
-      const id = crypto.randomUUID()
+      const id = randomId()
       const hostPlayer = cfg.createPlayer({
         id,
         name: playerName,
@@ -421,7 +422,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         return
       }
 
-      const id = crypto.randomUUID()
+      const id = randomId()
       const player = cfg.createPlayer({
         id,
         name: playerName,
