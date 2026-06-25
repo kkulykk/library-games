@@ -1,0 +1,201 @@
+/* Shared "How to play" screen — mirrors the Skribbl/Uno arcade HowToScreen so
+   every game gets a consistent intro. Self-contained: it defines the same
+   --arcade-* aliases ArcadeShell does, so single-player pages (which don't sit
+   inside ArcadeShell) render with the identical look. */
+
+.root {
+  --arcade-bg: var(--bg);
+  --arcade-bg-2: var(--bg-2);
+  --arcade-ink: var(--ink);
+  --arcade-ink-dim: var(--ink-dim);
+  --arcade-ink-mute: var(--ink-mute);
+  --arcade-line: var(--line);
+  --arcade-accent: var(--acid);
+  --arcade-accent-ink: var(--acid-ink);
+  --arcade-highlight: oklch(0.58 0.2 330);
+
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  color: var(--arcade-ink);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.08fr 1fr;
+  gap: 2.5rem;
+  align-items: center;
+}
+
+.heroLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.tag {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--arcade-highlight);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+}
+
+.tag::before {
+  content: '';
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--arcade-accent);
+}
+
+.heroTitle {
+  margin: 0;
+  font-size: clamp(2.6rem, 6vw, 4.6rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  font-weight: 800;
+}
+
+.heroTitleAccent {
+  display: inline-block;
+  padding-inline: 0.55rem;
+  background: var(--arcade-accent);
+  color: var(--arcade-accent-ink);
+  transform: rotate(-2deg);
+}
+
+.heroTagline {
+  margin: 0;
+  color: var(--arcade-ink);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.heroCopy {
+  max-width: 42rem;
+  margin: 0;
+  color: var(--arcade-ink-dim);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.heroMeta {
+  display: inline-flex;
+  align-items: center;
+  color: var(--arcade-ink-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.playButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--arcade-ink);
+  background: var(--arcade-ink);
+  color: var(--arcade-bg);
+  padding: 0.85rem 1.5rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.playButton:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--arcade-accent);
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.95rem;
+}
+
+.step {
+  display: flex;
+  min-height: 10.5rem;
+  flex-direction: column;
+  gap: 0.8rem;
+  border: 1px solid var(--arcade-line);
+  background: color-mix(in oklch, #fff 75%, var(--arcade-bg-2));
+  padding: 1.2rem;
+}
+
+.stepAccent {
+  background: var(--arcade-accent);
+  color: var(--arcade-accent-ink);
+  border-color: var(--arcade-ink);
+}
+
+.stepNumber {
+  color: var(--arcade-ink-mute);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+.stepAccent .stepNumber {
+  color: color-mix(in oklch, var(--arcade-accent-ink) 72%, transparent);
+}
+
+.stepIcon {
+  display: grid;
+  width: 3.1rem;
+  height: 3.1rem;
+  place-items: center;
+  border: 1px solid currentColor;
+  background: #fff;
+}
+
+.stepAccent .stepIcon {
+  background: color-mix(in oklch, #fff 72%, var(--arcade-accent));
+}
+
+.stepTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.stepAccent .stepTitle {
+  color: var(--arcade-accent-ink);
+}
+
+.stepDescription {
+  color: var(--arcade-ink-dim);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.stepAccent .stepDescription {
+  color: color-mix(in oklch, var(--arcade-accent-ink) 78%, transparent);
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+}

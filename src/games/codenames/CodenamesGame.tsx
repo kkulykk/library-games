@@ -2,15 +2,15 @@
 
 import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
-import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
+import { copyText } from '@/lib/clipboard'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import {
   ResumeSessionButton,
   type SavedSessionSummary,
 } from '@/components/multiplayer/ResumeSessionButton'
+import { RoomEntry } from '@/components/multiplayer/RoomEntry'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
-import { normalizeRoomCode } from '@/lib/room-code'
 import { useCodenamesRoom } from './useCodenamesRoom'
 import {
   canStartGame,
@@ -85,108 +85,32 @@ function EntryScreen({
   error,
   initialCode,
 }: EntryScreenProps) {
-  const [name, setName] = useState(getSavedPlayerName)
-  const [joinCode, setJoinCode] = useState(initialCode ?? '')
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
-
-  if (mode === 'choose') {
-    return (
-      <div className="animate-cn-fade-in flex flex-col items-center gap-6">
-        <div className="text-center">
-          <div className="mb-3 text-5xl">🕵️</div>
-          <h2 className="text-xl font-black tracking-tight">Codenames</h2>
-          <p className="text-muted-foreground text-sm">4-10 players</p>
-        </div>
-        {savedSession && (
-          <ResumeSessionButton
-            session={savedSession}
-            onClick={() => onRestore?.()}
-            className="w-64"
-          />
-        )}
-        <div className="flex gap-3">
-          <button
-            data-testid="create-room-button"
-            onClick={() => setMode('create')}
-            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
-          >
-            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
-              <span className="text-2xl">+</span>
-            </div>
-            <span>Create Room</span>
-            <span className="text-muted-foreground text-xs font-normal">Host a game</span>
-          </button>
-          <button
-            data-testid="join-room-button"
-            onClick={() => setMode('join')}
-            className="bg-secondary hover:bg-secondary/70 flex w-36 flex-col items-center gap-2 rounded-2xl px-6 py-5 text-center font-semibold transition-all hover:shadow-lg active:scale-95"
-          >
-            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
-              <span className="text-2xl">&rarr;</span>
-            </div>
-            <span>Join Room</span>
-            <span className="text-muted-foreground text-xs font-normal">Enter a code</span>
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const isCreate = mode === 'create'
   return (
-    <div className="animate-cn-slide-up flex w-72 flex-col gap-4">
-      <button
-        onClick={() => setMode('choose')}
-        className="text-muted-foreground hover:text-foreground self-start text-sm"
-      >
-        &larr; Back
-      </button>
-      <h2 className="text-lg font-bold">{isCreate ? 'Create Room' : 'Join Room'}</h2>
-      {error && (
-        <p
-          data-testid="room-error"
-          className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm"
-        >
-          {error}
-        </p>
-      )}
-      <label className="flex flex-col gap-1">
-        <span className="text-muted-foreground text-xs font-medium">Your name</span>
-        <input
-          data-testid="player-name-input"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Enter your name"
-          maxLength={16}
-          className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"
-        />
-      </label>
-      {!isCreate && (
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-xs font-medium">Room code</span>
-          <input
-            data-testid="room-code-input"
-            value={joinCode}
-            onChange={(e) => setJoinCode(normalizeRoomCode(e.target.value))}
-            placeholder="e.g. 7H2K9F"
-            maxLength={6}
-            className="bg-background focus:ring-primary/40 rounded-lg border px-3 py-2 text-sm tracking-widest uppercase outline-none focus:ring-2"
-          />
-        </label>
-      )}
-      <button
-        data-testid={isCreate ? 'create-room-button' : 'join-room-button'}
-        disabled={loading || !name.trim() || (!isCreate && joinCode.length < 6)}
-        onClick={() => {
-          savePlayerName(name.trim())
-          if (isCreate) onCreate(name.trim())
-          else onJoin(joinCode, name.trim())
-        }}
-        className="bg-primary text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
-      >
-        {loading ? 'Connecting\u2026' : isCreate ? 'Create Room' : 'Join Room'}
-      </button>
-    </div>
+    <RoomEntry
+      loading={loading}
+      error={error}
+      initialCode={initialCode}
+      onCreate={(name) => onCreate(name)}
+      onJoin={(code, name) => onJoin(code, name)}
+      copy={{
+        chooseTitle: 'Ready to play?',
+        chooseSubtitle: 'Host a private game or join with a room code.',
+        createTitle: 'Create Room',
+        createHint: 'Host a private game',
+        joinTitle: 'Join Room',
+        joinHint: 'Enter a 4-char code',
+        createFormTitle: 'Create a room',
+        createFormSubtitle: "You'll be the host.",
+        joinFormTitle: 'Join a room',
+        joinFormSubtitle: 'Ask the host for the room code.',
+        namePlaceholder: 'Enter your name',
+      }}
+      resume={
+        savedSession ? (
+          <ResumeSessionButton session={savedSession} onClick={() => onRestore?.()} />
+        ) : null
+      }
+    />
   )
 }
 
@@ -296,7 +220,7 @@ function LobbyScreen({
   const unassignedPlayers = gameState.players.filter((player) => !player.team || !player.role)
 
   function copyCode() {
-    navigator.clipboard.writeText(roomCode).then(
+    copyText(roomCode).then(
       () => {
         setCopied('code')
         setTimeout(() => setCopied(null), 2000)
@@ -306,7 +230,7 @@ function LobbyScreen({
   }
 
   function copyInviteLink() {
-    navigator.clipboard.writeText(getInviteLink('codenames', roomCode)).then(
+    copyText(getInviteLink('codenames', roomCode)).then(
       () => {
         setCopied('link')
         setTimeout(() => setCopied(null), 2000)

@@ -84,6 +84,12 @@ export function SnakeGame() {
 
   const tick = useCallback(() => dispatch({ type: 'tick' }), [])
 
+  // Auto-start on mount: the how-to "Play now" gate already gated entry, so the
+  // game should be running immediately rather than waiting for a second input.
+  useEffect(() => {
+    dispatch({ type: 'start' })
+  }, [])
+
   useEffect(() => {
     if (!started || gameOver) return
     const speed = getSpeed(score)
