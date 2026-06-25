@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { cn } from '@/lib/utils'
+import { copyText } from '@/lib/clipboard'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
@@ -694,7 +695,7 @@ function Lobby({
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function copyCode() {
-    navigator.clipboard.writeText(roomCode).then(
+    copyText(roomCode).then(
       () => {
         setCopied('code')
         setTimeout(() => setCopied(null), 2000)
@@ -704,7 +705,7 @@ function Lobby({
   }
 
   function copyInviteLink() {
-    navigator.clipboard.writeText(getInviteLink('agario', roomCode)).then(
+    copyText(getInviteLink('agario', roomCode)).then(
       () => {
         setCopied('link')
         setTimeout(() => setCopied(null), 2000)

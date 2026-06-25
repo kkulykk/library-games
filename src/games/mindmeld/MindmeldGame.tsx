@@ -2,15 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
+import { copyText } from '@/lib/clipboard'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import {
   ResumeSessionButton,
   type SavedSessionSummary,
 } from '@/components/multiplayer/ResumeSessionButton'
+import { RoomEntry } from '@/components/multiplayer/RoomEntry'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
-import { normalizeRoomCode } from '@/lib/room-code'
 import { useMindmeldRoom } from './useMindmeldRoom'
 import {
   BULLSEYE_RADIUS,
@@ -88,128 +88,32 @@ function EntryScreen({
   error,
   initialCode,
 }: EntryScreenProps) {
-  const [name, setName] = useState(getSavedPlayerName)
-  const [joinCode, setJoinCode] = useState(initialCode ?? '')
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
-
-  if (mode === 'choose') {
-    return (
-      <div className="animate-mindmeld-fade-up flex max-w-3xl flex-col gap-8">
-        <div className="overflow-hidden rounded-[2rem] border border-amber-500/20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_35%),linear-gradient(160deg,rgba(24,24,27,0.96),rgba(39,39,42,0.92))] p-8 text-white shadow-2xl">
-          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/8 px-3 py-1 text-[11px] font-semibold tracking-[0.28em] text-amber-200 uppercase">
-                <span className="animate-mindmeld-float">●</span>
-                Wavelength style
-              </div>
-              <h2 className="text-4xl font-black tracking-tight sm:text-5xl">Mindmeld</h2>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-white/70 sm:text-base">
-                One player sees the secret position. They give a clue. Everyone else talks it out
-                and locks a single shared guess on the dial.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
-              {MIN_PLAYERS}-10 players
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              data-testid="create-room-button"
-              onClick={() => setMode('create')}
-              className="rounded-[1.5rem] border border-white/10 bg-white/8 px-6 py-6 text-left transition hover:-translate-y-0.5 hover:bg-white/12"
-            >
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-300/18 text-2xl">
-                +
-              </div>
-              <div className="text-lg font-semibold">Create room</div>
-              <div className="mt-1 text-sm text-white/65">Host the psychic signal.</div>
-            </button>
-            <button
-              data-testid="join-room-button"
-              onClick={() => setMode('join')}
-              className="rounded-[1.5rem] border border-white/10 bg-white/8 px-6 py-6 text-left transition hover:-translate-y-0.5 hover:bg-white/12"
-            >
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-300/18 text-2xl">
-                →
-              </div>
-              <div className="text-lg font-semibold">Join room</div>
-              <div className="mt-1 text-sm text-white/65">Tune into an existing table.</div>
-            </button>
-          </div>
-        </div>
-
-        {savedSession && onRestore && (
-          <ResumeSessionButton
-            session={savedSession}
-            onClick={onRestore}
-            className="mx-auto w-full max-w-md rounded-2xl px-6 py-4"
-          />
-        )}
-      </div>
-    )
-  }
-
-  const isCreate = mode === 'create'
   return (
-    <div className="animate-mindmeld-fade-up bg-background/95 flex w-full max-w-sm flex-col gap-4 rounded-[1.75rem] border p-6 shadow-xl">
-      <button
-        onClick={() => setMode('choose')}
-        className="text-muted-foreground hover:text-foreground self-start text-sm"
-      >
-        ← Back
-      </button>
-      <div>
-        <h2 className="text-xl font-black">{isCreate ? 'Create Room' : 'Join Room'}</h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {isCreate ? 'Start a new psychic dial.' : 'Enter the room code to jump in.'}
-        </p>
-      </div>
-      {error && (
-        <p
-          data-testid="room-error"
-          className="bg-destructive/10 text-destructive rounded-lg px-3 py-2 text-sm"
-        >
-          {error}
-        </p>
-      )}
-      <label className="flex flex-col gap-1.5">
-        <span className="text-muted-foreground text-xs font-medium">Your name</span>
-        <input
-          data-testid="player-name-input"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Enter your name"
-          maxLength={16}
-          className="bg-background focus:ring-primary/40 rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2"
-        />
-      </label>
-      {!isCreate && (
-        <label className="flex flex-col gap-1.5">
-          <span className="text-muted-foreground text-xs font-medium">Room code</span>
-          <input
-            data-testid="room-code-input"
-            value={joinCode}
-            onChange={(e) => setJoinCode(normalizeRoomCode(e.target.value))}
-            placeholder="e.g. 7H2K9F"
-            maxLength={6}
-            className="bg-background focus:ring-primary/40 rounded-xl border px-3 py-2.5 text-sm tracking-[0.35em] uppercase outline-none focus:ring-2"
-          />
-        </label>
-      )}
-      <button
-        data-testid={isCreate ? 'create-room-button' : 'join-room-button'}
-        disabled={loading || !name.trim() || (!isCreate && joinCode.length < 6)}
-        onClick={() => {
-          savePlayerName(name.trim())
-          if (isCreate) onCreate(name.trim())
-          else onJoin(joinCode, name.trim())
-        }}
-        className="bg-foreground text-background rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        {loading ? 'Connecting…' : isCreate ? 'Create Room' : 'Join Room'}
-      </button>
-    </div>
+    <RoomEntry
+      loading={loading}
+      error={error}
+      initialCode={initialCode}
+      onCreate={(name) => onCreate(name)}
+      onJoin={(code, name) => onJoin(code, name)}
+      copy={{
+        chooseTitle: 'Ready to meld?',
+        chooseSubtitle: 'Host a private game or join with a room code.',
+        createTitle: 'Create Room',
+        createHint: 'Host a private game',
+        joinTitle: 'Join Room',
+        joinHint: 'Enter a 4-char code',
+        createFormTitle: 'Create a room',
+        createFormSubtitle: "You'll be the host.",
+        joinFormTitle: 'Join a room',
+        joinFormSubtitle: 'Ask the host for the room code.',
+        namePlaceholder: 'Enter your name',
+      }}
+      resume={
+        savedSession ? (
+          <ResumeSessionButton session={savedSession} onClick={() => onRestore?.()} />
+        ) : null
+      }
+    />
   )
 }
 
@@ -227,7 +131,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function handleCopy(value: string, type: 'code' | 'link') {
-    navigator.clipboard.writeText(value).then(() => {
+    copyText(value).then(() => {
       setCopied(type)
       setTimeout(() => setCopied(null), 1800)
     })

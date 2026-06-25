@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
-import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
+import { copyText } from '@/lib/clipboard'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import {
   ResumeSessionButton,
   type SavedSessionSummary,
 } from '@/components/multiplayer/ResumeSessionButton'
+import { RoomEntry } from '@/components/multiplayer/RoomEntry'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
-import { normalizeRoomCode } from '@/lib/room-code'
 import { useCAHRoom } from './useCAHRoom'
 import {
   getCzar,
@@ -275,126 +275,32 @@ function EntryScreen({
   error,
   initialCode,
 }: EntryScreenProps) {
-  const [name, setName] = useState(getSavedPlayerName)
-  const [joinCode, setJoinCode] = useState(initialCode ?? '')
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
-
-  if (mode === 'choose') {
-    return (
-      <div className="animate-cah-fade-in flex flex-col items-center gap-8">
-        {/* Logo / branding */}
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative flex items-center justify-center">
-            <div className="cah-black-card flex h-20 w-14 items-center justify-center rounded-xl text-2xl font-black text-white shadow-xl">
-              ?
-            </div>
-            <div className="cah-white-card absolute top-1 -right-3 flex h-20 w-14 -rotate-6 items-center justify-center rounded-xl border text-2xl font-black shadow-xl">
-              !
-            </div>
-          </div>
-          <div className="text-center">
-            <h2 className="text-2xl font-black tracking-tight">Cards Against Humanity</h2>
-            <p className="text-muted-foreground mt-1 text-sm">A party game for horrible people</p>
-            <p className="text-muted-foreground/60 text-xs">3–10 players</p>
-          </div>
-        </div>
-
-        {savedSession && (
-          <ResumeSessionButton
-            session={savedSession}
-            onClick={() => onRestore?.()}
-            className="border-primary/30 hover:border-primary/50 hover:bg-secondary/50 w-72 py-3.5 transition-all"
-            titleClassName="text-sm"
-          />
-        )}
-
-        <div className="flex gap-4">
-          <button
-            data-testid="create-room-button"
-            onClick={() => setMode('create')}
-            className="group border-border/50 bg-card hover:border-border flex w-40 flex-col items-center gap-3 rounded-2xl border px-6 py-6 text-center transition-all hover:-translate-y-1 hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
-          >
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-white transition-transform group-hover:scale-110 dark:bg-white dark:text-black">
-              <span className="text-2xl font-black">+</span>
-            </div>
-            <div>
-              <span className="block font-bold">Create Room</span>
-              <span className="text-muted-foreground text-xs">Host a game</span>
-            </div>
-          </button>
-          <button
-            data-testid="join-room-button"
-            onClick={() => setMode('join')}
-            className="group border-border/50 bg-card hover:border-border flex w-40 flex-col items-center gap-3 rounded-2xl border px-6 py-6 text-center transition-all hover:-translate-y-1 hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
-          >
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-white transition-transform group-hover:scale-110 dark:bg-white dark:text-black">
-              <span className="text-2xl">&rarr;</span>
-            </div>
-            <div>
-              <span className="block font-bold">Join Room</span>
-              <span className="text-muted-foreground text-xs">Enter a code</span>
-            </div>
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const isCreate = mode === 'create'
   return (
-    <div className="animate-cah-slide-up flex w-80 flex-col gap-5">
-      <button
-        onClick={() => setMode('choose')}
-        className="group text-muted-foreground hover:text-foreground flex items-center gap-1 self-start text-sm transition-colors"
-      >
-        <span className="transition-transform group-hover:-translate-x-0.5">&larr;</span> Back
-      </button>
-      <h2 className="text-xl font-black">{isCreate ? 'Create Room' : 'Join Room'}</h2>
-      {error && (
-        <p
-          data-testid="room-error"
-          className="animate-cah-slide-down bg-destructive/10 text-destructive rounded-xl px-4 py-2.5 text-sm font-medium"
-        >
-          {error}
-        </p>
-      )}
-      <label className="flex flex-col gap-1.5">
-        <span className="text-muted-foreground text-xs font-semibold">Your name</span>
-        <input
-          data-testid="player-name-input"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Enter your name"
-          maxLength={16}
-          className="bg-background focus:ring-primary/30 rounded-xl border px-4 py-2.5 text-sm font-medium transition-shadow outline-none focus:ring-2"
-        />
-      </label>
-      {!isCreate && (
-        <label className="flex flex-col gap-1.5">
-          <span className="text-muted-foreground text-xs font-semibold">Room code</span>
-          <input
-            data-testid="room-code-input"
-            value={joinCode}
-            onChange={(e) => setJoinCode(normalizeRoomCode(e.target.value))}
-            placeholder="e.g. 7H2K9F"
-            maxLength={6}
-            className="bg-background focus:ring-primary/30 rounded-xl border px-4 py-2.5 text-center text-lg font-black tracking-[0.3em] uppercase transition-shadow outline-none focus:ring-2"
-          />
-        </label>
-      )}
-      <button
-        data-testid={isCreate ? 'create-room-button' : 'join-room-button'}
-        disabled={loading || !name.trim() || (!isCreate && joinCode.length < 6)}
-        onClick={() => {
-          savePlayerName(name.trim())
-          if (isCreate) onCreate(name.trim())
-          else onJoin(joinCode, name.trim())
-        }}
-        className="rounded-xl bg-black px-4 py-3 text-sm font-bold text-white transition-all hover:bg-gray-800 active:scale-[0.98] disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-gray-200"
-      >
-        {loading ? 'Connecting\u2026' : isCreate ? 'Create Room' : 'Join Room'}
-      </button>
-    </div>
+    <RoomEntry
+      loading={loading}
+      error={error}
+      initialCode={initialCode}
+      onCreate={(name) => onCreate(name)}
+      onJoin={(code, name) => onJoin(code, name)}
+      copy={{
+        chooseTitle: 'Ready to play?',
+        chooseSubtitle: "Host a private game or join a friend's room with a code.",
+        createTitle: 'Create Room',
+        createHint: 'Host a private game',
+        joinTitle: 'Join Room',
+        joinHint: 'Enter a 4-char code',
+        createFormTitle: 'Create a room',
+        createFormSubtitle: "You'll be the host.",
+        joinFormTitle: 'Join a room',
+        joinFormSubtitle: 'Ask the host for the room code.',
+        namePlaceholder: 'Enter your name',
+      }}
+      resume={
+        savedSession ? (
+          <ResumeSessionButton session={savedSession} onClick={() => onRestore?.()} />
+        ) : null
+      }
+    />
   )
 }
 
@@ -411,7 +317,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   const copyCode = useCallback(() => {
-    navigator.clipboard.writeText(roomCode).then(
+    copyText(roomCode).then(
       () => {
         setCopied('code')
         setTimeout(() => setCopied(null), 2000)
@@ -421,7 +327,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
   }, [roomCode])
 
   const copyInviteLink = useCallback(() => {
-    navigator.clipboard.writeText(getInviteLink('cards-against-humanity', roomCode)).then(
+    copyText(getInviteLink('cards-against-humanity', roomCode)).then(
       () => {
         setCopied('link')
         setTimeout(() => setCopied(null), 2000)

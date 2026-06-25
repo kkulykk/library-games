@@ -176,6 +176,16 @@ export function BreakoutGame() {
     rafRef.current = requestAnimationFrame(gameLoop)
   }
 
+  // Auto-start on mount: the how-to "Play now" gate already gated entry, so the
+  // game should be running immediately rather than waiting for a second input.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (autoStarted.current) return
+    autoStarted.current = true
+    startGame()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     draw()
     return () => {
