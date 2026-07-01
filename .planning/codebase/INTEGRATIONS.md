@@ -22,7 +22,7 @@
 
 **Database Schema:**
 
-- File: `supabase-schema.sql`
+- File: `supabase/schema.sql`
 - Tables: `uno_rooms`, `skribbl_rooms`, `agario_rooms`, `cah_rooms`, `codenames_rooms`, `mindmeld_rooms`
 - Structure per table:
   - `id` (UUID primary key)

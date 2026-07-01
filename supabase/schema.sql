@@ -60,7 +60,7 @@ create or replace trigger uno_rooms_protect_immutable
 -- returns at most one row). Any pre-existing permissive select/update/insert
 -- using(true) policies are dropped by the SEAL block further below (so
 -- re-pasting this file onto an existing deployment actually seals it); rollback
--- lives in supabase-migration-seal-rls-rollback.sql. DELETE has no policy
+-- lives in migrations/supabase-migration-seal-rls-rollback.sql. DELETE has no policy
 -- (pg_cron-only cleanup).
 alter table uno_rooms enable row level security;
 
@@ -208,7 +208,7 @@ alter table mindmeld_rooms enable row level security;
 -- actually seals an existing deployment. RLS stays ENABLED throughout (never
 -- disabled — that would re-open world-read). DELETE has no policy (pg_cron-only
 -- cleanup) and is left untouched. Standalone + rollback equivalents:
--- supabase-migration-seal-rls.sql / supabase-migration-seal-rls-rollback.sql
+-- migrations/supabase-migration-seal-rls.sql / migrations/supabase-migration-seal-rls-rollback.sql
 do $$
 declare
   t text;
