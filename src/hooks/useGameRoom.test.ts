@@ -9,7 +9,7 @@
  */
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { z } from 'zod'
-import { useGameRoom, type GameRoomConfig } from './useGameRoom'
+import { createLeaveByRemovingPlayer, useGameRoom, type GameRoomConfig } from './useGameRoom'
 
 // --- Controllable supabase channel double ----------------------------------------------------
 
@@ -56,18 +56,23 @@ function makeChannel(name: string): ChannelDouble {
 // Authoritative {state, version} the get_<game> RPC returns to refetchAuthoritativeState.
 let authoritativeRow: { state: unknown; version: number } | null = null
 
-const rpc = jest.fn(async (fn: string) => {
-  if (fn.startsWith('create_')) {
-    return {
-      data: [{ state: { phase: 'lobby', players: [] }, version: 1, room_token: 'tok' }],
-      error: null,
+const rpc = jest.fn(
+  async (
+    fn: string,
+    _payload?: unknown
+  ): Promise<{ data: unknown; error: { code?: string } | null }> => {
+    if (fn.startsWith('create_')) {
+      return {
+        data: [{ state: { phase: 'lobby', players: [] }, version: 1, room_token: 'tok' }],
+        error: null,
+      }
     }
+    if (fn.startsWith('get_')) {
+      return { data: authoritativeRow ? [authoritativeRow] : [], error: null }
+    }
+    return { data: null, error: null }
   }
-  if (fn.startsWith('get_')) {
-    return { data: authoritativeRow ? [authoritativeRow] : [], error: null }
-  }
-  return { data: null, error: null }
-})
+)
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
@@ -76,7 +81,7 @@ jest.mock('@/lib/supabase', () => ({
       channels.push(ch)
       return ch
     },
-    rpc: (...args: unknown[]) => rpc(...(args as [string])),
+    rpc: (...args: unknown[]) => rpc(...(args as [string, unknown?])),
     from: jest.fn(),
   },
   isSupabaseConfigured: true,
@@ -397,5 +402,102 @@ describe('useGameRoom tab-close teardown lifecycle (CLIENT-02)', () => {
     expect(removeSpy).toHaveBeenCalledWith('pagehide', expect.any(Function))
     expect(removeSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
     removeSpy.mockRestore()
+  })
+})
+
+// Shared onBeforeLeave used by games that remove the leaving player from state instead of
+// just disconnecting (CAH, Mindmeld). Exercised directly here rather than via renderHook
+// since it's a standalone async function once returned from the factory.
+describe('createLeaveByRemovingPlayer', () => {
+  type RemoveAction = { type: 'noop' } | { type: 'REMOVE_PLAYER'; playerId: string }
+
+  const applyAction = (s: State, action: RemoveAction): State =>
+    action.type === 'REMOVE_PLAYER'
+      ? { ...s, players: s.players.filter((p) => p.id !== action.playerId) }
+      : s
+
+  const baseCtx = {
+    gameState: { phase: 'lobby', players: [{ id: 'host' }, { id: 'leaver' }] } as State,
+    roomCode: 'ABCD',
+    playerId: 'leaver',
+    roomToken: 'tok',
+    tableName: 'test_rooms',
+    applyAction,
+    stateSchema: StateSchema,
+  }
+
+  beforeEach(() => {
+    rpc.mockClear()
+  })
+
+  it('does nothing when there is no active room to leave', async () => {
+    const leave = createLeaveByRemovingPlayer<State, RemoveAction>()
+    await leave({ ...baseCtx, gameState: null })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('no-ops when the room is already gone', async () => {
+    const leave = createLeaveByRemovingPlayer<State, RemoveAction>()
+    rpc.mockImplementationOnce(async () => ({ data: [], error: null })) // get_test: no rows
+
+    await leave(baseCtx)
+
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc.mock.calls[0][0]).toBe('get_test')
+  })
+
+  it('removes the player and dispatches on the first attempt', async () => {
+    const leave = createLeaveByRemovingPlayer<State, RemoveAction>()
+    rpc
+      .mockImplementationOnce(async () => ({
+        data: [{ state: baseCtx.gameState, version: 5 }],
+        error: null,
+      })) // get_test
+      .mockImplementationOnce(async () => ({ data: [{ version: 6 }], error: null })) // dispatch_test
+
+    await leave(baseCtx)
+
+    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(rpc.mock.calls[1][0]).toBe('dispatch_test')
+    expect(rpc.mock.calls[1][1]).toMatchObject({
+      p_code: 'ABCD',
+      p_room_token: 'tok',
+      p_expected_version: 5,
+      p_new_state: { players: [{ id: 'host' }] },
+    })
+  })
+
+  it('retries against the latest version on CAS conflict', async () => {
+    const leave = createLeaveByRemovingPlayer<State, RemoveAction>()
+    rpc
+      .mockImplementationOnce(async () => ({
+        data: [{ state: baseCtx.gameState, version: 5 }],
+        error: null,
+      })) // get_test (initial)
+      .mockImplementationOnce(async () => ({ data: null, error: null })) // dispatch_test: conflict
+      .mockImplementationOnce(async () => ({
+        data: [{ state: baseCtx.gameState, version: 7 }],
+        error: null,
+      })) // get_test (refetch)
+      .mockImplementationOnce(async () => ({ data: [{ version: 8 }], error: null })) // dispatch_test: retry succeeds
+
+    await leave(baseCtx)
+
+    expect(rpc).toHaveBeenCalledTimes(4)
+    expect(rpc.mock.calls[3][1]).toMatchObject({ p_expected_version: 7 })
+  })
+
+  it('stops retrying on a terminal bad-token error (42501)', async () => {
+    const leave = createLeaveByRemovingPlayer<State, RemoveAction>()
+    rpc
+      .mockImplementationOnce(async () => ({
+        data: [{ state: baseCtx.gameState, version: 5 }],
+        error: null,
+      })) // get_test
+      .mockImplementationOnce(async () => ({ data: null, error: { code: '42501' } })) // dispatch_test: bad token
+
+    await leave(baseCtx)
+
+    expect(rpc).toHaveBeenCalledTimes(2)
   })
 })

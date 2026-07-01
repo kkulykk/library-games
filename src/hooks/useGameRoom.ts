@@ -145,6 +145,70 @@ export interface UseGameRoomReturn<TState, TAction, TBroadcast = never> {
     : React.MutableRefObject<((message: TBroadcast) => void) | null>
 }
 
+// Shared `onBeforeLeave` for games whose GameAction includes a
+// `{ type: 'REMOVE_PLAYER'; playerId: string }` variant: strips the leaving player from
+// state and writes it back through the token-gated dispatch RPC, retrying against the
+// latest {state,version} on CAS conflict (up to 3x). A bad/missing token (42501) is
+// terminal — no retry can fix it. No-ops if the room is already gone.
+export function createLeaveByRemovingPlayer<
+  TState extends BaseGameState,
+  TAction extends { type: string },
+>(): NonNullable<GameRoomConfig<TState, TAction>['onBeforeLeave']> {
+  return async ({
+    gameState,
+    roomCode,
+    playerId,
+    roomToken,
+    tableName,
+    applyAction,
+    stateSchema,
+  }) => {
+    if (!gameState || !roomCode || !playerId || !supabase) return
+
+    const MAX_RETRIES = 3
+    const getRpc = rpcName(tableName, 'get')
+    const dispatchRpc = rpcName(tableName, 'dispatch')
+    let currentState: TState | null = gameState
+
+    const { data: initial } = await supabase.rpc(getRpc, { p_code: roomCode })
+    const initialRow = initial && initial.length > 0 ? initial[0] : null
+    if (!initialRow) return
+    let currentVersion = initialRow.version as number
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (!currentState) break
+      const newState = applyAction(currentState, {
+        type: 'REMOVE_PLAYER',
+        playerId,
+      } as unknown as TAction)
+      if (newState === currentState) break
+
+      const { data, error: dispatchErr } = await supabase.rpc(dispatchRpc, {
+        p_code: roomCode,
+        p_room_token: roomToken,
+        p_new_state: newState,
+        p_expected_version: currentVersion,
+      })
+
+      if (data && data.length > 0) break
+      if (dispatchErr?.code === '42501') break
+
+      if (attempt < MAX_RETRIES) {
+        const { data: fresh } = await supabase.rpc(getRpc, { p_code: roomCode })
+        const freshRow = fresh && fresh.length > 0 ? fresh[0] : null
+        if (!freshRow) break
+        const parsedFresh = stateSchema.safeParse(freshRow.state)
+        if (!parsedFresh.success) {
+          console.error(`[${tableName}] Invalid GameState in leaveRoom retry:`, parsedFresh.error)
+          break
+        }
+        currentState = parsedFresh.data
+        currentVersion = freshRow.version as number
+      }
+    }
+  }
+}
+
 export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = never>(
   config: GameRoomConfig<TState, TAction, TBroadcast>
 ): UseGameRoomReturn<TState, TAction, TBroadcast> {

@@ -62,7 +62,7 @@ Online-multiplayer games additionally need (steps 2–4 above still apply):
 
 6. Create `src/games/<slug>/schema.ts` — Zod schema for the serialized game state (and any broadcast messages); add `schema.test.ts`
 7. Create `src/games/<slug>/use<Name>Room.ts` — a thin adapter that configures the shared `useGameRoom` hook (see below)
-8. Add the room table + RLS policies to `supabase-schema.sql`
+8. Add the room table + RLS policies to `supabase/schema.sql`
 9. Add a Playwright spec under `e2e/games/<slug>.spec.ts` with a page object in `e2e/pages/`
 
 ## Online multiplayer games (Supabase)
@@ -81,7 +81,7 @@ Online games use Supabase as a real-time state bus — no custom WebSocket serve
 
 **CI:** `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must be set as GitHub Actions secrets for the build to connect. E2E runs against an in-memory fake Supabase (`NEXT_PUBLIC_E2E_FAKE_SUPABASE=1`), not the real backend.
 
-**Database:** schema lives in `supabase-schema.sql`. Apply via Supabase MCP (`mcp__supabase__apply_migration`) or paste into the Supabase SQL Editor. Rooms are deleted only by a `pg_cron` cleanup job (older than 24h) — it must be scheduled manually in the Supabase project; there is no client DELETE policy.
+**Database:** schema lives in `supabase/schema.sql`. Apply via Supabase MCP (`mcp__supabase__apply_migration`) or paste into the Supabase SQL Editor. Rooms are deleted only by a `pg_cron` cleanup job (older than 24h) — it must be scheduled manually in the Supabase project; there is no client DELETE policy. One-off ops scripts (already applied to the live project — RLS sealing, rollbacks) live under `supabase/migrations/` for reference; they are not run automatically and don't need to be re-applied to a fresh project since `supabase/schema.sql` embeds their end state.
 
 ## Constraints
 

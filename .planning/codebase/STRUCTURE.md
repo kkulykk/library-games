@@ -15,7 +15,9 @@ library-games/
 │   └── lib/                  # Infrastructure helpers (supabase, utils)
 ├── e2e/                      # Playwright end-to-end tests + fake backend
 ├── public/                   # Static assets (served under basePath)
-├── supabase-schema.sql       # Postgres schema for multiplayer rooms
+├── supabase/
+│   ├── schema.sql            # Postgres schema for multiplayer rooms
+│   └── migrations/           # One-off ops scripts already applied to prod
 ├── .env.local.example        # Template for Supabase env vars
 ├── next.config.ts            # Static export + basePath config
 ├── jest.config.js            # Unit test config (must stay .js — no ts-node)
@@ -74,7 +76,7 @@ Games present: `2048`, `agario`, `bounce`, `breakout`, `cards-against-humanity`,
 components/
 ├── GameLayout.tsx              # Game-page wrapper with back button
 ├── ErrorBoundary.tsx           # Crash containment around game surfaces
-├── GameRulesGate.tsx           # Shows rules before play
+├── GameHowTo.tsx (+ .module.css) # Shows rules before play
 ├── home/
 │   ├── HomeExperience.tsx      # Top-level home composition
 │   ├── DiscoverView.tsx        # Discover/browse view
@@ -89,7 +91,8 @@ components/
     ├── ResultsTable.tsx (+ .test)
     ├── ResumeSessionButton.tsx (+ .test)
     ├── ResumeSessionCard.tsx (+ .test)
-    └── RoomInviteCard.tsx (+ .test)
+    ├── RoomInviteCard.tsx (+ .test)
+    └── SupabaseSetupNotice.tsx (+ .test)
 ```
 
 The `multiplayer/` subfolder is the shared component library for online games — lobbies, rosters, invites, results. These have co-located `.test.tsx` files (React Testing Library).
@@ -156,4 +159,4 @@ e2e/
 - **Network payload validation** → `src/games/<slug>/schema.ts`
 - **Theme tokens** → `src/app/globals.css`
 - **Static-export / basePath config** → `next.config.ts`
-- **DB schema** → `supabase-schema.sql`
+- **DB schema** → `supabase/schema.sql`

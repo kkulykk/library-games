@@ -67,7 +67,7 @@ describe('3-layer agreement', () => {
 // families (create/join/restore/dispatch/get) = 30. This guard keeps those 30
 // literals from drifting off ROOM_CODE_REGEX_SQL (CODE-03).
 describe('SQL drift guard', () => {
-  const schemaPath = path.resolve(__dirname, '../../supabase-schema.sql')
+  const schemaPath = path.resolve(__dirname, '../../supabase/schema.sql')
   const sql = fs.readFileSync(schemaPath, 'utf8')
   const literals = [...sql.matchAll(/p_code !~ '([^']+)'/g)].map((m) => m[1])
 
@@ -91,7 +91,7 @@ describe('SQL drift guard', () => {
 // future edit that templates only 5 of 6 (or drops one) trips these guards.
 // ACCESS-04: every SECURITY DEFINER body must pin search_path to '' (lint 0011).
 describe('schema templating drift guard (MIGR-03 / ACCESS-04)', () => {
-  const schemaPath = path.resolve(__dirname, '../../supabase-schema.sql')
+  const schemaPath = path.resolve(__dirname, '../../supabase/schema.sql')
   const sql = fs.readFileSync(schemaPath, 'utf8')
 
   const countMatches = (re: RegExp) => [...sql.matchAll(re)].length

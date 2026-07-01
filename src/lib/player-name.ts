@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 // Single source of truth for the player-name rule (D-05/D-06). The client Zod
 // validator below is the UX-side mirror of the Postgres `is_valid_player_name`
-// function in supabase-schema.sql. The server is authoritative; this validator
+// function in supabase/schema.sql. The server is authoritative; this validator
 // MUST be a SUBSET of the Postgres accept-set (INPUT-03 contract: client ⊆
 // Postgres — the client may be stricter, never looser). Both layers agree on
 // the 1..20 length bound (after trim) and on rejecting Unicode Cc/Cf/Zl/Zp.
@@ -23,7 +23,7 @@ const FORBIDDEN_NAME_CHARS = /\p{Cc}|\p{Cf}|\p{Zl}|\p{Zp}/u
 
 // Documents the equivalent Postgres predicate so the parity is reviewable. This
 // is the INPUT-03 contract anchor (client ⊆ Postgres). Kept in sync with
-// `public.is_valid_player_name` in supabase-schema.sql.
+// `public.is_valid_player_name` in supabase/schema.sql.
 export const PLAYER_NAME_SQL_PREDICATE =
   "char_length(btrim(name)) between 1 and 20 and btrim(name) !~ '[[:cntrl:]]' and btrim(name) rejects Cf/Zl/Zp code points"
 

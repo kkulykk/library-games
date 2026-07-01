@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { normalizeRoomCode } from '@/lib/room-code'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
+import { SupabaseSetupNotice } from '@/components/multiplayer/SupabaseSetupNotice'
 import { useAgarioRoom } from './useAgarioRoom'
 import {
   MAP_WIDTH,
@@ -1348,13 +1349,7 @@ export function AgarioGame() {
   if (!isSupabaseConfigured) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="bg-destructive/10 text-destructive max-w-md rounded-lg p-6 text-center">
-          <h3 className="mb-2 font-semibold">Supabase not configured</h3>
-          <p className="text-sm">
-            Copy <code>.env.local.example</code> to <code>.env.local</code> and fill in your
-            Supabase URL and anon key.
-          </p>
-        </div>
+        <SupabaseSetupNotice />
       </div>
     )
   }

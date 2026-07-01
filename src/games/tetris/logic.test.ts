@@ -176,7 +176,9 @@ describe('reduce', () => {
   })
 
   it('rotates the active piece', () => {
-    const s = init()
+    // Force a non-square piece: init() spawns a random type, and the O piece is
+    // rotation-invariant, which made this test flaky (T-shape always changes on rotation).
+    const s = { ...init(), piece: makePiece('T') }
     const rotated = reduce(s, { type: 'cw' })!
     expect(rotated.piece!.m).not.toEqual(s.piece!.m)
   })

@@ -302,7 +302,11 @@ describe('GUESS', () => {
   it('marks close guesses for richer chat UI', () => {
     const state = drawingState()
     const word = decodeWord(state.word!)
-    const almost = word.slice(0, Math.max(3, word.length - 1))
+    // The word is chosen at random, so build a guess that is guaranteed to be "close" (contains
+    // the answer as a substring, so isCloseGuess's includes() check passes) regardless of the
+    // answer's length — a fixed-length slice broke on short words (e.g. slicing a 3-letter word
+    // down to 3 chars reproduces the exact answer, which is a "correct" guess, not a "close" one).
+    const almost = `${word}x`
     const next = applyAction(state, { type: 'GUESS', playerId: 'p2', text: almost })
     expect(next.messages[0].isClose).toBe(true)
   })
