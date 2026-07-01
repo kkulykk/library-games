@@ -8,13 +8,13 @@ This document records technical debt, risks, and fragile areas. Severity reflect
 
 ### Multiplayer is fully client-authoritative
 
-**Severity: High (by design)** · `src/hooks/useGameRoom.ts`, `supabase-schema.sql`
+**Severity: High (by design)** · `src/hooks/useGameRoom.ts`, `supabase/schema.sql`
 
 There is no server. The game reducer runs in each player's browser and writes the entire next state directly to Supabase. The database performs no rules validation — any client holding the anon key can `update` a room row with **any** state it wants (cheating, skipping turns, rewriting scores). Zod (`schema.ts`) only checks _shape_, not _legality of the transition_. This is an accepted trade-off for a casual arcade, but it means competitive integrity cannot be assumed.
 
 ### Rooms are world-readable and world-writable
 
-**Severity: High (by design)** · `supabase-schema.sql:56,66`
+**Severity: High (by design)** · `supabase/schema.sql`
 
 RLS policies are `for select using (true)` and `for update using (true)` on every `*_rooms` table. Consequences:
 
@@ -126,7 +126,7 @@ Subscriptions unsubscribe via the cleanup `useEffect`, but there are no `beforeu
 
 ### Room cleanup depends on pg_cron being configured
 
-**Severity: Low** · `supabase-schema.sql`
+**Severity: Low** · `supabase/schema.sql`
 
 24h auto-delete is delivered by a `pg_cron` job that must be scheduled manually in the Supabase project. If not set up, rooms accumulate indefinitely. The DELETE-by-cron is the _only_ delete path (no policy allows client deletes).
 

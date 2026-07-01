@@ -2,6 +2,8 @@ import type { GameState } from './schema'
 export type { GameState }
 
 import words from '@/data/words/codenames-words.json'
+import { shuffle } from '@/lib/shuffle'
+export { shuffle }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -51,15 +53,6 @@ export const MIN_PLAYERS = 4
 export const MAX_PLAYERS = 10
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-export function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
-  const a = [...arr]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1))
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
-}
 
 export function pickWords(count: number, rng?: () => number): string[] {
   return shuffle(words, rng).slice(0, count)

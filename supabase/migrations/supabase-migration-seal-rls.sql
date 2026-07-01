@@ -7,10 +7,10 @@
 --   world-write surface. RLS is left ENABLED (default-deny for anon).
 --
 -- Why this is needed on EXISTING deployments:
---   PostgreSQL keeps policies until an explicit DROP. Re-running supabase-schema.sql
+--   PostgreSQL keeps policies until an explicit DROP. Re-running ../schema.sql
 --   (which no longer CREATEs these policies) does NOT remove already-installed
 --   policies. Apply this migration once to seal a project that ran an earlier schema.
---   (supabase-schema.sql now also embeds this same drop block for fresh paste-and-run.)
+--   (../schema.sql now also embeds this same drop block for fresh paste-and-run.)
 --
 -- Safe to run repeatedly: `drop policy if exists` is idempotent, and on a fresh
 -- project (no permissive policies) this is a no-op.

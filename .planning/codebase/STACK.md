@@ -13,7 +13,7 @@
 
 - JavaScript (Node.js config files)
 - CSS (Tailwind + CSS custom properties)
-- SQL (Supabase schema via `supabase-schema.sql`)
+- SQL (Supabase schema via `supabase/schema.sql`)
 
 ## Runtime
 

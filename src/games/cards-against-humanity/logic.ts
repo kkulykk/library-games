@@ -1,6 +1,8 @@
 import { BLACK_CARDS, WHITE_CARDS } from './cards'
+import { shuffle } from '@/lib/shuffle'
 import type { GameState } from './schema'
 export type { GameState }
+export { shuffle }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,15 +24,6 @@ export type GameAction =
   | { type: 'REMOVE_PLAYER'; playerId: string }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-export function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
-  const result = [...arr]
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1))
-    ;[result[i], result[j]] = [result[j], result[i]]
-  }
-  return result
-}
 
 function drawCards(deck: number[], count: number): { drawn: number[]; remaining: number[] } {
   const drawn = deck.slice(0, count)
