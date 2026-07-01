@@ -1,4 +1,5 @@
 import skribblWords from '@/data/words/skribbl-words.json'
+import { shuffle } from '@/lib/shuffle'
 import type { GameState } from './schema'
 export type { GameState }
 
@@ -61,18 +62,9 @@ export type GameAction =
 
 const WORDS: string[] = [...skribblWords.single, ...skribblWords.phrases]
 
-function fisherYatesShuffle<T>(arr: T[]): T[] {
-  const a = [...arr]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
-}
-
 export function pickRandomWords(count: number, exclude: string[] = []): string[] {
   const available = WORDS.filter((w) => !exclude.includes(w))
-  const shuffled = fisherYatesShuffle(available)
+  const shuffled = shuffle(available)
   return shuffled.slice(0, count)
 }
 

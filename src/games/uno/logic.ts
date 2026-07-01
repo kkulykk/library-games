@@ -1,3 +1,4 @@
+import { shuffle } from '@/lib/shuffle'
 import type { GameState } from './schema'
 export type { GameState }
 
@@ -76,12 +77,7 @@ export function createDeck(): Card[] {
 }
 
 export function shuffleDeck(deck: Card[], rng: () => number = Math.random): Card[] {
-  const arr = [...deck]
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1))
-    ;[arr[i], arr[j]] = [arr[j], arr[i]]
-  }
-  return arr
+  return shuffle(deck, rng)
 }
 
 // ─── Rules ───────────────────────────────────────────────────────────────────

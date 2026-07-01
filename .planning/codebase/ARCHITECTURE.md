@@ -116,7 +116,7 @@ Optimistic concurrency via a monotonically increasing `version` integer. Every w
 
 - **Theming** — Tailwind 3 + CSS custom properties (shadcn-style) defined in `src/app/globals.css`. `cn()` in `src/lib/utils.ts` merges class names.
 - **Error containment** — `src/components/ErrorBoundary.tsx` wraps game surfaces so a crashing game doesn't take down the shell.
-- **Rules gating** — `src/components/GameRulesGate.tsx` shows rules before play.
+- **Rules gating** — `src/components/GameHowTo.tsx` shows rules before play.
 - **Validation** — Zod at every network boundary (see Key Abstractions).
 - **Static-export constraint** — no SSR data fetching, no API routes, no server actions that write. Everything must render to static HTML at build time; dynamic behavior is client-only.
 
