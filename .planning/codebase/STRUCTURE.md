@@ -15,7 +15,9 @@ library-games/
 │   └── lib/                  # Infrastructure helpers (supabase, utils)
 ├── e2e/                      # Playwright end-to-end tests + fake backend
 ├── public/                   # Static assets (served under basePath)
-├── supabase-schema.sql       # Postgres schema for multiplayer rooms
+├── supabase/
+│   ├── schema.sql            # Postgres schema for multiplayer rooms
+│   └── migrations/           # One-off ops scripts already applied to prod
 ├── .env.local.example        # Template for Supabase env vars
 ├── next.config.ts            # Static export + basePath config
 ├── jest.config.js            # Unit test config (must stay .js — no ts-node)
@@ -156,4 +158,4 @@ e2e/
 - **Network payload validation** → `src/games/<slug>/schema.ts`
 - **Theme tokens** → `src/app/globals.css`
 - **Static-export / basePath config** → `next.config.ts`
-- **DB schema** → `supabase-schema.sql`
+- **DB schema** → `supabase/schema.sql`

@@ -247,7 +247,7 @@ function SetupRequired() {
       <p className="text-muted-foreground mb-4 text-sm">
         Online multiplayer requires a Supabase project. Create a free project at{' '}
         <span className="text-foreground font-medium">supabase.com</span>, run the schema from{' '}
-        <code className="bg-secondary rounded px-1 text-xs">supabase-schema.sql</code>, then set:
+        <code className="bg-secondary rounded px-1 text-xs">supabase/schema.sql</code>, then set:
       </p>
       <pre className="bg-secondary rounded-lg p-3 text-left text-xs">
         {`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
