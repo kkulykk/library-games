@@ -76,7 +76,7 @@ Games present: `2048`, `agario`, `bounce`, `breakout`, `cards-against-humanity`,
 components/
 ├── GameLayout.tsx              # Game-page wrapper with back button
 ├── ErrorBoundary.tsx           # Crash containment around game surfaces
-├── GameRulesGate.tsx           # Shows rules before play
+├── GameHowTo.tsx (+ .module.css) # Shows rules before play
 ├── home/
 │   ├── HomeExperience.tsx      # Top-level home composition
 │   ├── DiscoverView.tsx        # Discover/browse view
@@ -91,7 +91,8 @@ components/
     ├── ResultsTable.tsx (+ .test)
     ├── ResumeSessionButton.tsx (+ .test)
     ├── ResumeSessionCard.tsx (+ .test)
-    └── RoomInviteCard.tsx (+ .test)
+    ├── RoomInviteCard.tsx (+ .test)
+    └── SupabaseSetupNotice.tsx (+ .test)
 ```
 
 The `multiplayer/` subfolder is the shared component library for online games — lobbies, rosters, invites, results. These have co-located `.test.tsx` files (React Testing Library).
