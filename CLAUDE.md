@@ -91,14 +91,17 @@ Online games use Supabase as a real-time state bus — no custom WebSocket serve
 
 ## CI/CD
 
-Single workflow (`.github/workflows/ci.yml`), jobs run as a chain:
+Two workflows, each with a single responsibility:
 
-1. **lint-and-test** — ESLint + Prettier + `pnpm test:coverage`; runs on every push and PR
-2. **e2e** — Playwright (`pnpm e2e:ci`) against the fake Supabase server; `needs: lint-and-test`
-3. **build** — static export; `needs: e2e`; injects Supabase secrets
-4. **deploy** — GitHub Pages; `needs: build`
-
-(`.github/workflows/claude.yml` is a separate Claude Code action workflow.)
+- **`test.yml`** — the CI gate. Runs on every PR and push:
+  1. **lint-and-test** — ESLint + Prettier + `typecheck` + `check:schema` +
+     `pnpm audit --prod` + `pnpm test:coverage`
+  2. **e2e** — Playwright (`pnpm e2e:ci`) against the fake Supabase server;
+     `needs: lint-and-test`
+- **`deploy.yml`** — builds the static export and publishes to GitHub Pages.
+  Runs **only** on push/merge to `main` (or manual dispatch). It does not run the
+  test suite; gate deploys by requiring the **Test** workflow as a branch-
+  protection check on `main` so only tested code reaches `deploy`.
 
 Never skip the lint, test, or e2e step. Do not force-push to `main`.
 

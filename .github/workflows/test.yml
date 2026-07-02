@@ -1,19 +1,23 @@
-name: CI & Deploy
+name: Test
 
+# Runs the checks (lint, typecheck, schema, audit, unit tests, e2e) on every PR
+# and push. This is the CI gate — deploys never run tests; they rely on this
+# having passed (enforce via branch protection: require "Test" on PRs to main).
 on:
-  push:
-    branches: ['main']
   pull_request:
     branches: ['**']
+  # Only push-trigger on main. PRs are covered by pull_request above; without
+  # this restriction every PR branch push would run the suite twice (once as
+  # push, once as pull_request).
+  push:
+    branches: ['main']
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: test-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,13 +31,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -44,6 +46,15 @@ jobs:
 
       - name: Run Prettier check
         run: pnpm exec prettier --check .
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Check generated SQL schema is up to date
+        run: pnpm check:schema
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level=high
 
       - name: Run tests
         run: pnpm test:coverage
@@ -59,13 +70,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -92,59 +101,3 @@ jobs:
             playwright-report
             test-results
           retention-days: 7
-
-  build:
-    name: Build
-    needs: e2e
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Restore Next.js cache
-        uses: actions/cache@v6
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('**.[jt]s', '**.[jt]sx') }}
-          restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
-
-      - name: Build static export
-        run: pnpm build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: ./out
-
-  deploy:
-    name: Deploy
-    needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
