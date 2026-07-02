@@ -103,8 +103,8 @@ Two workflows, each with a single responsibility:
   test suite; gate deploys by requiring the **Test** workflow as a branch-
   protection check on `main` so only tested code reaches `deploy`.
 
-Other workflows: **`codeql.yml`** (security code scanning) and **`claude.yml`**
-(Claude Code action, gated on author association).
+Other workflow: **`claude.yml`** (Claude Code action, gated on author
+association).
 
 Never skip the lint, test, or e2e step. Do not force-push to `main`.
 
