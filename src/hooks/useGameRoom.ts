@@ -345,8 +345,8 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           void refetchAuthoritativeState()
         })
         // Refetch-on-reconnect (D-10): on (re)subscribe, re-read the current {state, version}
-        // through the still-permissive SELECT (additive window), recovering any signal
-        // missed while disconnected. No postgres_changes backstop.
+        // through the code-gated get_<game> RPC, recovering any signal missed while
+        // disconnected. No postgres_changes backstop.
         .subscribe(async (s: string) => {
           // D-02: channel trouble is the other failure class. Compare against the literal status
           // strings (RESEARCH anti-pattern: do NOT import REALTIME_SUBSCRIBE_STATES across the seam).
@@ -631,6 +631,14 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           return
         }
 
+        // P2-6: 22023 means the server rejected the payload itself (invalid name,
+        // oversized state, or too many players). Replaying the same action can
+        // never succeed, so treat it as terminal instead of a retryable conflict.
+        if (dispatchErr?.code === '22023') {
+          setError(mapRpcError('22023') ?? 'Room data is invalid. Try again.')
+          return
+        }
+
         if (attempt < MAX_RETRIES) {
           const { data: fresh } = await supabase.rpc(rpcName(cfg.tableName, 'get'), {
             p_code: roomCode,
@@ -724,10 +732,13 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       }
     }
 
-    document.addEventListener('pagehide', teardown)
+    // P2-1: `pagehide` fires on `window`, not `document` — attaching it to
+    // `document` meant it never fired and only the visibilitychange→hidden path
+    // ran the teardown. `visibilitychange` stays on `document` (that is its target).
+    window.addEventListener('pagehide', teardown)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
-      document.removeEventListener('pagehide', teardown)
+      window.removeEventListener('pagehide', teardown)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [roomCode, playerId, subscribeToRoom, subscribeToPresence])
