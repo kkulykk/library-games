@@ -1,18 +1,21 @@
 name: Test
 
-# Reusable workflow (workflow_call only — it is not triggered directly). Both
-# ci.yml (PR/branch validation) and deploy.yml (main → Pages) call this so the
-# lint / test / e2e / build jobs live in ONE place and cannot drift apart.
-# deploy.yml passes upload_pages=true to also publish the Pages artifact that
-# its deploy job consumes.
-
+# Runs the checks (lint, typecheck, schema, audit, unit tests, e2e) on every PR
+# and push. This is the CI gate — deploys never run tests; they rely on this
+# having passed (enforce via branch protection: require "Test" on PRs to main).
 on:
-  workflow_call:
-    inputs:
-      upload_pages:
-        description: 'Upload the built site as a GitHub Pages artifact (for deploy).'
-        type: boolean
-        default: false
+  pull_request:
+    branches: ['**']
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-and-test:
@@ -95,44 +98,3 @@ jobs:
             playwright-report
             test-results
           retention-days: 7
-
-  build:
-    name: Build
-    needs: lint-and-test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Restore Next.js cache
-        uses: actions/cache@v5
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('**.[jt]s', '**.[jt]sx') }}
-          restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
-
-      - name: Build static export
-        run: pnpm build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-
-      - name: Upload Pages artifact
-        if: ${{ inputs.upload_pages }}
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: ./out

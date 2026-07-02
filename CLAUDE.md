@@ -91,31 +91,22 @@ Online games use Supabase as a real-time state bus — no custom WebSocket serve
 
 ## CI/CD
 
-The lint/test/e2e/build jobs live in **one reusable workflow**
-(`.github/workflows/test.yml`, `on: workflow_call`) so they can't drift between
-pipelines. Two entry-point workflows call it:
+Two workflows, each with a single responsibility:
 
-- **`ci.yml`** — PRs and pushes to non-`main` branches (validation only, no
-  deploy). Calls `test.yml`.
-- **`deploy.yml`** — pushes/merges to `main` only. Calls `test.yml`
-  (`upload_pages: true`) to re-run the full suite, then a `deploy` job publishes
-  to GitHub Pages via `actions/deploy-pages` — so a deploy happens **only** after
-  a green run on `main`.
-
-The reusable `test.yml` runs, in order:
-
-1. **lint-and-test** — ESLint + Prettier + `typecheck` + `check:schema` +
-   `pnpm audit --prod` + `pnpm test:coverage`
-2. **e2e** — Playwright (`pnpm e2e:ci`) against the fake Supabase server;
-   `needs: lint-and-test`
-3. **build** — static export; `needs: lint-and-test` (runs in parallel with e2e);
-   injects Supabase secrets; uploads the Pages artifact only when `upload_pages`
+- **`test.yml`** — the CI gate. Runs on every PR and push:
+  1. **lint-and-test** — ESLint + Prettier + `typecheck` + `check:schema` +
+     `pnpm audit --prod` + `pnpm test:coverage`
+  2. **e2e** — Playwright (`pnpm e2e:ci`) against the fake Supabase server;
+     `needs: lint-and-test`
+- **`deploy.yml`** — builds the static export and publishes to GitHub Pages.
+  Runs **only** on push/merge to `main` (or manual dispatch). It does not run the
+  test suite; gate deploys by requiring the **Test** workflow as a branch-
+  protection check on `main` so only tested code reaches `deploy`.
 
 Other workflows: **`codeql.yml`** (security code scanning) and **`claude.yml`**
 (Claude Code action, gated on author association).
 
-Never skip the lint, test, or e2e step. Do not force-push to `main`. When editing
-the CI jobs, edit `test.yml` (the single source) — not the entry-point files.
+Never skip the lint, test, or e2e step. Do not force-push to `main`.
 
 ## ESLint / Prettier
 
