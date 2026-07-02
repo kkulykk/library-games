@@ -55,7 +55,7 @@ export class SkribblPage extends RoomLobbyPage {
     await this.guessInput.press('Enter')
   }
 
-  async expectWaitingFor(name: string): Promise<void> {
+  async expectWaitingFor(name: string | RegExp): Promise<void> {
     await expect(this.waitingPicker).toContainText(name)
   }
 

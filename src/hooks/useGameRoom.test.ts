@@ -281,6 +281,24 @@ describe('useGameRoom dispatch CAS exhaustion (BL-02)', () => {
     expect(hook.result.current.error).toBe('Action failed due to a conflict. Please try again.')
     expect(hook.result.current.connectionStatus).toBe('desynced')
   })
+
+  it('treats a 22023 dispatch rejection as terminal — no retry, invalid-data error (P2-6)', async () => {
+    const hook = await connect()
+    rpc.mockClear()
+
+    // The server rejects the payload itself (invalid name / oversized state / too
+    // many players). Replaying cannot fix it, so dispatch must bail without a refetch.
+    rpc.mockImplementationOnce(async () => ({ data: null, error: { code: '22023' } })) // dispatch_test
+
+    await act(async () => {
+      await hook.result.current.dispatch({ type: 'noop' })
+    })
+
+    expect(hook.result.current.error).toBe('Room data is invalid. Try again.')
+    // Only the single dispatch call — no get_ refetch, no retry loop.
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(hook.result.current.connectionStatus).not.toBe('desynced')
+  })
 })
 
 describe('useGameRoom tab-close teardown lifecycle (CLIENT-02)', () => {
@@ -305,6 +323,7 @@ describe('useGameRoom tab-close teardown lifecycle (CLIENT-02)', () => {
     setVisibility('visible')
   })
 
+  // P2-1: `pagehide` fires on `window`, not `document`, so the hook listens on window.
   it('unsubscribes the channels on pagehide WITHOUT clearing the session/status/playerId (D-05)', async () => {
     const hook = await connect()
     const stateCh = stateChannel()!
@@ -314,7 +333,7 @@ describe('useGameRoom tab-close teardown lifecycle (CLIENT-02)', () => {
     expect(sessionRaw).not.toBeNull()
 
     await act(async () => {
-      document.dispatchEvent(new Event('pagehide'))
+      window.dispatchEvent(new Event('pagehide'))
     })
 
     // Channels torn down...
@@ -348,7 +367,7 @@ describe('useGameRoom tab-close teardown lifecycle (CLIENT-02)', () => {
     const stateCh = stateChannel()!
 
     await act(async () => {
-      document.dispatchEvent(new Event('pagehide'))
+      window.dispatchEvent(new Event('pagehide'))
     })
     expect(stateCh.unsubscribe).toHaveBeenCalledTimes(1)
 
@@ -366,7 +385,7 @@ describe('useGameRoom tab-close teardown lifecycle (CLIENT-02)', () => {
 
     // Background: tear the channels down.
     await act(async () => {
-      document.dispatchEvent(new Event('pagehide'))
+      window.dispatchEvent(new Event('pagehide'))
     })
     const channelsAfterTeardown = channels.length
 
@@ -393,15 +412,18 @@ describe('useGameRoom tab-close teardown lifecycle (CLIENT-02)', () => {
     expect(freshPresence.track).toHaveBeenCalledWith({ player_id: expect.any(String) })
   })
 
-  it('removes the document listeners on unmount (no leak across rooms)', async () => {
-    const removeSpy = jest.spyOn(document, 'removeEventListener')
+  it('removes the lifecycle listeners on unmount (no leak across rooms)', async () => {
+    // pagehide is a window event; visibilitychange is a document event (P2-1).
+    const removeWindowSpy = jest.spyOn(window, 'removeEventListener')
+    const removeDocumentSpy = jest.spyOn(document, 'removeEventListener')
     const hook = await connect()
 
     hook.unmount()
 
-    expect(removeSpy).toHaveBeenCalledWith('pagehide', expect.any(Function))
-    expect(removeSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
-    removeSpy.mockRestore()
+    expect(removeWindowSpy).toHaveBeenCalledWith('pagehide', expect.any(Function))
+    expect(removeDocumentSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+    removeWindowSpy.mockRestore()
+    removeDocumentSpy.mockRestore()
   })
 })
 

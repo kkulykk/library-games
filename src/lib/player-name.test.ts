@@ -1,4 +1,11 @@
-import { playerNameSchema, PLAYER_NAME_MIN, PLAYER_NAME_MAX } from './player-name'
+import {
+  playerNameSchema,
+  PLAYER_NAME_MIN,
+  PLAYER_NAME_MAX,
+  trimmedPlayerName,
+  getSavedPlayerName,
+  savePlayerName,
+} from './player-name'
 
 describe('playerNameSchema', () => {
   describe('accepts', () => {
@@ -43,5 +50,26 @@ describe('playerNameSchema', () => {
   it('exposes the 1..20 length bounds', () => {
     expect(PLAYER_NAME_MIN).toBe(1)
     expect(PLAYER_NAME_MAX).toBe(20)
+  })
+})
+
+describe('trimmedPlayerName', () => {
+  it('trims surrounding whitespace', () => {
+    expect(trimmedPlayerName('  Roman  ')).toBe('Roman')
+  })
+})
+
+describe('player-name storage helpers', () => {
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('returns empty string when nothing is saved', () => {
+    expect(getSavedPlayerName()).toBe('')
+  })
+
+  it('round-trips a saved name', () => {
+    savePlayerName('Roman')
+    expect(getSavedPlayerName()).toBe('Roman')
   })
 })

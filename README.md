@@ -108,6 +108,37 @@ Online multiplayer games use Supabase as the real-time state bus.
 - shared room orchestration lives in `src/hooks/useGameRoom.ts`, with per-game `use<Name>Room.ts` wrappers
 - gameplay state transitions stay in pure `logic.ts` files
 
+## Security model & trust boundaries
+
+Online games are **client-authoritative**: there is no game server. The pure
+reducer runs in every player's browser and writes the next state to Supabase,
+which acts purely as a real-time state bus. Access is gated by a 6-char CSPRNG
+room code plus a per-room write token, and every payload crossing the network is
+Zod-validated before entering React state. The data layer is sealed — Row Level
+Security is enabled with no permissive policies, and all access flows through
+`SECURITY DEFINER` RPCs (`create`/`join`/`restore`/`dispatch`/`get`) that
+validate the code, player names, and payload/roster size caps server-side.
+
+Two properties are **accepted design limitations** for this threat model (a
+friends arcade with no PII beyond self-chosen display names), not bugs:
+
+- **Hidden information is visible to code-holders.** The entire game state —
+  including hidden data like Uno/CAH hands, the Codenames key, or the Skribbl
+  secret word — lives in one row that any code-holder can read via
+  `get_<game>(code)` (or DevTools). **Competitive integrity is honor-system.**
+  Closing this would require splitting state into public/per-player columns with
+  token-gated reads, or server-side dealing — out of scope for a casual arcade.
+- **The `room_token` is per-room, not per-player.** It is defense-in-depth for
+  the write path (it protects against a leaked read-only view), **not player
+  authentication.** Because player ids are readable via `get_<game>`, anyone with
+  the room code can `restore` as any player and obtain the shared write token, so
+  the room code is effectively the full write capability and members can act as
+  one another.
+
+See `SECURITY.md` for how to report issues. The full server-side rationale lives
+in the generated `supabase/schema.sql` (generated from
+`scripts/generate-schema.mjs`).
+
 ## Adding a game
 
 1. Add the metadata entry in `src/data/games.ts`
