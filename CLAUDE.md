@@ -91,16 +91,31 @@ Online games use Supabase as a real-time state bus — no custom WebSocket serve
 
 ## CI/CD
 
-Single workflow (`.github/workflows/ci.yml`), jobs run as a chain:
+The lint/test/e2e/build jobs live in **one reusable workflow**
+(`.github/workflows/test.yml`, `on: workflow_call`) so they can't drift between
+pipelines. Two entry-point workflows call it:
 
-1. **lint-and-test** — ESLint + Prettier + `pnpm test:coverage`; runs on every push and PR
-2. **e2e** — Playwright (`pnpm e2e:ci`) against the fake Supabase server; `needs: lint-and-test`
-3. **build** — static export; `needs: e2e`; injects Supabase secrets
-4. **deploy** — GitHub Pages; `needs: build`
+- **`ci.yml`** — PRs and pushes to non-`main` branches (validation only, no
+  deploy). Calls `test.yml`.
+- **`deploy.yml`** — pushes/merges to `main` only. Calls `test.yml`
+  (`upload_pages: true`) to re-run the full suite, then a `deploy` job publishes
+  to GitHub Pages via `actions/deploy-pages` — so a deploy happens **only** after
+  a green run on `main`.
 
-(`.github/workflows/claude.yml` is a separate Claude Code action workflow.)
+The reusable `test.yml` runs, in order:
 
-Never skip the lint, test, or e2e step. Do not force-push to `main`.
+1. **lint-and-test** — ESLint + Prettier + `typecheck` + `check:schema` +
+   `pnpm audit --prod` + `pnpm test:coverage`
+2. **e2e** — Playwright (`pnpm e2e:ci`) against the fake Supabase server;
+   `needs: lint-and-test`
+3. **build** — static export; `needs: lint-and-test` (runs in parallel with e2e);
+   injects Supabase secrets; uploads the Pages artifact only when `upload_pages`
+
+Other workflows: **`codeql.yml`** (security code scanning) and **`claude.yml`**
+(Claude Code action, gated on author association).
+
+Never skip the lint, test, or e2e step. Do not force-push to `main`. When editing
+the CI jobs, edit `test.yml` (the single source) — not the entry-point files.
 
 ## ESLint / Prettier
 
