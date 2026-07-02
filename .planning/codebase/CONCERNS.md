@@ -2,33 +2,34 @@
 
 **Analysis Date:** 2026-06-12
 
+> **⚠️ The "Security & Trust Model" section below is SUPERSEDED and retained only
+> for history.** It predates the Phase 1–4 hardening and the 2026-07-02 review.
+> For the current security posture see
+> [`docs/reviews/2026-07-02-security-architecture-review.md`](../../docs/reviews/2026-07-02-security-architecture-review.md)
+> and the "Security model & trust boundaries" section in `README.md`. Several
+> claims below are now **false** (room codes are 6-char CSPRNG not 4-hex; RLS is
+> sealed with no permissive policies, not `using(true)`; access is via
+> `SECURITY DEFINER` RPCs with server-side validation and payload/roster caps).
+
 This document records technical debt, risks, and fragile areas. Severity reflects impact on correctness, security, or maintainability — not urgency. This is a hobby game arcade with no real user data, so several "high" security items are low _practical_ risk but worth knowing.
 
-## Security & Trust Model
+## Security & Trust Model _(SUPERSEDED — see banner above)_
 
 ### Multiplayer is fully client-authoritative
 
 **Severity: High (by design)** · `src/hooks/useGameRoom.ts`, `supabase/schema.sql`
 
-There is no server. The game reducer runs in each player's browser and writes the entire next state directly to Supabase. The database performs no rules validation — any client holding the anon key can `update` a room row with **any** state it wants (cheating, skipping turns, rewriting scores). Zod (`schema.ts`) only checks _shape_, not _legality of the transition_. This is an accepted trade-off for a casual arcade, but it means competitive integrity cannot be assumed.
+Still accurate. There is no server; the reducer runs in each browser and writes the next state to Supabase. Zod checks _shape_, not transition _legality_. Note (since this was written): the write RPCs now enforce code format, player-name validity, and payload/roster **size caps** server-side — so the "any state it wants" claim is bounded (a member can still write any _legal-shaped, capped_ state). Competitive integrity remains honor-system.
 
-### Rooms are world-readable and world-writable
+### ~~Rooms are world-readable and world-writable~~ (RESOLVED)
 
-**Severity: High (by design)** · `supabase/schema.sql`
-
-RLS policies are `for select using (true)` and `for update using (true)` on every `*_rooms` table. Consequences:
-
-- **`select using(true)`** — the 4-character room code is _not_ a read secret. Any client can read every active room's full state without knowing its code (rows are enumerable via PostgREST). The schema comments acknowledge RLS "cannot inspect PostgREST query parameters."
-- **`update using(true)`** — any authenticated-anon client can overwrite any room, not just one it joined.
-- Room codes are 4 hex chars uppercased (`generateRoomCode`, `useGameRoom.ts:40`) → ~65k space. Trivially brute-forceable; collisions are also possible on create with no retry-on-conflict.
-
-DELETE is correctly denied (no policy); cleanup is via `pg_cron` only.
+**Status: Fixed.** RLS is now sealed: enabled with **no** permissive policies (default-deny for anon). There are no `using(true)` SELECT/UPDATE/INSERT policies — the SEAL block in `supabase/schema.sql` drops any legacy ones. All access flows through `SECURITY DEFINER` RPCs. Room codes are **6-char Crockford base32 from a CSPRNG** (no modulo bias), read via a single-row code-gated `get_<game>` RPC (no enumeration). The original 4-hex / world-writable description no longer applies.
 
 ### Anon key + URL is the entire auth story
 
-**Severity: Medium** · `src/lib/supabase.ts`
+**Severity: Medium (by design)** · `src/lib/supabase.ts`
 
-`playerId` is a client-generated UUID stored in `localStorage`; there is no identity verification. Anyone can claim to be any `playerId` by writing it into a state payload. Invite codes travel in the URL hash (`useInviteCode.ts`).
+Partly still true and now precisely characterized in the 2026-07-02 review (P1-2): a per-room `room_token` hardens the write path but is **not** per-player auth. Because player ids are readable via `get_<game>`, a code-holder can `restore` as any player and receive the shared token — the room code is effectively the full write capability. `playerId` is a client-generated id in `localStorage`; invite codes travel in the URL hash (`useInviteCode.ts`), which is not sent to servers/logs.
 
 ## Correctness & Concurrency
 
@@ -60,17 +61,15 @@ The Supabase client and the fake client are both force-cast to a hand-written `S
 
 ## Testing Gaps
 
-### Schema tests missing for two games
+### ~~Schema tests missing for two games~~ (RESOLVED)
 
-**Severity: Low** · `src/games/codenames/`, `src/games/mindmeld/`
+**Status: Fixed.** `src/games/codenames/schema.test.ts` and `src/games/mindmeld/schema.test.ts` now exist alongside the other four.
 
-Both have a `schema.ts` but no `schema.test.ts`, unlike `uno`, `skribbl`, `agario`, `cards-against-humanity`. Their network-payload contracts are only exercised indirectly via E2E.
+### Coverage gate covers logic only _(partially addressed)_
 
-### Coverage gate covers logic only
+**Severity: Low** · `jest.config.js`
 
-**Severity: Low** · `jest.config.js:16`
-
-`collectCoverageFrom: ['src/games/**/logic.ts']`. The ≥80% gate never sees `useGameRoom.ts` (the most complex and security-relevant file), the `*Game.tsx` renderers, or `src/components/`. Regressions there rely entirely on RTL component tests + Playwright catching them.
+The 2026-07-02 review (P2-3) extended `collectCoverageFrom` to include `src/games/**/schema.ts`, `src/lib/**/*.ts`, and `src/hooks/**/*.ts` (with realistic per-path floors for the hook and lib helpers). The `*Game.tsx` renderers and `src/components/` are still outside the gate.
 
 ### E2E must run serially
 
@@ -116,11 +115,9 @@ The pure-logic split keeps `logic.ts` clean, but the _render_ side has not been 
 
 The CAH deck is a 2,136-line module imported directly, so the full deck ships in the JS bundle for that route with no lazy-loading. Minor for a static site, but it grows the per-game payload.
 
-### Realtime channels only clean up on React unmount
+### ~~Realtime channels only clean up on React unmount~~ (RESOLVED)
 
-**Severity: Low** · `src/hooks/useGameRoom.ts:464`
-
-Subscriptions unsubscribe via the cleanup `useEffect`, but there are no `beforeunload` / `visibilitychange` / `pagehide` handlers (grep confirms none in `src/`). A user closing the tab (rather than navigating away in-app) may leave a presence/realtime slot lingering until the server times it out.
+**Status: Fixed.** `useGameRoom` now tears channels down on `visibilitychange→hidden` and on `pagehide` (the latter corrected to listen on `window` in the 2026-07-02 review, P2-1), and re-subscribes on `visibilitychange→visible`.
 
 ## Operational
 

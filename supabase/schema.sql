@@ -1,15 +1,26 @@
 -- Run this in your Supabase project: SQL Editor → New query → Paste → Run
+--
+-- ┌──────────────────────────────────────────────────────────────────────────┐
+-- │ GENERATED FILE — do not edit by hand.                                      │
+-- │ Source of truth: scripts/generate-schema.mjs. Regenerate with             │
+-- │   pnpm generate:schema   (CI enforces freshness via pnpm check:schema).   │
+-- └──────────────────────────────────────────────────────────────────────────┘
+--
+-- Security model (unchanged by the generator):
+--   * RLS is ENABLED on every room table with NO permissive policies, so anon
+--     is default-deny for direct table access. All legitimate access flows
+--     through the SECURITY DEFINER RPCs below (create/join/restore/dispatch/get),
+--     which run as the table owner and bypass RLS. The SEAL block drops any
+--     pre-existing permissive using(true) policies so re-pasting this file onto
+--     an older deployment actually seals it. DELETE has no policy (pg_cron-only
+--     cleanup); the write RPCs also opportunistically prune rooms older than 24h.
+--   * The room code is the read/write capability. The per-room room_token is
+--     defense-in-depth for the write path, NOT per-player authentication — see
+--     README.md "Security model & trust boundaries".
 
--- Uno rooms table
-create table if not exists uno_rooms (
-  id         uuid        default gen_random_uuid() primary key,
-  code       text        unique not null,
-  state      jsonb       not null,
-  version    integer     not null default 1,
-  updated_at timestamptz default now()
-);
+-- ─── Shared trigger functions ────────────────────────────────────────────────
 
--- Keep updated_at fresh on every update
+-- Keep updated_at fresh on every update.
 create or replace function update_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -17,13 +28,6 @@ begin
   return new;
 end;
 $$;
-
-create or replace trigger uno_rooms_updated_at
-  before update on uno_rooms
-  for each row execute function update_updated_at();
-
--- Enable Realtime for this table (required for postgres_changes subscriptions)
-alter publication supabase_realtime add table uno_rooms;
 
 -- Prevent mutations to immutable columns (id, code) on UPDATE.
 -- RLS with-check only sees the NEW row, so a trigger is needed to compare OLD vs NEW.
@@ -42,33 +46,33 @@ begin
 end;
 $$;
 
+-- ─── Uno rooms table ─────────────────────────────────────────────────────
+
+create table if not exists uno_rooms (
+  id         uuid        default gen_random_uuid() primary key,
+  code       text        unique not null,
+  state      jsonb       not null,
+  version    integer     not null default 1,
+  updated_at timestamptz default now()
+);
+
+create or replace trigger uno_rooms_updated_at
+  before update on uno_rooms
+  for each row execute function update_updated_at();
+
 create or replace trigger uno_rooms_protect_immutable
   before update on uno_rooms
   for each row execute function protect_immutable_columns();
 
--- Row Level Security
--- The anon key is public by design (like Firebase API keys).
--- RLS is the real security layer. Room codes act as access tokens —
--- you must know the code to read or mutate a room.
---
--- SEALED (Phase 3, ACCESS-01): RLS is ENABLED with NO permissive policies, so
--- this table is default-deny for anon — a direct .from('uno_rooms').select()
--- returns zero rows and direct writes are denied. All legitimate access flows
--- through the SECURITY DEFINER RPCs (create/join/restore/dispatch/get_<game>),
--- which bypass RLS as the table owner. The code-gated get_<game>(p_code) read
--- RPC prevents enumeration without Supabase Auth (requires the exact code,
--- returns at most one row). Any pre-existing permissive select/update/insert
--- using(true) policies are dropped by the SEAL block further below (so
--- re-pasting this file onto an existing deployment actually seals it); rollback
--- lives in migrations/supabase-migration-seal-rls-rollback.sql. DELETE has no policy
--- (pg_cron-only cleanup).
+alter publication supabase_realtime add table uno_rooms;
+
+-- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
+-- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table uno_rooms enable row level security;
 
--- Optional: auto-delete rooms older than 24 hours
--- (run manually or schedule via pg_cron if you have it)
 -- delete from uno_rooms where updated_at < now() - interval '24 hours';
 
--- ─── Skribbl rooms table ──────────────────────────────────────────────────────
+-- ─── Skribbl rooms table ─────────────────────────────────────────────────────
 
 create table if not exists skribbl_rooms (
   id         uuid        default gen_random_uuid() primary key,
@@ -94,7 +98,7 @@ alter table skribbl_rooms enable row level security;
 
 -- delete from skribbl_rooms where updated_at < now() - interval '24 hours';
 
--- ─── Agar.io rooms table ────────────────────────────────────────────────────
+-- ─── Agar.io rooms table ─────────────────────────────────────────────────────
 
 create table if not exists agario_rooms (
   id         uuid        default gen_random_uuid() primary key,
@@ -120,7 +124,7 @@ alter table agario_rooms enable row level security;
 
 -- delete from agario_rooms where updated_at < now() - interval '24 hours';
 
--- ─── Cards Against Humanity rooms table ─────────────────────────────────────
+-- ─── Cards Against Humanity rooms table ─────────────────────────────────────────────────────
 
 create table if not exists cah_rooms (
   id         uuid        default gen_random_uuid() primary key,
@@ -146,7 +150,7 @@ alter table cah_rooms enable row level security;
 
 -- delete from cah_rooms where updated_at < now() - interval '24 hours';
 
--- ─── Codenames rooms table ───────────────────────────────────────────────────
+-- ─── Codenames rooms table ─────────────────────────────────────────────────────
 
 create table if not exists codenames_rooms (
   id         uuid        default gen_random_uuid() primary key,
@@ -172,7 +176,7 @@ alter table codenames_rooms enable row level security;
 
 -- delete from codenames_rooms where updated_at < now() - interval '24 hours';
 
--- ─── Mindmeld rooms table ───────────────────────────────────────────────────
+-- ─── Mindmeld rooms table ─────────────────────────────────────────────────────
 
 create table if not exists mindmeld_rooms (
   id         uuid        default gen_random_uuid() primary key,
@@ -207,16 +211,14 @@ alter table mindmeld_rooms enable row level security;
 -- name-agnostically (policy names diverge across tables), so pasting this file
 -- actually seals an existing deployment. RLS stays ENABLED throughout (never
 -- disabled — that would re-open world-read). DELETE has no policy (pg_cron-only
--- cleanup) and is left untouched. Standalone + rollback equivalents:
--- migrations/supabase-migration-seal-rls.sql / migrations/supabase-migration-seal-rls-rollback.sql
+-- cleanup) and is left untouched.
 do $$
 declare
   t text;
   pol record;
 begin
   foreach t in array array[
-    'uno_rooms', 'skribbl_rooms', 'agario_rooms',
-    'cah_rooms', 'codenames_rooms', 'mindmeld_rooms'
+    'uno_rooms', 'skribbl_rooms', 'agario_rooms', 'cah_rooms', 'codenames_rooms', 'mindmeld_rooms'
   ] loop
     for pol in
       select policyname from pg_policies
@@ -229,38 +231,17 @@ begin
   end loop;
 end $$;
 
--- ─── Migration: add version column to existing tables ───────────────────────
--- Run this once if your tables already exist (the CREATE TABLE statements above
--- include the column for fresh installs).
-
--- alter table uno_rooms     add column if not exists version integer not null default 1;
--- alter table skribbl_rooms add column if not exists version integer not null default 1;
--- alter table agario_rooms  add column if not exists version integer not null default 1;
--- alter table cah_rooms     add column if not exists version integer not null default 1;
-
--- ════════════════════════════════════════════════════════════════════════════
--- Phase 2 (ADDITIVE): member-scoped RPCs, broadcast delivery, server-side
--- validation. These RPCs are the sanctioned access path. (Phase 3 then SEALED
--- the tables — the previously-permissive `using(true)` SELECT/UPDATE/INSERT
--- policies have been dropped above; RLS stays enabled, default-deny for anon, so
--- these SECURITY DEFINER RPCs are now the ONLY way to touch a room.) Each block
--- is independently reversible (drop column / drop trigger / drop function) and
--- does not break in-flight rooms or stale cached clients. Applied identically
--- across all 6 room tables from one templated source (MIGR-03 / D-15).
--- ════════════════════════════════════════════════════════════════════════════
-
 -- ─── room_token column (×6) ─────────────────────────────────────────────────
 -- The per-room write capability (D-01). UUID v4 = ~122 bits CSPRNG, server-
--- minted, never in the invite URL. `add column if not exists ... default
--- gen_random_uuid()` backfills existing rows so live pre-migration rooms get a
--- token (Runtime State Inventory).
+-- minted, never in the invite URL. This is a room-scoped write token, NOT
+-- per-player auth (any member shares it; see README trust-boundaries section).
 
-alter table public.uno_rooms       add column if not exists room_token uuid not null default gen_random_uuid();
-alter table public.skribbl_rooms   add column if not exists room_token uuid not null default gen_random_uuid();
-alter table public.agario_rooms    add column if not exists room_token uuid not null default gen_random_uuid();
-alter table public.cah_rooms       add column if not exists room_token uuid not null default gen_random_uuid();
+alter table public.uno_rooms add column if not exists room_token uuid not null default gen_random_uuid();
+alter table public.skribbl_rooms add column if not exists room_token uuid not null default gen_random_uuid();
+alter table public.agario_rooms add column if not exists room_token uuid not null default gen_random_uuid();
+alter table public.cah_rooms add column if not exists room_token uuid not null default gen_random_uuid();
 alter table public.codenames_rooms add column if not exists room_token uuid not null default gen_random_uuid();
-alter table public.mindmeld_rooms  add column if not exists room_token uuid not null default gen_random_uuid();
+alter table public.mindmeld_rooms add column if not exists room_token uuid not null default gen_random_uuid();
 
 -- ─── Shared broadcast trigger function ───────────────────────────────────────
 -- Emits the full {state, version} on the PUBLIC topic `room:CODE` after every
@@ -314,9 +295,6 @@ create or replace trigger mindmeld_rooms_broadcast_state after update on public.
 -- digits, punctuation, emoji — is allowed (the real risks for a casual arcade
 -- are length-DoS and blank/invisible names; React escapes rendered output).
 -- Client Zod is a SUBSET of this accept-set (INPUT-03: client ⊆ Postgres).
--- MUST accept "Roman", "ローマン", "player 🎮", "x_42"; MUST reject empty /
--- all-whitespace, 21+ chars, control and zero-width characters.
--- search_path = '' → fully-qualified names below.
 create or replace function public.is_valid_player_name(p_name text)
 returns boolean
 language plpgsql
@@ -361,14 +339,16 @@ grant execute on function public.is_valid_player_name(text) to anon;
 --   * revoke all from public; grant execute to anon only (scoped EXECUTE)
 --   * re-checks the canonical 6-char Crockford code server-side (INPUT-02)
 --   * validates every player name in the candidate state (INPUT-01, helper)
+--   * caps payload size and roster size (P0-1) on the create/join/dispatch
+--     write paths (each accepts an arbitrary anon-supplied jsonb state)
 -- Errcodes (mapped to friendly UI strings by the hook — no raw DB errors):
---   22023 invalid code / invalid name | 42501 unauthorized (token / not member)
---   40001 version conflict (CAS). The reducer stays client-side; dispatch takes
---   p_new_state + p_expected_version and does the CAS (Open Question 1 RESOLVED).
--- All writes require code + room_token (D-02/D-03). join issues the token;
--- restore re-issues it iff p_player_id ∈ state.players (D-04).
+--   22023 invalid code / invalid name / oversized state / too many players
+--   42501 unauthorized (token / not member) | 40001 version conflict (CAS)
+-- The reducer stays client-side; dispatch takes p_new_state + p_expected_version
+-- and does the CAS. All writes require code + room_token (D-02/D-03). join issues
+-- the token; restore re-issues it iff p_player_id ∈ state.players (D-04).
 
--- ── uno_rooms ──────────────────────────────────────────────────────────────────
+-- ── uno_rooms ──
 
 create or replace function public.create_uno(p_code text, p_state jsonb)
 returns table(state jsonb, version integer, room_token uuid)
@@ -382,14 +362,28 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
       raise exception 'invalid name' using errcode = '22023';
     end if;
   end loop;
+  -- P2-6: opportunistic, bounded cleanup so orphaned rooms decay even if the
+  -- pg_cron job was never scheduled. Cheap on the create path.
+  delete from public.uno_rooms
+   where ctid in (
+     select ctid from public.uno_rooms
+      where updated_at < now() - interval '24 hours'
+      limit 100
+   );
   return query
   insert into public.uno_rooms (code, state, room_token)
   values (p_code, p_state, gen_random_uuid())
@@ -413,8 +407,14 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -478,7 +478,8 @@ begin
   if not found then
     raise exception 'unauthorized' using errcode = '42501';
   end if;
-  -- verify p_player_id ∈ state.players (jsonb membership) (D-04)
+  -- verify p_player_id ∈ state.players (jsonb membership) (D-04). NOTE: player
+  -- ids are readable via get_uno, so this is not per-player auth — see README.
   select exists (
     select 1 from jsonb_array_elements(v_row.state -> 'players') as p
      where p ->> 'id' = p_player_id
@@ -511,10 +512,16 @@ begin
   if not found or v_row.room_token <> p_room_token then
     raise exception 'unauthorized' using errcode = '42501';   -- token gate (ACCESS-03)
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   -- INPUT-01: validate every player name server-side on the steady-state write
   -- path too (CR-04), consistent with create/join — dispatch is a trust boundary.
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -537,7 +544,7 @@ $$;
 revoke all on function public.dispatch_uno(text, uuid, jsonb, integer) from public;
 grant execute on function public.dispatch_uno(text, uuid, jsonb, integer) to anon;
 
--- ── skribbl_rooms ──────────────────────────────────────────────────────────────────
+-- ── skribbl_rooms ──
 
 create or replace function public.create_skribbl(p_code text, p_state jsonb)
 returns table(state jsonb, version integer, room_token uuid)
@@ -551,14 +558,28 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
       raise exception 'invalid name' using errcode = '22023';
     end if;
   end loop;
+  -- P2-6: opportunistic, bounded cleanup so orphaned rooms decay even if the
+  -- pg_cron job was never scheduled. Cheap on the create path.
+  delete from public.skribbl_rooms
+   where ctid in (
+     select ctid from public.skribbl_rooms
+      where updated_at < now() - interval '24 hours'
+      limit 100
+   );
   return query
   insert into public.skribbl_rooms (code, state, room_token)
   values (p_code, p_state, gen_random_uuid())
@@ -582,8 +603,14 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -647,7 +674,8 @@ begin
   if not found then
     raise exception 'unauthorized' using errcode = '42501';
   end if;
-  -- verify p_player_id ∈ state.players (jsonb membership) (D-04)
+  -- verify p_player_id ∈ state.players (jsonb membership) (D-04). NOTE: player
+  -- ids are readable via get_skribbl, so this is not per-player auth — see README.
   select exists (
     select 1 from jsonb_array_elements(v_row.state -> 'players') as p
      where p ->> 'id' = p_player_id
@@ -680,10 +708,16 @@ begin
   if not found or v_row.room_token <> p_room_token then
     raise exception 'unauthorized' using errcode = '42501';   -- token gate (ACCESS-03)
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   -- INPUT-01: validate every player name server-side on the steady-state write
   -- path too (CR-04), consistent with create/join — dispatch is a trust boundary.
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -706,7 +740,7 @@ $$;
 revoke all on function public.dispatch_skribbl(text, uuid, jsonb, integer) from public;
 grant execute on function public.dispatch_skribbl(text, uuid, jsonb, integer) to anon;
 
--- ── agario_rooms ──────────────────────────────────────────────────────────────────
+-- ── agario_rooms ──
 
 create or replace function public.create_agario(p_code text, p_state jsonb)
 returns table(state jsonb, version integer, room_token uuid)
@@ -720,14 +754,28 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
       raise exception 'invalid name' using errcode = '22023';
     end if;
   end loop;
+  -- P2-6: opportunistic, bounded cleanup so orphaned rooms decay even if the
+  -- pg_cron job was never scheduled. Cheap on the create path.
+  delete from public.agario_rooms
+   where ctid in (
+     select ctid from public.agario_rooms
+      where updated_at < now() - interval '24 hours'
+      limit 100
+   );
   return query
   insert into public.agario_rooms (code, state, room_token)
   values (p_code, p_state, gen_random_uuid())
@@ -751,8 +799,14 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -816,7 +870,8 @@ begin
   if not found then
     raise exception 'unauthorized' using errcode = '42501';
   end if;
-  -- verify p_player_id ∈ state.players (jsonb membership) (D-04)
+  -- verify p_player_id ∈ state.players (jsonb membership) (D-04). NOTE: player
+  -- ids are readable via get_agario, so this is not per-player auth — see README.
   select exists (
     select 1 from jsonb_array_elements(v_row.state -> 'players') as p
      where p ->> 'id' = p_player_id
@@ -849,10 +904,16 @@ begin
   if not found or v_row.room_token <> p_room_token then
     raise exception 'unauthorized' using errcode = '42501';   -- token gate (ACCESS-03)
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   -- INPUT-01: validate every player name server-side on the steady-state write
   -- path too (CR-04), consistent with create/join — dispatch is a trust boundary.
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -875,7 +936,7 @@ $$;
 revoke all on function public.dispatch_agario(text, uuid, jsonb, integer) from public;
 grant execute on function public.dispatch_agario(text, uuid, jsonb, integer) to anon;
 
--- ── cah_rooms ──────────────────────────────────────────────────────────────────
+-- ── cah_rooms ──
 
 create or replace function public.create_cah(p_code text, p_state jsonb)
 returns table(state jsonb, version integer, room_token uuid)
@@ -889,14 +950,28 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
       raise exception 'invalid name' using errcode = '22023';
     end if;
   end loop;
+  -- P2-6: opportunistic, bounded cleanup so orphaned rooms decay even if the
+  -- pg_cron job was never scheduled. Cheap on the create path.
+  delete from public.cah_rooms
+   where ctid in (
+     select ctid from public.cah_rooms
+      where updated_at < now() - interval '24 hours'
+      limit 100
+   );
   return query
   insert into public.cah_rooms (code, state, room_token)
   values (p_code, p_state, gen_random_uuid())
@@ -920,8 +995,14 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -985,7 +1066,8 @@ begin
   if not found then
     raise exception 'unauthorized' using errcode = '42501';
   end if;
-  -- verify p_player_id ∈ state.players (jsonb membership) (D-04)
+  -- verify p_player_id ∈ state.players (jsonb membership) (D-04). NOTE: player
+  -- ids are readable via get_cah, so this is not per-player auth — see README.
   select exists (
     select 1 from jsonb_array_elements(v_row.state -> 'players') as p
      where p ->> 'id' = p_player_id
@@ -1018,10 +1100,16 @@ begin
   if not found or v_row.room_token <> p_room_token then
     raise exception 'unauthorized' using errcode = '42501';   -- token gate (ACCESS-03)
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   -- INPUT-01: validate every player name server-side on the steady-state write
   -- path too (CR-04), consistent with create/join — dispatch is a trust boundary.
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -1044,7 +1132,7 @@ $$;
 revoke all on function public.dispatch_cah(text, uuid, jsonb, integer) from public;
 grant execute on function public.dispatch_cah(text, uuid, jsonb, integer) to anon;
 
--- ── codenames_rooms ──────────────────────────────────────────────────────────────────
+-- ── codenames_rooms ──
 
 create or replace function public.create_codenames(p_code text, p_state jsonb)
 returns table(state jsonb, version integer, room_token uuid)
@@ -1058,14 +1146,28 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
       raise exception 'invalid name' using errcode = '22023';
     end if;
   end loop;
+  -- P2-6: opportunistic, bounded cleanup so orphaned rooms decay even if the
+  -- pg_cron job was never scheduled. Cheap on the create path.
+  delete from public.codenames_rooms
+   where ctid in (
+     select ctid from public.codenames_rooms
+      where updated_at < now() - interval '24 hours'
+      limit 100
+   );
   return query
   insert into public.codenames_rooms (code, state, room_token)
   values (p_code, p_state, gen_random_uuid())
@@ -1089,8 +1191,14 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -1154,7 +1262,8 @@ begin
   if not found then
     raise exception 'unauthorized' using errcode = '42501';
   end if;
-  -- verify p_player_id ∈ state.players (jsonb membership) (D-04)
+  -- verify p_player_id ∈ state.players (jsonb membership) (D-04). NOTE: player
+  -- ids are readable via get_codenames, so this is not per-player auth — see README.
   select exists (
     select 1 from jsonb_array_elements(v_row.state -> 'players') as p
      where p ->> 'id' = p_player_id
@@ -1187,10 +1296,16 @@ begin
   if not found or v_row.room_token <> p_room_token then
     raise exception 'unauthorized' using errcode = '42501';   -- token gate (ACCESS-03)
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   -- INPUT-01: validate every player name server-side on the steady-state write
   -- path too (CR-04), consistent with create/join — dispatch is a trust boundary.
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -1213,7 +1328,7 @@ $$;
 revoke all on function public.dispatch_codenames(text, uuid, jsonb, integer) from public;
 grant execute on function public.dispatch_codenames(text, uuid, jsonb, integer) to anon;
 
--- ── mindmeld_rooms ──────────────────────────────────────────────────────────────────
+-- ── mindmeld_rooms ──
 
 create or replace function public.create_mindmeld(p_code text, p_state jsonb)
 returns table(state jsonb, version integer, room_token uuid)
@@ -1227,14 +1342,28 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
       raise exception 'invalid name' using errcode = '22023';
     end if;
   end loop;
+  -- P2-6: opportunistic, bounded cleanup so orphaned rooms decay even if the
+  -- pg_cron job was never scheduled. Cheap on the create path.
+  delete from public.mindmeld_rooms
+   where ctid in (
+     select ctid from public.mindmeld_rooms
+      where updated_at < now() - interval '24 hours'
+      limit 100
+   );
   return query
   insert into public.mindmeld_rooms (code, state, room_token)
   values (p_code, p_state, gen_random_uuid())
@@ -1258,8 +1387,14 @@ begin
   if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
     raise exception 'invalid code' using errcode = '22023';
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -1323,7 +1458,8 @@ begin
   if not found then
     raise exception 'unauthorized' using errcode = '42501';
   end if;
-  -- verify p_player_id ∈ state.players (jsonb membership) (D-04)
+  -- verify p_player_id ∈ state.players (jsonb membership) (D-04). NOTE: player
+  -- ids are readable via get_mindmeld, so this is not per-player auth — see README.
   select exists (
     select 1 from jsonb_array_elements(v_row.state -> 'players') as p
      where p ->> 'id' = p_player_id
@@ -1356,10 +1492,16 @@ begin
   if not found or v_row.room_token <> p_room_token then
     raise exception 'unauthorized' using errcode = '42501';   -- token gate (ACCESS-03)
   end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
   -- INPUT-01: validate every player name server-side on the steady-state write
   -- path too (CR-04), consistent with create/join — dispatch is a trust boundary.
   if jsonb_typeof(p_new_state -> 'players') <> 'array' then
     raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
   end if;
   for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
     if not public.is_valid_player_name(v_player ->> 'name') then
@@ -1386,9 +1528,10 @@ grant execute on function public.dispatch_mindmeld(text, uuid, jsonb, integer) t
 -- get_<game>(p_code) is the sealed-world read primitive. It requires the EXACT
 -- room code and returns at most one room's { state, version } — there is no list
 -- capability and no wildcard, so it is NOT a re-opening of the world-readable
--- `select using(true)` path. SECURITY DEFINER lets a code-holder read a room once
--- the permissive SELECT policy is dropped (Plan 03 seal). An unknown code returns
--- ZERO rows (NOT a raised error), preserving the "Room not found" UX (D-01).
+-- `select using(true)` path. An unknown code returns ZERO rows (NOT a raised
+-- error), preserving the "Room not found" UX (D-01). NOTE: the full state row —
+-- including any hidden info (hands, keys, secret words) — is readable by any
+-- code-holder. Competitive integrity is honor-system; see README.
 
 create or replace function public.get_uno(p_code text)
 returns table(state jsonb, version integer)
