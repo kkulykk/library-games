@@ -6,8 +6,11 @@ name: Test
 on:
   pull_request:
     branches: ['**']
+  # Only push-trigger on main. PRs are covered by pull_request above; without
+  # this restriction every PR branch push would run the suite twice (once as
+  # push, once as pull_request).
   push:
-    branches: ['**']
+    branches: ['main']
   workflow_dispatch:
 
 permissions:
