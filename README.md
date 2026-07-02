@@ -71,7 +71,7 @@ pnpm build          # static export -> /out
 
 ## E2E testing
 
-Playwright E2E tests cover multiplayer room flows, game smoke paths, race conditions, and reconnect behavior with a deterministic fake Supabase backend. See `docs/e2e.md` for local commands, fake backend details, selector conventions, CI artifacts, and debugging tips.
+Playwright E2E tests cover multiplayer room flows, game smoke paths, race conditions, and reconnect behavior with a deterministic fake Supabase backend (`src/lib/e2e/`).
 
 ```bash
 pnpm e2e        # run Playwright headless
