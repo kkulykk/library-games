@@ -353,7 +353,7 @@
 
 .lobbyGrid {
   display: grid;
-  grid-template-columns: 1fr 1.1fr 1fr;
+  grid-template-columns: 1fr 1.4fr;
   gap: 1rem;
   align-items: stretch;
 }
@@ -509,55 +509,6 @@
   background: transparent;
   color: var(--arcade-ink-mute);
   border: 1px solid var(--arcade-line);
-}
-
-.settings {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-.setting {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-
-.settingLabel {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--arcade-ink-dim);
-}
-
-.segmented {
-  display: flex;
-  border: 1px solid var(--arcade-line);
-}
-
-.segmented button {
-  background: #fff;
-  color: var(--arcade-ink-dim);
-  border: 0;
-  padding: 0.36rem 0.75rem;
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
-  font-weight: 700;
-  text-transform: uppercase;
-  cursor: pointer;
-  border-right: 1px solid var(--arcade-line);
-}
-
-.segmented button:last-child {
-  border-right: 0;
-}
-
-.segmentedOn {
-  background: var(--arcade-ink) !important;
-  color: var(--arcade-bg) !important;
 }
 
 .lobbyCta {

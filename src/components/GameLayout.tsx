@@ -1,7 +1,6 @@
-import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { GameHowTo } from '@/components/GameHowTo'
+import { GameTopNav } from '@/components/GameTopNav'
 import { games } from '@/data/games'
 
 interface GameLayoutProps {
@@ -16,26 +15,7 @@ export function GameLayout({ title, slug, children, score }: GameLayoutProps) {
 
   return (
     <div className="game-page">
-      <nav className="topnav">
-        <Link href="/" className="game-back" data-testid="game-back">
-          <ArrowLeft className="h-4 w-4" />
-          BACK TO LIBRARY
-        </Link>
-        <div className="brand" style={{ fontSize: 16 }}>
-          <span className="brand-mark" style={{ width: 28, height: 28, fontSize: 14 }}>
-            L
-          </span>
-          <span>{title.toUpperCase()}</span>
-          {game && <span className="brand-suffix">{game.genre}</span>}
-        </div>
-        <div className="nav-right">
-          {score ? (
-            <span className="mono nav-time">{score}</span>
-          ) : (
-            <span className="mono nav-time">/ NOW PLAYING</span>
-          )}
-        </div>
-      </nav>
+      <GameTopNav title={title} suffix={game?.genre} right={score} />
 
       <main
         style={{
