@@ -28,7 +28,6 @@ test.describe('accessibility smoke coverage', () => {
 
   test('uno setup screen has no baseline WCAG violations', async ({ page }) => {
     await page.goto('/library-games/games/uno')
-    await page.getByTestId('play-game-button').click()
     await page.getByTestId('create-room-button').first().waitFor()
 
     await expectNoA11yViolations(page)

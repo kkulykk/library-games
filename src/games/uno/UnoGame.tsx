@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { games } from '@/data/games'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -41,6 +42,8 @@ function UnoStyles() {
 // ─── Card rendering (markup-based, no sprite sheet) ─────────────────────────
 
 const COLORS: CardColor[] = ['red', 'yellow', 'green', 'blue']
+
+const UNO_GENRE = games.find((g) => g.slug === 'uno')?.genre
 
 function cornerLabel(value: CardValue): string {
   if (typeof value === 'number') return String(value)
@@ -610,42 +613,6 @@ function LobbyScreen({
                 <span className={styles.playerName}>waiting…</span>
               </div>
             ))}
-          </div>
-        </section>
-
-        <section className={styles.lobbyCard}>
-          <div className={cn(styles.lobbyCardHead, arcadeShellStyles.mono)}>
-            <span>/ HOUSE RULES</span>
-          </div>
-          <div className={styles.settings}>
-            <div className={styles.setting}>
-              <span className={styles.settingLabel}>STACKING</span>
-              <div className={styles.segmented}>
-                <button type="button" className={styles.segmentedOn}>
-                  ON
-                </button>
-                <button type="button">OFF</button>
-              </div>
-            </div>
-            <div className={styles.setting}>
-              <span className={styles.settingLabel}>DRAW UNTIL PLAY</span>
-              <div className={styles.segmented}>
-                <button type="button">ON</button>
-                <button type="button" className={styles.segmentedOn}>
-                  OFF
-                </button>
-              </div>
-            </div>
-            <div className={styles.setting}>
-              <span className={styles.settingLabel}>TARGET</span>
-              <div className={styles.segmented}>
-                <button type="button">250</button>
-                <button type="button" className={styles.segmentedOn}>
-                  500
-                </button>
-                <button type="button">1000</button>
-              </div>
-            </div>
           </div>
         </section>
       </div>
@@ -1218,7 +1185,7 @@ export function UnoGame() {
   const handleLeave = useCallback(() => void leaveRoom(), [leaveRoom])
 
   return (
-    <ArcadeShell title="Uno" crumb={crumb} centered={!inGame}>
+    <ArcadeShell title="Uno" suffix={UNO_GENRE} crumb={crumb} centered={!inGame}>
       <UnoStyles />
       {!isEntryState && <DesyncIndicator active={connectionStatus === 'desynced'} />}
       {!isSupabaseConfigured ? (

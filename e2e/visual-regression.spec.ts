@@ -36,7 +36,6 @@ test.describe('visual regression smoke coverage', () => {
 
   test('uno setup layout matches baseline', async ({ page }) => {
     await page.goto('/library-games/games/uno')
-    await page.getByTestId('play-game-button').click()
     await expect(page.getByTestId('create-room-button').first()).toBeVisible()
 
     await expect(page).toHaveScreenshot('uno-setup.png', {
