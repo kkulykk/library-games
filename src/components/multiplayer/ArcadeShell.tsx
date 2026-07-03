@@ -1,6 +1,4 @@
-import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { GameTopNav } from '@/components/GameTopNav'
 import styles from './ArcadeShell.module.css'
 
 interface ArcadeShellProps {
@@ -9,6 +7,8 @@ interface ArcadeShellProps {
   children: React.ReactNode
   centered?: boolean
   backHref?: string
+  /** Muted suffix after the title (e.g. the game's genre), matching other games. */
+  suffix?: React.ReactNode
 }
 
 export function ArcadeShell({
@@ -17,29 +17,11 @@ export function ArcadeShell({
   children,
   centered = true,
   backHref = '/',
+  suffix,
 }: ArcadeShellProps) {
   return (
     <div className={styles.shell}>
-      <header className={styles.topbar}>
-        <div className={cn(styles.topbarSide, styles.topbarSideStart)}>
-          <Link href={backHref} className={styles.back}>
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Library
-          </Link>
-        </div>
-
-        <div className={cn(styles.topbarSide, styles.topbarSideCenter, 'justify-center')}>
-          <Link href="/" className={styles.brand}>
-            <span className={styles.brandMark}>{title[0]}</span>
-            <span className={styles.brandText}>{title}</span>
-            <span className={styles.brandSuffix}>/ play</span>
-          </Link>
-        </div>
-
-        <div className={cn(styles.topbarSide, styles.topbarSideRight)}>
-          <div className={styles.crumb}>{crumb}</div>
-        </div>
-      </header>
+      <GameTopNav title={title} suffix={suffix} right={crumb} backHref={backHref} />
 
       {centered ? (
         <main className={styles.stage}>
