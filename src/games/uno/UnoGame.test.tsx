@@ -31,8 +31,8 @@ describe('UnoGame redesign shell', () => {
   it('uses the shared arcade shell and onboarding language from Skribbl redesign', () => {
     render(<UnoGame />)
 
-    expect(screen.getByRole('link', { name: /library/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /uno\s*\/ play/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back to library/i })).toBeInTheDocument()
+    expect(screen.getByText('UNO')).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: /match it\.\s*stack it\.\s*uno it\./i })
     ).toBeInTheDocument()

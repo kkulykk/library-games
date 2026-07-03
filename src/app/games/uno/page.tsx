@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { games } from '@/data/games'
-import { GameLayout } from '@/components/GameLayout'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { UnoGame } from '@/games/uno/UnoGame'
 
 const game = games.find((g) => g.slug === 'uno')!
@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 
 export default function UnoPage() {
   return (
-    <GameLayout title="UNO" slug="uno">
+    <ErrorBoundary>
       <UnoGame />
-    </GameLayout>
+    </ErrorBoundary>
   )
 }

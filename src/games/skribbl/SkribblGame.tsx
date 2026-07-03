@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Eraser, PencilLine, Trash2, Undo2 } from 'lucide-react'
+import { games } from '@/data/games'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { copyText } from '@/lib/clipboard'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -25,6 +26,8 @@ import {
   type GameState,
 } from './logic'
 import styles from './SkribblGame.module.css'
+
+const SKRIBBL_GENRE = games.find((g) => g.slug === 'skribbl')?.genre
 
 const COLORS = [
   '#000000',
@@ -1357,7 +1360,7 @@ export function SkribblGame() {
   const isResolvingInvite = isEntryState && !inviteCodeResolved
 
   return (
-    <ArcadeShell title="Skribbl" crumb={crumb} centered={centered}>
+    <ArcadeShell title="Skribbl" suffix={SKRIBBL_GENRE} crumb={crumb} centered={centered}>
       {!isEntryState && <DesyncIndicator active={connectionStatus === 'desynced'} />}
       {!isSupabaseConfigured ? (
         <SetupRequired />
