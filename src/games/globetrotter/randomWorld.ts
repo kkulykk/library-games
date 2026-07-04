@@ -69,7 +69,15 @@ interface ImageInfoResponse {
 }
 
 function stripHtml(value: string): string {
-  return value.replace(/<[^>]+>/g, '').trim()
+  let text = value
+  let previous: string
+
+  do {
+    previous = text
+    text = text.replace(/<[^<>]*>/g, '')
+  } while (text !== previous)
+
+  return text.replace(/[<>]/g, '').trim()
 }
 
 /**

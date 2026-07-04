@@ -5,7 +5,7 @@ import { haversineKm } from './logic'
 // Minimal Commons API double: categorymembers then imageinfo|coordinates.
 // Each categorymembers call serves a fresh batch with its own coordinates so
 // the minimum-separation rule can be satisfied.
-function makeFetchDouble(options?: { dropCoordinates?: boolean; ratio?: number }) {
+function makeFetchDouble(options?: { dropCoordinates?: boolean; ratio?: number; artist?: string }) {
   let batch = 0
   const calls: string[] = []
   const fetchFn = (async (input: RequestInfo | URL) => {
@@ -39,7 +39,7 @@ function makeFetchDouble(options?: { dropCoordinates?: boolean; ratio?: number }
                   mime: 'image/jpeg',
                   thumburl: `https://upload.wikimedia.org/thumb/pano-${batch}.jpg`,
                   extmetadata: {
-                    Artist: { value: '<a href="#">Jane Mapper</a>' },
+                    Artist: { value: options?.artist ?? '<a href="#">Jane Mapper</a>' },
                     LicenseShortName: { value: 'CC BY-SA 4.0' },
                   },
                 },
@@ -100,6 +100,15 @@ describe('fetchRandomWorldDeck', () => {
     }) as typeof fetch
     const deck = await fetchRandomWorldDeck(1, { fetchFn: parisFetch, random: fixedRandom })
     expect(deck[0].name).toBe('France')
+  })
+
+  it('removes nested or malformed markup from Commons attribution', async () => {
+    const { fetchFn } = makeFetchDouble({ artist: '<scr<script>ipt>Jane <b>Mapper</b>' })
+    const deck = await fetchRandomWorldDeck(1, { fetchFn, random: fixedRandom })
+
+    expect(deck[0].pano?.author).toBe('Jane Mapper')
+    expect(deck[0].pano?.author).not.toContain('<')
+    expect(deck[0].pano?.author).not.toContain('>')
   })
 
   it('rejects files without coordinates and gives up with an error', async () => {
