@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "generate:schema": "node scripts/generate-schema.mjs",
     "check:schema": "node scripts/generate-schema.mjs --check",
+    "generate:worldmap": "node scripts/generate-worldmap.mjs",
+    "check:worldmap": "node scripts/generate-worldmap.mjs --check",
     "lint": "eslint . && prettier --check .",
     "lint:fix": "eslint . --fix && prettier --write .",
     "test": "jest --config jest.config.js",

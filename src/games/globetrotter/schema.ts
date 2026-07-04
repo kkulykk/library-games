@@ -14,6 +14,13 @@ const GuessSchema = z.object({
   lng: z.number().min(-180).max(180),
 })
 
+const PanoSchema = z.object({
+  url: z.string(),
+  page: z.string(),
+  author: z.string(),
+  license: z.string(),
+})
+
 const LocationSchema = z.object({
   name: z.string(),
   country: z.string(),
@@ -21,6 +28,7 @@ const LocationSchema = z.object({
   lng: z.number().min(-180).max(180),
   emoji: z.string(),
   clues: z.array(z.string()),
+  pano: PanoSchema.optional(),
 })
 
 const RoundSchema = z.object({

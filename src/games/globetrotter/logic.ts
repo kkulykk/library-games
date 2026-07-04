@@ -30,7 +30,7 @@ export interface Round {
 }
 
 export type GameAction =
-  | { type: 'START_GAME'; playerId: string }
+  | { type: 'START_GAME'; playerId: string; deck?: GeoLocation[] }
   | { type: 'SUBMIT_GUESS'; playerId: string; lat: number; lng: number }
   | { type: 'NEXT_ROUND'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
@@ -104,6 +104,19 @@ export function formatKm(km: number): string {
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
+/** Sanity gate for decks supplied by the UI (e.g. fetched Random World decks). */
+export function isPlayableLocation(location: GeoLocation): boolean {
+  return (
+    typeof location.name === 'string' &&
+    location.name.length > 0 &&
+    typeof location.country === 'string' &&
+    isValidGuess(location.lat, location.lng) &&
+    typeof location.emoji === 'string' &&
+    Array.isArray(location.clues) &&
+    location.clues.every((clue) => typeof clue === 'string')
+  )
+}
+
 export function pickLocations(
   count: number,
   rng: () => number = Math.random,
@@ -147,8 +160,8 @@ const HIDDEN_LOCATION: GeoLocation = {
 
 /**
  * Display-side redaction (honor-system, like Mindmeld's hidden target): before
- * the reveal, players see the current location's clues but not its answer, and
- * never see the rest of the deck.
+ * the reveal, players see the current location's clues and its 360° panorama
+ * but not its answer, and never see the rest of the deck.
  */
 export function redactForPlayer(state: GameState, _playerId: string): GameState {
   const redacted: GameState = { ...state, deck: [] }
@@ -157,7 +170,11 @@ export function redactForPlayer(state: GameState, _playerId: string): GameState 
     ...redacted,
     currentRound: {
       ...state.currentRound,
-      location: { ...HIDDEN_LOCATION, clues: state.currentRound.location.clues },
+      location: {
+        ...HIDDEN_LOCATION,
+        clues: state.currentRound.location.clues,
+        pano: state.currentRound.location.pano,
+      },
     },
   }
 }
@@ -218,13 +235,26 @@ function applyRoundScores(players: Player[], round: Round): Player[] {
   }))
 }
 
-function startGame(state: GameState, playerId: string, rng: () => number = Math.random): GameState {
+function startGame(
+  state: GameState,
+  playerId: string,
+  rng: () => number = Math.random,
+  providedDeck?: GeoLocation[]
+): GameState {
   if (state.phase !== 'lobby') return state
   const host = state.players.find((p) => p.id === playerId)
   if (!host?.isHost) return state
   if (!canStartGame(state)) return state
 
-  const deck = pickLocations(state.totalRounds, rng)
+  // A supplied deck (Random World) is used only when it is fully playable;
+  // anything short or malformed falls back to the curated landmark pool.
+  const supplied =
+    providedDeck &&
+    providedDeck.length >= state.totalRounds &&
+    providedDeck.every(isPlayableLocation)
+      ? providedDeck.slice(0, state.totalRounds)
+      : null
+  const deck = supplied ?? pickLocations(state.totalRounds, rng)
   return {
     ...state,
     phase: 'playing',
@@ -356,7 +386,7 @@ export function removePlayer(state: GameState, playerId: string): GameState {
 export function applyAction(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'START_GAME':
-      return startGame(state, action.playerId)
+      return startGame(state, action.playerId, Math.random, action.deck)
     case 'SUBMIT_GUESS':
       return submitGuess(state, action.playerId, action.lat, action.lng)
     case 'NEXT_ROUND':
@@ -390,10 +420,15 @@ export interface SoloGame {
 
 export function createSoloGame(
   rng: () => number = Math.random,
-  totalRounds: number = TOTAL_ROUNDS
+  totalRounds: number = TOTAL_ROUNDS,
+  providedDeck?: GeoLocation[]
 ): SoloGame {
+  const supplied =
+    providedDeck && providedDeck.length >= totalRounds && providedDeck.every(isPlayableLocation)
+      ? providedDeck.slice(0, totalRounds)
+      : null
   return {
-    rounds: pickLocations(totalRounds, rng),
+    rounds: supplied ?? pickLocations(totalRounds, rng),
     roundNumber: 1,
     phase: 'guessing',
     results: [],

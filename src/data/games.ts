@@ -421,7 +421,7 @@ export const games: GameMeta[] = [
     slug: 'globetrotter',
     title: 'Globetrotter',
     description:
-      'GeoGuessr-style travel quiz: read the clues, pin the mystery location on the world map. Play solo or race your friends.',
+      'GeoGuessr-style travel quiz: look around a 360° panorama, read the clues, and pin the mystery location on a real world map. Play solo or race your friends.',
     tags: ['multiplayer', 'geography', 'puzzle'],
     status: 'live',
     category: 'online-multiplayer',
@@ -434,12 +434,13 @@ export const games: GameMeta[] = [
     rating: 4.6,
     plays: '890K',
     rules: [
-      'Each round drops you at a mystery location described by three field-note clues',
-      'Click the world map to place your pin, then lock in your guess',
+      'Each round drops you at a mystery location — most come with a real 360° panorama you can drag to look around',
+      'Three field-note clues back up the imagery when you need more to go on',
+      'Random World mode drops you at any of a million+ real 360° spots on Earth — endless, clue-free rounds',
+      'Scroll to zoom the world map, then click to place your pin and lock in your guess',
       'In online games nobody sees your pin until everyone has locked in',
       'Scoring is by distance: a bullseye earns 5,000 points, half a world away earns 0',
       'Play 5 rounds — highest total score wins the expedition',
-      'Play solo for a quick run, or host a room and invite friends with a code',
     ],
   },
   {

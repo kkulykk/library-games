@@ -13,6 +13,8 @@ import { RoomEntry } from '@/components/multiplayer/RoomEntry'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { SupabaseSetupNotice } from '@/components/multiplayer/SupabaseSetupNotice'
 import { useGlobetrotterRoom } from './useGlobetrotterRoom'
+import { fetchRandomWorldDeck } from './randomWorld'
+import { PanoViewer } from './PanoViewer'
 import { WorldMap } from './WorldMap'
 import {
   createSoloGame,
@@ -26,7 +28,9 @@ import {
   nextSoloRound,
   redactForPlayer,
   submitSoloGuess,
+  TOTAL_ROUNDS,
   type GameState,
+  type GeoLocation,
   type Guess,
   type Player,
   type SoloGame,
@@ -90,10 +94,30 @@ function CluesCard({ clues, roundLabel }: { clues: string[]; roundLabel: string 
   )
 }
 
+function RandomDropCard() {
+  return (
+    <div
+      data-testid="globetrotter-random-drop"
+      className="rounded-[1.75rem] border bg-[linear-gradient(145deg,rgba(52,211,153,0.12),rgba(56,189,248,0.06))] p-5 shadow-sm"
+    >
+      <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+        Random world drop
+      </div>
+      <p className="mt-3 text-sm leading-6">
+        No field notes out here — you could be anywhere on Earth. Scan the panorama for road signs,
+        language, driving side, vegetation, and architecture, then trust your gut.
+      </p>
+    </div>
+  )
+}
+
 // ─── Entry screen: solo card + online room entry ─────────────────────────────
 
 interface EntryScreenProps {
   onSolo: () => void
+  onSoloRandom: () => void
+  soloLoading: boolean
+  soloError: string | null
   onCreate: (name: string) => void
   onJoin: (code: string, name: string) => void
   onRestore?: () => void
@@ -105,6 +129,9 @@ interface EntryScreenProps {
 
 function EntryScreen({
   onSolo,
+  onSoloRandom,
+  soloLoading,
+  soloError,
   onCreate,
   onJoin,
   onRestore,
@@ -115,12 +142,7 @@ function EntryScreen({
 }: EntryScreenProps) {
   return (
     <div className="animate-globetrotter-fade-up flex w-full max-w-2xl flex-col gap-5">
-      <button
-        type="button"
-        data-testid="globetrotter-solo-button"
-        onClick={onSolo}
-        className="group overflow-hidden rounded-[2rem] border border-emerald-500/25 bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.22),_transparent_45%),linear-gradient(165deg,rgba(9,9,11,0.97),rgba(19,38,33,0.95))] p-6 text-left text-white shadow-2xl transition hover:border-emerald-400/45"
-      >
+      <div className="overflow-hidden rounded-[2rem] border border-emerald-500/25 bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.22),_transparent_45%),linear-gradient(165deg,rgba(9,9,11,0.97),rgba(19,38,33,0.95))] p-6 text-left text-white shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-[11px] font-semibold tracking-[0.28em] text-emerald-200/90 uppercase">
@@ -128,16 +150,41 @@ function EntryScreen({
             </div>
             <h2 className="mt-2 text-2xl font-black tracking-tight">Play instantly, no room</h2>
             <p className="mt-2 max-w-md text-sm leading-6 text-white/68">
-              Five mystery locations, three clues each. Pin your best guess on the world map — the
-              closer you land, the more of the 5,000 points you keep.
+              Five mystery locations. Look around the 360° view, read the field notes, and pin your
+              guess on the map — the closer you land, the more of the 5,000 points you keep.
             </p>
           </div>
           <div className="animate-globetrotter-float text-4xl">🌍</div>
         </div>
-        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-4 py-2 text-xs font-semibold transition group-hover:bg-white/14">
-          Start solo run →
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="globetrotter-solo-button"
+            onClick={onSolo}
+            className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-4 py-2 text-xs font-semibold transition hover:bg-white/14"
+          >
+            🗺️ Landmark tour →
+          </button>
+          <button
+            type="button"
+            data-testid="globetrotter-solo-random-button"
+            onClick={onSoloRandom}
+            disabled={soloLoading}
+            className="inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-xs font-semibold transition hover:bg-emerald-400/20 disabled:opacity-50"
+          >
+            {soloLoading ? 'Scouting the planet…' : '🌐 Random world →'}
+          </button>
         </div>
-      </button>
+        <p className="mt-3 text-xs leading-5 text-white/50">
+          Random world drops you at one of a million+ real 360° spots on Earth — no clues, just your
+          eyes.
+        </p>
+        {soloError && (
+          <p data-testid="globetrotter-solo-error" className="mt-2 text-xs text-rose-300">
+            {soloError}
+          </p>
+        )}
+      </div>
 
       <div className="text-muted-foreground flex items-center gap-3 text-[11px] font-semibold tracking-[0.24em] uppercase">
         <span className="h-px flex-1 bg-current opacity-20" />
@@ -282,6 +329,12 @@ function SoloScreen({ game, onGuess, onNext, onRestart, onExit }: SoloScreenProp
         </span>
       </div>
 
+      {location.pano && (
+        <div className="overflow-hidden rounded-[2rem] border bg-[linear-gradient(180deg,rgba(24,24,27,1),rgba(10,10,12,0.98))] p-4 shadow-2xl">
+          <PanoViewer pano={location.pano} className="aspect-[21/9] w-full" />
+        </div>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr] lg:items-start">
         <div className="overflow-hidden rounded-[2rem] border bg-[linear-gradient(180deg,rgba(24,24,27,1),rgba(10,10,12,0.98))] p-4 shadow-2xl">
           <WorldMap
@@ -304,7 +357,11 @@ function SoloScreen({ game, onGuess, onNext, onRestart, onExit }: SoloScreenProp
         </div>
 
         <div className="flex flex-col gap-4">
-          <CluesCard clues={location.clues} roundLabel={`Round ${game.roundNumber}`} />
+          {location.clues.length > 0 ? (
+            <CluesCard clues={location.clues} roundLabel={`Round ${game.roundNumber}`} />
+          ) : (
+            <RandomDropCard />
+          )}
 
           {!revealing && (
             <button
@@ -375,7 +432,7 @@ interface LobbyScreenProps {
   gameState: GameState
   playerId: string
   roomCode: string
-  onStart: () => void
+  onStart: (deck?: GeoLocation[]) => void
   onLeave: () => void
 }
 
@@ -383,6 +440,27 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const ready = gameState.players.length >= MIN_PLAYERS
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
+  const [mode, setMode] = useState<'landmarks' | 'random'>('landmarks')
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+
+  async function handleStart() {
+    if (mode === 'landmarks') {
+      onStart()
+      return
+    }
+    setStarting(true)
+    setStartError(null)
+    try {
+      onStart(await fetchRandomWorldDeck(TOTAL_ROUNDS))
+    } catch {
+      setStartError(
+        'Could not fetch random panoramas — check your connection or start a landmark tour.'
+      )
+    } finally {
+      setStarting(false)
+    }
+  }
 
   function handleCopy(value: string, type: 'code' | 'link') {
     copyText(value).then(() => {
@@ -434,7 +512,7 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
             How it plays
           </div>
           <div className="mt-4 space-y-3 text-sm leading-6">
-            <p>1. Each round reveals three clues about a mystery location.</p>
+            <p>1. Each round shows a 360° view and three clues for a mystery location.</p>
             <p>2. Everyone drops a pin on the world map and locks it in.</p>
             <p>3. When all pins are down, the answer is revealed.</p>
             <p>4. Closer pins score more — up to 5,000 points a round.</p>
@@ -480,15 +558,52 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
         </div>
       </div>
 
+      {isHost && (
+        <div className="bg-background/95 rounded-[1.75rem] border p-4 shadow-sm">
+          <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.24em] uppercase">
+            Expedition type
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-testid="globetrotter-mode-landmarks"
+              onClick={() => setMode('landmarks')}
+              className={cn(
+                'rounded-full border px-4 py-2 text-xs font-semibold transition',
+                mode === 'landmarks' ? 'border-primary/50 bg-primary/10' : 'hover:bg-secondary'
+              )}
+            >
+              🗺️ Landmark tour · clues + 360° views
+            </button>
+            <button
+              type="button"
+              data-testid="globetrotter-mode-random"
+              onClick={() => setMode('random')}
+              className={cn(
+                'rounded-full border px-4 py-2 text-xs font-semibold transition',
+                mode === 'random' ? 'border-primary/50 bg-primary/10' : 'hover:bg-secondary'
+              )}
+            >
+              🌐 Random world · anywhere on Earth
+            </button>
+          </div>
+          {startError && (
+            <p data-testid="globetrotter-start-error" className="mt-2 text-xs text-rose-500">
+              {startError}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-3">
         {isHost ? (
           <button
             data-testid="start-game-button"
-            disabled={!ready}
-            onClick={onStart}
+            disabled={!ready || starting}
+            onClick={handleStart}
             className="bg-foreground text-background flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40"
           >
-            Start Expedition
+            {starting ? 'Scouting the planet…' : 'Start Expedition'}
           </button>
         ) : (
           <div className="text-muted-foreground flex flex-1 items-center justify-center rounded-xl border px-4 py-3 text-sm">
@@ -578,6 +693,12 @@ function PlayingScreen({
         </div>
       </div>
 
+      {round.location.pano && (
+        <div className="overflow-hidden rounded-[2rem] border bg-[linear-gradient(180deg,rgba(24,24,27,1),rgba(10,10,12,0.98))] p-4 shadow-2xl">
+          <PanoViewer pano={round.location.pano} className="aspect-[21/9] w-full" />
+        </div>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr] lg:items-start">
         <div className="overflow-hidden rounded-[2rem] border bg-[linear-gradient(180deg,rgba(24,24,27,1),rgba(10,10,12,0.98))] p-4 shadow-2xl">
           <WorldMap
@@ -604,7 +725,11 @@ function PlayingScreen({
         </div>
 
         <div className="flex flex-col gap-4">
-          <CluesCard clues={round.location.clues} roundLabel={`Round ${round.number}`} />
+          {round.location.clues.length > 0 ? (
+            <CluesCard clues={round.location.clues} roundLabel={`Round ${round.number}`} />
+          ) : (
+            <RandomDropCard />
+          )}
 
           {!revealing && !youGuessed && (
             <button
@@ -817,6 +942,29 @@ function FinishedScreen({ gameState, playerId, onPlayAgain, onLeave }: FinishedS
 export function GlobetrotterGame() {
   const inviteCode = useInviteCode()
   const [soloGame, setSoloGame] = useState<SoloGame | null>(null)
+  const [soloMode, setSoloMode] = useState<'landmarks' | 'random'>('landmarks')
+  const [soloLoading, setSoloLoading] = useState(false)
+  const [soloError, setSoloError] = useState<string | null>(null)
+
+  function startLandmarkSolo() {
+    setSoloMode('landmarks')
+    setSoloError(null)
+    setSoloGame(createSoloGame())
+  }
+
+  async function startRandomSolo() {
+    setSoloLoading(true)
+    setSoloError(null)
+    try {
+      const deck = await fetchRandomWorldDeck(TOTAL_ROUNDS)
+      setSoloMode('random')
+      setSoloGame(createSoloGame(Math.random, TOTAL_ROUNDS, deck))
+    } catch {
+      setSoloError('Could not reach the panorama archive — try the landmark tour instead.')
+    } finally {
+      setSoloLoading(false)
+    }
+  }
   const {
     gameState,
     playerId,
@@ -849,7 +997,14 @@ export function GlobetrotterGame() {
             setSoloGame((g) => (g ? submitSoloGuess(g, guess.lat, guess.lng) : g))
           }
           onNext={() => setSoloGame((g) => (g ? nextSoloRound(g) : g))}
-          onRestart={() => setSoloGame(createSoloGame())}
+          onRestart={() => {
+            if (soloMode === 'random') {
+              setSoloGame(null)
+              void startRandomSolo()
+            } else {
+              startLandmarkSolo()
+            }
+          }}
           onExit={() => setSoloGame(null)}
         />
       </>
@@ -861,7 +1016,10 @@ export function GlobetrotterGame() {
       <>
         <GlobetrotterStyles />
         <EntryScreen
-          onSolo={() => setSoloGame(createSoloGame())}
+          onSolo={startLandmarkSolo}
+          onSoloRandom={() => void startRandomSolo()}
+          soloLoading={soloLoading}
+          soloError={soloError}
           onCreate={createRoom}
           onJoin={joinRoom}
           onRestore={savedSession ? restoreSession : undefined}
@@ -882,7 +1040,7 @@ export function GlobetrotterGame() {
           gameState={redactedState}
           playerId={playerId}
           roomCode={roomCode}
-          onStart={() => dispatch({ type: 'START_GAME', playerId })}
+          onStart={(deck) => dispatch({ type: 'START_GAME', playerId, deck })}
           onLeave={leaveRoom}
         />
       </>

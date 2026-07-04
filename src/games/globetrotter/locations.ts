@@ -1,6 +1,20 @@
 // Curated destination pool for Globetrotter. Pure data — no React, no logic.
 // Coordinates are approximate landmark positions (good to well under the
 // 25 km bullseye radius, which is all the scoring needs).
+
+/**
+ * A 360° equirectangular panorama of the location, hand-curated from
+ * Wikimedia Commons (freely licensed, CORS-enabled, hotlinking permitted).
+ * `url` is a Commons thumbnail rendition sized for WebGL textures; `page` is
+ * the Commons file page used for attribution.
+ */
+export interface GeoPano {
+  url: string
+  page: string
+  author: string
+  license: string
+}
+
 export interface GeoLocation {
   name: string
   country: string
@@ -8,6 +22,7 @@ export interface GeoLocation {
   lng: number
   emoji: string
   clues: string[]
+  pano?: GeoPano
 }
 
 export const LOCATIONS: GeoLocation[] = [
@@ -22,18 +37,30 @@ export const LOCATIONS: GeoLocation[] = [
       'Locals carry baguettes past Haussmann façades and café terraces.',
       'A wrought-iron lattice tower from an 1889 world fair dominates the skyline.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Pont_de_Bir-Hakeim_and_the_Eiffel_Tower%2C_April_2007.jpg/3840px-Pont_de_Bir-Hakeim_and_the_Eiffel_Tower%2C_April_2007.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Pont_de_Bir-Hakeim_and_the_Eiffel_Tower,_April_2007.jpg',
+      author: 'Alexandre Duret-Lutz',
+      license: 'CC BY-SA 2.0',
+    },
   },
   {
-    name: 'Statue of Liberty',
+    name: '9/11 Memorial',
     country: 'United States',
-    lat: 40.689,
-    lng: -74.044,
+    lat: 40.711,
+    lng: -74.013,
     emoji: '🗽',
     clues: [
-      'You are on a tiny island in a busy harbor on the Atlantic coast of North America.',
-      'Yellow cabs and a famous skyline of skyscrapers sit just across the water.',
-      'A copper-green lady lifts a torch to welcome arriving ships.',
+      'You are among dense skyscrapers near the tip of an Atlantic harbor island.',
+      'Yellow cabs stream past, and a copper-green statue lifts her torch across the water.',
+      'Two vast reflecting pools sit in the footprints of fallen twin towers.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Ground-Zero-Memorial-Photo-Sphere.jpg/3840px-Ground-Zero-Memorial-Photo-Sphere.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Ground-Zero-Memorial-Photo-Sphere.jpg',
+      author: 'MartinThoma',
+      license: 'CC0',
+    },
   },
   {
     name: 'Great Pyramid of Giza',
@@ -70,6 +97,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Llamas graze on terraces and a famous multi-day trekking trail ends here.',
       'A lost 15th-century Inca citadel clings to a ridge above a river gorge.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Mapillary_%2838thnbClp0kOZUc5WNDfYK%29_%28jaderbavaresco%29_2023-12-29_09H43M40S750_%28751996310315754_via_GoPro_GoPro_Max%29.jpg/3840px-Mapillary_%2838thnbClp0kOZUc5WNDfYK%29_%28jaderbavaresco%29_2023-12-29_09H43M40S750_%28751996310315754_via_GoPro_GoPro_Max%29.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Mapillary_(38thnbClp0kOZUc5WNDfYK)_(jaderbavaresco)_2023-12-29_09H43M40S750_(751996310315754_via_GoPro_GoPro_Max).jpg',
+      author: 'jaderbavaresco',
+      license: 'CC BY-SA 4.0',
+    },
   },
   {
     name: 'Taj Mahal',
@@ -84,7 +117,7 @@ export const LOCATIONS: GeoLocation[] = [
     ],
   },
   {
-    name: 'Great Wall at Badaling',
+    name: 'Great Wall at Mutianyu',
     country: 'China',
     lat: 40.432,
     lng: 116.57,
@@ -94,6 +127,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Watchtowers march along the mountain crests as far as you can see.',
       'You are standing on a stone fortification thousands of kilometers long.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Mutianyu_%E2%80%93_Panorama_%28Greg_Zaal_via_Poly_Haven%29.jpg/3840px-Mutianyu_%E2%80%93_Panorama_%28Greg_Zaal_via_Poly_Haven%29.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Mutianyu_%E2%80%93_Panorama_(Greg_Zaal_via_Poly_Haven).jpg',
+      author: 'Greg Zaal',
+      license: 'CC0',
+    },
   },
   {
     name: 'Christ the Redeemer',
@@ -118,9 +157,15 @@ export const LOCATIONS: GeoLocation[] = [
       'Espresso is drunk standing up, and scooters swarm the cobblestones.',
       'A 2,000-year-old elliptical amphitheater once hosted gladiators here.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Colosseum_%E2%80%93_Panorama_%28Greg_Zaal_and_Rico_Cilliers_via_Poly_Haven%29.jpg/3840px-Colosseum_%E2%80%93_Panorama_%28Greg_Zaal_and_Rico_Cilliers_via_Poly_Haven%29.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Colosseum_%E2%80%93_Panorama_(Greg_Zaal_and_Rico_Cilliers_via_Poly_Haven).jpg',
+      author: 'Greg Zaal (Panorama)',
+      license: 'CC0',
+    },
   },
   {
-    name: 'Big Ben',
+    name: 'Westminster, London',
     country: 'United Kingdom',
     lat: 51.5,
     lng: -0.125,
@@ -130,6 +175,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Red double-decker buses roll past a river lined with government buildings.',
       'A famous clock tower chimes beside a gothic parliament.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fd/360_panoramic_view_of_Westminster_Abbey%2C_London%2C_UK.jpg/1920px-360_panoramic_view_of_Westminster_Abbey%2C_London%2C_UK.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:360_panoramic_view_of_Westminster_Abbey,_London,_UK.jpg',
+      author: 'Subhashish Panigrahi',
+      license: 'CC BY-SA 4.0',
+    },
   },
   {
     name: 'Mount Fuji',
@@ -154,6 +205,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Donkeys carry visitors up cliff paths from a deep blue caldera.',
       'Whitewashed houses with blue domes spill down the cliffs at sunset.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Imerovigli_view_from_drone_-_Santorini.jpg/3840px-Imerovigli_view_from_drone_-_Santorini.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Imerovigli_view_from_drone_-_Santorini.jpg',
+      author: 'User:Anna.Tsolidou',
+      license: 'CC BY-SA 4.0',
+    },
   },
   {
     name: 'Petra',
@@ -202,6 +259,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Everyone around you is wearing a plastic poncho on a tour boat.',
       'A horseshoe-shaped curtain of water thunders over the edge.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/360_photo_between_Horseshoe_and_American_Falls_Niagara_Falls_Canada_2025-09-06_19-12-46_1.jpg/3840px-360_photo_between_Horseshoe_and_American_Falls_Niagara_Falls_Canada_2025-09-06_19-12-46_1.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:360_photo_between_Horseshoe_and_American_Falls_Niagara_Falls_Canada_2025-09-06_19-12-46_1.jpg',
+      author: 'G. Edward Johnson',
+      license: 'CC BY 4.0',
+    },
   },
   {
     name: 'Stonehenge',
@@ -250,6 +313,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Penguins waddle on nearby beaches while a cable car climbs behind the city.',
       'A perfectly flat-topped mountain wears a "tablecloth" of cloud.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Wikimania_2018_scouting_trip%2C_Table_Mountain_-_360_degrees.jpg/3840px-Wikimania_2018_scouting_trip%2C_Table_Mountain_-_360_degrees.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Wikimania_2018_scouting_trip,_Table_Mountain_-_360_degrees.jpg',
+      author: 'Discott',
+      license: 'CC BY-SA 4.0',
+    },
   },
   {
     name: 'Serengeti Plains',
@@ -298,6 +367,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Condors ride thermals over layered red rock.',
       'A river has carved a gorge here nearly two kilometers deep.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/Grandeur_Point_-_Grand_Canyon_National_Park_-_R0010513_-_29201417827.jpg/3840px-Grandeur_Point_-_Grand_Canyon_National_Park_-_R0010513_-_29201417827.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Grandeur_Point_-_Grand_Canyon_National_Park_-_R0010513_-_29201417827.jpg',
+      author: 'Grand Canyon NPS',
+      license: 'CC BY 2.0',
+    },
   },
   {
     name: 'Lake Louise',
@@ -322,9 +397,15 @@ export const LOCATIONS: GeoLocation[] = [
       'Locals bathe outdoors in geothermal water while it snows.',
       'This is the northernmost capital city of a sovereign state.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Hallgr%C3%ADmskirkja_Reykjavik_Iceland_360_degree_panorama_2026-02-08_08-00-31_1.jpg/3840px-Hallgr%C3%ADmskirkja_Reykjavik_Iceland_360_degree_panorama_2026-02-08_08-00-31_1.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Hallgr%C3%ADmskirkja_Reykjavik_Iceland_360_degree_panorama_2026-02-08_08-00-31_1.jpg',
+      author: 'G. Edward Johnson',
+      license: 'CC BY 4.0',
+    },
   },
   {
-    name: 'Red Square',
+    name: 'Moscow',
     country: 'Russia',
     lat: 55.754,
     lng: 37.62,
@@ -334,9 +415,15 @@ export const LOCATIONS: GeoLocation[] = [
       'The metro stations look like underground palaces.',
       'Swirling candy-colored onion domes rise beside a fortress wall.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Moscow-tram-station-Nagatino-360-january-2016.jpg/3840px-Moscow-tram-station-Nagatino-360-january-2016.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Moscow-tram-station-Nagatino-360-january-2016.jpg',
+      author: 'Artem Svetlov',
+      license: 'CC BY 2.0',
+    },
   },
   {
-    name: 'Hagia Sophia',
+    name: 'Istanbul',
     country: 'Turkey',
     lat: 41.009,
     lng: 28.98,
@@ -346,6 +433,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Ferries cross a strait between bazaars, minarets, and tea gardens.',
       'A 1,500-year-old domed basilica-turned-mosque anchors the old town.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Mapillary_%280ZGi8UCLY6TblqMo3s91yz%29_%28ademturkmen%29_2021-12-11_11H33M20S000.jpg/3840px-Mapillary_%280ZGi8UCLY6TblqMo3s91yz%29_%28ademturkmen%29_2021-12-11_11H33M20S000.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Mapillary_(0ZGi8UCLY6TblqMo3s91yz)_(ademturkmen)_2021-12-11_11H33M20S000.jpg',
+      author: 'ademturkmen',
+      license: 'CC BY-SA 4.0',
+    },
   },
   {
     name: 'Marrakesh Medina',
@@ -382,18 +475,30 @@ export const LOCATIONS: GeoLocation[] = [
       'Cowbells clank in the valleys below a fairy-tale ridge.',
       'A 19th-century king built the turreted castle that inspired a theme-park logo.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Schwangau_Panorama.jpg/3840px-Schwangau_Panorama.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Schwangau_Panorama.jpg',
+      author: 'SimonWaldherr',
+      license: 'CC BY-SA 4.0',
+    },
   },
   {
-    name: 'Amsterdam Canals',
+    name: 'Museumplein, Amsterdam',
     country: 'Netherlands',
-    lat: 52.373,
-    lng: 4.892,
+    lat: 52.358,
+    lng: 4.881,
     emoji: '🚲',
     clues: [
       'You are below sea level in a flat European country of windmills and dikes.',
       'Thousands of bicycles rattle over bridges past narrow gabled houses.',
       'Ring-shaped 17th-century canals define this famously liberal capital.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Museumplein_%E2%80%93_Panorama_%28Greg_Zaal_via_Poly_Haven%29.jpg/3840px-Museumplein_%E2%80%93_Panorama_%28Greg_Zaal_via_Poly_Haven%29.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Museumplein_%E2%80%93_Panorama_(Greg_Zaal_via_Poly_Haven).jpg',
+      author: 'Greg Zaal',
+      license: 'CC0',
+    },
   },
   {
     name: 'Gyeongbokgung Palace',
@@ -408,7 +513,7 @@ export const LOCATIONS: GeoLocation[] = [
     ],
   },
   {
-    name: 'Grand Palace of Bangkok',
+    name: 'Bangkok',
     country: 'Thailand',
     lat: 13.75,
     lng: 100.492,
@@ -418,6 +523,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Long-tail boats race along a river past golden spires.',
       'A dazzling royal compound houses a tiny, revered Emerald Buddha.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/Mapillary_%28JIgtm4r7flTEpoxc28sjDG%29_%28mapconcierge%29_2024-12-18_01H58M33S537.jpg/3840px-Mapillary_%28JIgtm4r7flTEpoxc28sjDG%29_%28mapconcierge%29_2024-12-18_01H58M33S537.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Mapillary_(JIgtm4r7flTEpoxc28sjDG)_(mapconcierge)_2024-12-18_01H58M33S537.jpg',
+      author: 'mapconcierge',
+      license: 'CC BY-SA 4.0',
+    },
   },
   {
     name: 'Marina Bay Sands',
@@ -430,6 +541,12 @@ export const LOCATIONS: GeoLocation[] = [
       'Hawker centers serve laksa beneath futuristic "supertree" gardens.',
       'A ship-shaped skypark bridges three hotel towers above the bay.',
     ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Singapore_Marina_Bay_Aerial.jpg/3840px-Singapore_Marina_Bay_Aerial.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Singapore_Marina_Bay_Aerial.jpg',
+      author: 'Omar David Sandoval Sida',
+      license: 'CC BY-SA 4.0',
+    },
   },
   {
     name: 'Tegallalang Rice Terraces',
@@ -610,5 +727,23 @@ export const LOCATIONS: GeoLocation[] = [
       'Yellow trams grind up tiled alleys as fado drifts from taverns.',
       'Custard tarts and a hilltop Moorish castle complete the postcard.',
     ],
+  },
+  {
+    name: 'Piazza San Marco',
+    country: 'Italy',
+    lat: 45.434,
+    lng: 12.339,
+    emoji: '🛶',
+    clues: [
+      'You are in a European city where the streets are made of water.',
+      'Gondolas glide under arched bridges past slowly sinking palazzos.',
+      'A winged-lion column and a soaring brick campanile guard this famous square.',
+    ],
+    pano: {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Piazza_san_marco_%E2%80%93_Panorama_%28Greg_Zaal_and_Rico_Cilliers_via_Poly_Haven%29.jpg/3840px-Piazza_san_marco_%E2%80%93_Panorama_%28Greg_Zaal_and_Rico_Cilliers_via_Poly_Haven%29.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Piazza_san_marco_%E2%80%93_Panorama_(Greg_Zaal_and_Rico_Cilliers_via_Poly_Haven).jpg',
+      author: 'Greg Zaal (Panorama)',
+      license: 'CC0',
+    },
   },
 ]

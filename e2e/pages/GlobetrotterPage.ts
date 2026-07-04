@@ -10,6 +10,18 @@ export class GlobetrotterPage extends RoomLobbyPage {
     return this.page.getByTestId('globetrotter-solo-button')
   }
 
+  get soloRandomButton(): Locator {
+    return this.page.getByTestId('globetrotter-solo-random-button')
+  }
+
+  get randomDropCard(): Locator {
+    return this.page.getByTestId('globetrotter-random-drop')
+  }
+
+  get pano(): Locator {
+    return this.page.getByTestId('globetrotter-pano')
+  }
+
   get status(): Locator {
     return this.page.getByTestId('globetrotter-status')
   }

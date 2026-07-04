@@ -187,6 +187,102 @@ test.describe('Globetrotter solo mode', () => {
   })
 })
 
+// 1×1 white JPEG — enough for the WebGL pano texture in tests.
+const TINY_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+  'base64'
+)
+
+test.describe('Globetrotter random world (mocked Commons)', () => {
+  test('fetches a random deck, plays a round, reveals the country', async ({ page }) => {
+    let batch = 0
+    await page.route('https://commons.wikimedia.org/**', async (route) => {
+      const url = new URL(route.request().url())
+      let body: unknown
+      if (url.searchParams.get('list') === 'categorymembers') {
+        batch++
+        body = { query: { categorymembers: [{ title: `File:Mock pano ${batch}.jpg` }] } }
+      } else {
+        // Spread batches ~350 km apart across the US so the min-separation
+        // rule passes and every reveal names the same country.
+        const lat = 39 + batch * 2
+        const lng = -100 + batch * 3
+        body = {
+          query: {
+            pages: {
+              '1': {
+                title: `File:Mock pano ${batch}.jpg`,
+                imageinfo: [
+                  {
+                    width: 4096,
+                    height: 2048,
+                    mime: 'image/jpeg',
+                    thumburl: `https://upload.wikimedia.org/mock-${batch}.jpg`,
+                    extmetadata: {
+                      Artist: { value: 'Mock Mapper' },
+                      LicenseShortName: { value: 'CC BY-SA 4.0' },
+                    },
+                  },
+                ],
+                coordinates: [{ lat, lon: lng }],
+              },
+            },
+          },
+        }
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      })
+    })
+    await page.route('https://upload.wikimedia.org/**', (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'image/jpeg',
+        body: TINY_JPEG,
+      })
+    )
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloRandomButton.click()
+
+    await expect(solo.map).toBeVisible()
+    await expect(solo.randomDropCard).toBeVisible()
+    await expect(solo.pano).toBeVisible()
+    await solo.expectStatus('Round 1 of 5')
+
+    await solo.clickMap(0.5, 0.5)
+    await expect(solo.lockGuessButton).toBeEnabled()
+    await solo.lockGuessButton.click()
+
+    await expect(solo.reveal).toContainText('United States of America')
+    await expect(solo.reveal).toContainText('°N')
+    await expect(solo.roundScore).toContainText('+')
+
+    await solo.advanceRound()
+    await solo.expectStatus('Round 2 of 5')
+  })
+
+  test('shows a friendly error when Commons is unreachable', async ({ page }) => {
+    await page.route('https://commons.wikimedia.org/**', (route) => route.abort())
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloRandomButton.click()
+
+    await expect(page.getByTestId('globetrotter-solo-error')).toContainText(
+      'Could not reach the panorama archive'
+    )
+    await expect(solo.soloButton).toBeVisible()
+  })
+})
+
 test.describe('Globetrotter gameplay smoke', () => {
   test('two players guess, reveal scores, advance rounds, and finish', async ({
     page,
