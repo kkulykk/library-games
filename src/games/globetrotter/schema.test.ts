@@ -132,6 +132,28 @@ describe('globetrotter GameStateSchema', () => {
     expect(GameStateSchema.safeParse(state).success).toBe(false)
   })
 
+  it('accepts a location with a 360° pano and rejects a malformed one', () => {
+    const pano = {
+      url: 'https://upload.wikimedia.org/example.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Example.jpg',
+      author: 'Jane Doe',
+      license: 'CC BY-SA 4.0',
+    }
+    const withPano = {
+      ...playing,
+      currentRound: { ...validRound, location: { ...validLocation, pano } },
+    }
+    expect(GameStateSchema.safeParse(withPano).success).toBe(true)
+
+    const missingLicense: Partial<typeof pano> = { ...pano }
+    delete missingLicense.license
+    const malformed = {
+      ...playing,
+      currentRound: { ...validRound, location: { ...validLocation, pano: missingLicense } },
+    }
+    expect(GameStateSchema.safeParse(malformed).success).toBe(false)
+  })
+
   it('rejects a deck entry missing clues', () => {
     const noClues: Partial<typeof validLocation> = { ...validLocation }
     delete noClues.clues

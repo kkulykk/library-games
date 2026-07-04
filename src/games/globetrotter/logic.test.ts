@@ -33,7 +33,7 @@ import {
   type Player,
 } from './logic'
 import { LOCATIONS } from './locations'
-import { isLand, landDots } from './worldMap'
+import { isLand, LAND_RINGS } from './worldMap'
 
 const host: Player = { id: 'h1', name: 'Host', isHost: true, score: 0 }
 const guest: Player = { id: 'g1', name: 'Guest', isHost: false, score: 0 }
@@ -154,19 +154,25 @@ describe('locations & map data', () => {
     expect(pickLocations(10, Math.random, pool)).toHaveLength(3)
   })
 
-  it('land mask covers famous landmarks and not open ocean', () => {
+  it('land geometry covers famous landmarks and not open ocean', () => {
     expect(isLand(48.8, 2.3)).toBe(true) // Paris
     expect(isLand(-25.3, 131)).toBe(true) // Uluru
-    expect(isLand(40.7, -74)).toBe(true) // New York
+    expect(isLand(40.75, -74)).toBe(true) // New York
+    expect(isLand(55.75, 37.62)).toBe(true) // Moscow
     expect(isLand(0, -30)).toBe(false) // mid-Atlantic
     expect(isLand(-40, -120)).toBe(false) // South Pacific
+    expect(isLand(42, 50.5)).toBe(false) // Caspian Sea (a hole in the Eurasia ring)
   })
 
-  it('landDots samples a plausible share of the globe as land', () => {
-    const dots = landDots(3)
-    const total = (360 / 3) * (180 / 3)
-    expect(dots.length / total).toBeGreaterThan(0.15)
-    expect(dots.length / total).toBeLessThan(0.5)
+  it('ships closed Natural Earth rings with sane coordinates', () => {
+    expect(LAND_RINGS.length).toBeGreaterThan(100)
+    for (const ring of LAND_RINGS) {
+      expect(ring.length).toBeGreaterThanOrEqual(4)
+      for (const [lng, lat] of ring) {
+        expect(Math.abs(lng)).toBeLessThanOrEqual(180)
+        expect(Math.abs(lat)).toBeLessThanOrEqual(90)
+      }
+    }
   })
 })
 
@@ -197,6 +203,52 @@ describe('lobby', () => {
 })
 
 describe('START_GAME', () => {
+  const randomDeck = Array.from({ length: TOTAL_ROUNDS }, (_, i) => ({
+    name: `Country ${i}`,
+    country: `${i}.00°N, ${i}.00°E`,
+    lat: i,
+    lng: i,
+    emoji: '🌐',
+    clues: [],
+  }))
+
+  it('uses a supplied playable deck (Random World mode)', () => {
+    let state = createLobbyState(host)
+    state = addPlayer(state, guest)
+    state = applyAction(state, { type: 'START_GAME', playerId: host.id, deck: randomDeck })
+    expect(state.phase).toBe('playing')
+    expect(state.deck).toEqual(randomDeck)
+    expect(state.currentRound?.location.name).toBe('Country 0')
+  })
+
+  it('falls back to the landmark pool when a supplied deck is short or malformed', () => {
+    let state = createLobbyState(host)
+    state = addPlayer(state, guest)
+    const short = applyAction(state, {
+      type: 'START_GAME',
+      playerId: host.id,
+      deck: randomDeck.slice(0, 2),
+    })
+    expect(short.phase).toBe('playing')
+    expect(short.deck.map((l) => l.name)).not.toEqual(randomDeck.slice(0, 2).map((l) => l.name))
+
+    const malformed = applyAction(state, {
+      type: 'START_GAME',
+      playerId: host.id,
+      deck: randomDeck.map((l) => ({ ...l, lat: 999 })),
+    })
+    expect(malformed.phase).toBe('playing')
+    expect(malformed.deck.every((l) => Math.abs(l.lat) <= 90)).toBe(true)
+  })
+
+  it('createSoloGame accepts a supplied deck too', () => {
+    const game = createSoloGame(rngZero, TOTAL_ROUNDS, randomDeck)
+    expect(game.rounds).toEqual(randomDeck)
+    const fallback = createSoloGame(rngZero, TOTAL_ROUNDS, randomDeck.slice(0, 1))
+    expect(fallback.rounds).toHaveLength(TOTAL_ROUNDS)
+    expect(fallback.rounds[0].name).not.toBe('Country 0')
+  })
+
   it('starts with a full deck and round 1 in guessing phase', () => {
     const state = playingState()
     expect(state.phase).toBe('playing')
@@ -380,6 +432,26 @@ describe('leaderboard & redaction', () => {
     expect(redacted.currentRound?.location.name).toBe('')
     expect(redacted.currentRound?.location.lat).toBe(0)
     expect(redacted.currentRound?.location.clues).toEqual(state.currentRound?.location.clues)
+  })
+
+  it('keeps the 360° pano visible while guessing — players need it to guess', () => {
+    const base = playingState()
+    const pano = {
+      url: 'https://upload.wikimedia.org/example.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Example.jpg',
+      author: 'Jane Doe',
+      license: 'CC BY-SA 4.0',
+    }
+    const state: GameState = {
+      ...base,
+      currentRound: {
+        ...base.currentRound!,
+        location: { ...base.currentRound!.location, pano },
+      },
+    }
+    const redacted = redactForPlayer(state, guest.id)
+    expect(redacted.currentRound?.location.pano).toEqual(pano)
+    expect(redacted.currentRound?.location.name).toBe('')
   })
 
   it('reveals the answer (but not the deck) after the reveal', () => {
