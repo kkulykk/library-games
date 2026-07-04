@@ -37,6 +37,7 @@ const GAMES = [
   { table: 'cah_rooms', title: 'Cards Against Humanity' },
   { table: 'codenames_rooms', title: 'Codenames' },
   { table: 'mindmeld_rooms', title: 'Mindmeld' },
+  { table: 'globetrotter_rooms', title: 'Globetrotter' },
 ]
 
 const game = (table) => table.replace('_rooms', '')
