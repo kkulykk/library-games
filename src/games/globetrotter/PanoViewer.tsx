@@ -5,6 +5,12 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import { cn } from '@/lib/utils'
 import type { GeoPano } from './locations'
 
+const COMPASS_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+
+function yawToDegrees(yaw: number): number {
+  return Math.round((((yaw * 180) / Math.PI) % 360) + 360) % 360
+}
+
 // Minimal WebGL equirectangular panorama viewer (no dependencies): a
 // fullscreen quad whose fragment shader casts a ray per pixel through a
 // yaw/pitch/fov camera and samples the 360° image. Drag to look around,
@@ -67,6 +73,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
   const renderRef = useRef<(() => void) | null>(null)
   const [status, setStatus] = useState<Status>('loading')
   const [dragged, setDragged] = useState(false)
+  const [compassDeg, setCompassDeg] = useState(0)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -203,6 +210,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     drag.x = event.clientX
     drag.y = event.clientY
     if (!dragged) setDragged(true)
+    setCompassDeg(yawToDegrees(camera.yaw))
     renderRef.current?.()
   }
 
@@ -229,40 +237,27 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
 
   if (status === 'error') return null
 
+  const dirLabel = COMPASS_DIRS[Math.round(compassDeg / 45) % 8]
+
   return (
-    <div
-      data-testid="globetrotter-pano"
-      className={cn('relative overflow-hidden rounded-[1.5rem] bg-slate-950', className)}
-    >
+    <div data-testid="globetrotter-pano" className={cn('gt-pano', className)}>
+      <div className="gt-compass mono">
+        <span>{dirLabel}</span>
+        <span className="gt-compass-deg">{String(compassDeg).padStart(3, '0')}°</span>
+      </div>
       <canvas
         ref={canvasRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        className="block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing"
         aria-label="360° panorama of the mystery location — drag to look around"
         role="img"
       />
-      {status === 'loading' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-950">
-          <div className="text-xs font-semibold tracking-[0.24em] text-white/50 uppercase">
-            Developing film…
-          </div>
-        </div>
-      )}
+      {status === 'loading' && <div className="gt-pano-loading mono">Developing film…</div>}
       {status === 'ready' && !dragged && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-          <span className="rounded-full border border-white/15 bg-slate-950/70 px-3 py-1 text-[11px] font-semibold text-white/75">
-            ↔ Drag to look around · scroll to zoom
-          </span>
-        </div>
+        <div className="gt-pano-hint mono">⇄ Drag to look around · scroll to zoom</div>
       )}
-      <a
-        href={pano.page}
-        target="_blank"
-        rel="noreferrer"
-        className="absolute right-2 bottom-2 max-w-[60%] truncate rounded-full bg-slate-950/70 px-2.5 py-1 text-[10px] text-white/60 transition hover:text-white/90"
-      >
+      <a className="gt-pano-watermark mono" href={pano.page} target="_blank" rel="noreferrer">
         © {pano.author} · {pano.license} · Wikimedia Commons
       </a>
     </div>
