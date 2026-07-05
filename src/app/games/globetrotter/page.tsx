@@ -1,7 +1,23 @@
 import type { Metadata } from 'next'
+import { Space_Grotesk, JetBrains_Mono } from 'next/font/google'
 import { games } from '@/data/games'
-import { GameLayout } from '@/components/GameLayout'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { GlobetrotterGame } from '@/games/globetrotter/GlobetrotterGame'
+import './globetrotter-design.css'
+
+// Design-system fonts (claude.ai/design Globetrotter.html), self-hosted at
+// build time via next/font and exposed as CSS variables the .gt-scope tokens
+// pick up.
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--gt-font-display',
+})
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['400', '600', '700'],
+  variable: '--gt-font-mono',
+})
 
 const game = games.find((g) => g.slug === 'globetrotter')!
 
@@ -12,8 +28,10 @@ export const metadata: Metadata = {
 
 export default function GlobetrotterPage() {
   return (
-    <GameLayout title="Globetrotter" slug="globetrotter">
-      <GlobetrotterGame />
-    </GameLayout>
+    <div className={`gt-scope sk-shell ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}>
+      <ErrorBoundary>
+        <GlobetrotterGame />
+      </ErrorBoundary>
+    </div>
   )
 }

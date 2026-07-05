@@ -4,13 +4,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { cn } from '@/lib/utils'
 import { MAP_HEIGHT, MAP_WIDTH, project, unproject, type Guess } from './logic'
+import { avatarHue } from './avatars'
 import { LAND_RINGS } from './worldMap'
 
 export interface MapPin {
   lat: number
   lng: number
-  color: string
-  label?: string
+  /** Roster index — colors the pin with the matching avatar hue. */
+  hueIndex?: number
+  isYou?: boolean
+  pending?: boolean
 }
 
 export interface MapTarget {
@@ -20,12 +23,13 @@ export interface MapTarget {
 
 interface WorldMapProps {
   pins?: MapPin[]
-  /** Revealed answer: rendered as a gold marker with dashed lines to every pin. */
+  /** Locked opponents' guesses shown as ghost dots while you still guess. */
+  ghosts?: Guess[]
+  /** Revealed answer: gold flag marker + dashed connectors to every pin. */
   target?: MapTarget | null
   onSelect?: (guess: Guess) => void
   interactive?: boolean
   testId?: string
-  className?: string
   ariaLabel?: string
 }
 
@@ -38,9 +42,10 @@ interface ViewBox {
 
 const FULL_VIEW: ViewBox = { x: 0, y: 0, w: MAP_WIDTH, h: MAP_HEIGHT }
 const MAX_ZOOM = 12
-const GRATICULE_STEP = 30
+const GRID_STEP = 15
 // Screen-pixel movement below this is a click (drop a pin), above it a pan.
 const CLICK_SLOP_PX = 5
+const TROPIC_LAT = 23.44
 
 function clampView(view: ViewBox): ViewBox {
   const w = Math.min(MAP_WIDTH, Math.max(MAP_WIDTH / MAX_ZOOM, view.w))
@@ -75,11 +80,11 @@ const LAND_PATH = LAND_RINGS.map((ring) => {
 
 export function WorldMap({
   pins = [],
+  ghosts = [],
   target = null,
   onSelect,
   interactive = false,
   testId = 'globetrotter-map',
-  className,
   ariaLabel = 'World map',
 }: WorldMapProps) {
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -97,12 +102,8 @@ export function WorldMap({
   const graticule = useMemo(() => {
     const meridians: number[] = []
     const parallels: number[] = []
-    for (let lng = -180 + GRATICULE_STEP; lng < 180; lng += GRATICULE_STEP) {
-      meridians.push(project(0, lng).x)
-    }
-    for (let lat = -90 + GRATICULE_STEP; lat < 90; lat += GRATICULE_STEP) {
-      parallels.push(project(lat, 0).y)
-    }
+    for (let x = GRID_STEP; x < MAP_WIDTH; x += GRID_STEP) meridians.push(x)
+    for (let y = GRID_STEP; y < MAP_HEIGHT; y += GRID_STEP) parallels.push(y)
     return { meridians, parallels }
   }, [])
 
@@ -195,7 +196,7 @@ export function WorldMap({
   const s = (value: number) => value / zoom
 
   return (
-    <div className={cn('relative', className)}>
+    <div className="gt-mapwrap">
       <svg
         ref={svgRef}
         data-testid={testId}
@@ -205,24 +206,16 @@ export function WorldMap({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        className={cn(
-          'block w-full touch-none select-none',
-          interactive ? 'cursor-crosshair' : 'cursor-grab'
-        )}
-        style={{ aspectRatio: '2 / 1' }}
+        className={cn('gt-map-svg', interactive && 'is-pickable')}
       >
         <defs>
-          <radialGradient id="globetrotter-ocean" cx="50%" cy="40%" r="80%">
-            <stop offset="0%" stopColor="#0e2a40" />
-            <stop offset="100%" stopColor="#071120" />
-          </radialGradient>
           <path id="globetrotter-land" d={LAND_PATH} />
           <clipPath id="globetrotter-map-clip">
             <rect width={MAP_WIDTH} height={MAP_HEIGHT} />
           </clipPath>
         </defs>
 
-        <rect width={MAP_WIDTH} height={MAP_HEIGHT} fill="url(#globetrotter-ocean)" />
+        <rect width={MAP_WIDTH} height={MAP_HEIGHT} className="gt-map-ocean" />
 
         {graticule.meridians.map((x) => (
           <line
@@ -231,7 +224,7 @@ export function WorldMap({
             y1={0}
             x2={x}
             y2={MAP_HEIGHT}
-            stroke="rgba(125,211,252,0.08)"
+            className="gt-map-grid-line"
             strokeWidth={s(0.4)}
           />
         ))}
@@ -242,25 +235,39 @@ export function WorldMap({
             y1={y}
             x2={MAP_WIDTH}
             y2={y}
-            stroke="rgba(125,211,252,0.08)"
+            className="gt-map-grid-line"
             strokeWidth={s(0.4)}
           />
         ))}
 
-        <g
-          clipPath="url(#globetrotter-map-clip)"
-          fill="#1d4a3f"
-          fillRule="evenodd"
-          stroke="#67e8c8"
-          strokeOpacity="0.55"
-          strokeWidth={s(0.35)}
-          strokeLinejoin="round"
-        >
-          <use href="#globetrotter-land" x={-MAP_WIDTH} />
-          <use href="#globetrotter-land" />
-          <use href="#globetrotter-land" x={MAP_WIDTH} />
+        <g clipPath="url(#globetrotter-map-clip)" className="gt-map-land" strokeWidth={s(0.35)}>
+          <use href="#globetrotter-land" x={-MAP_WIDTH} fillRule="evenodd" />
+          <use href="#globetrotter-land" fillRule="evenodd" />
+          <use href="#globetrotter-land" x={MAP_WIDTH} fillRule="evenodd" />
         </g>
 
+        {/* equator + tropics for flavor */}
+        <line x1={0} y1={90} x2={MAP_WIDTH} y2={90} className="gt-map-line" strokeWidth={s(0.5)} />
+        <line
+          x1={0}
+          y1={90 - TROPIC_LAT}
+          x2={MAP_WIDTH}
+          y2={90 - TROPIC_LAT}
+          className="gt-map-line-dash"
+          strokeWidth={s(0.5)}
+          strokeDasharray={`${s(1.6)} ${s(1.6)}`}
+        />
+        <line
+          x1={0}
+          y1={90 + TROPIC_LAT}
+          x2={MAP_WIDTH}
+          y2={90 + TROPIC_LAT}
+          className="gt-map-line-dash"
+          strokeWidth={s(0.5)}
+          strokeDasharray={`${s(1.6)} ${s(1.6)}`}
+        />
+
+        {/* reveal: dashed connectors from each guess to the actual point */}
         {targetXY &&
           pins.map((pin, index) => {
             const { x, y } = project(pin.lat, pin.lng)
@@ -271,75 +278,63 @@ export function WorldMap({
                 y1={y}
                 x2={targetXY.x}
                 y2={targetXY.y}
-                stroke={pin.color}
-                strokeWidth={s(0.7)}
-                strokeDasharray={`${s(2)} ${s(2)}`}
-                opacity="0.85"
+                className={cn('gt-map-connector', pin.isYou && 'is-you')}
+                strokeWidth={s(pin.isYou ? 0.7 : 0.5)}
+                strokeDasharray={`${s(1.4)} ${s(1.4)}`}
               />
             )
           })}
 
+        {/* opponents already locked in (guess mode) — ghost dots */}
+        {ghosts.map((ghost, index) => {
+          const { x, y } = project(ghost.lat, ghost.lng)
+          return (
+            <circle key={`ghost-${index}`} cx={x} cy={y} r={s(1.8)} className="gt-map-ghostpin" />
+          )
+        })}
+
+        {/* pins */}
         {pins.map((pin, index) => {
           const { x, y } = project(pin.lat, pin.lng)
           return (
-            <g key={`pin-${index}`}>
-              <circle
-                cx={x}
-                cy={y}
-                r={s(3.2)}
-                fill={pin.color}
-                stroke="#fff"
-                strokeWidth={s(0.9)}
-              />
-              {pin.label && (
-                <text
-                  x={x}
-                  y={y - s(5)}
-                  textAnchor="middle"
-                  fontSize={s(6)}
-                  fontWeight="700"
-                  fill="#f8fafc"
-                  stroke="rgba(2,6,23,0.85)"
-                  strokeWidth={s(0.6)}
-                  paintOrder="stroke"
-                >
-                  {pin.label}
-                </text>
-              )}
+            <g
+              key={`pin-${index}`}
+              className={cn('gt-map-pin', pin.isYou && 'is-you', pin.pending && 'is-pending')}
+              style={
+                pin.hueIndex !== undefined
+                  ? ({ ['--pin-hue']: avatarHue(pin.hueIndex) } as React.CSSProperties)
+                  : undefined
+              }
+            >
+              <circle cx={x} cy={y} r={s(2.6)} className="gt-pin-dot" strokeWidth={s(0.55)} />
+              <circle cx={x} cy={y} r={s(2.6)} className="gt-pin-ring" strokeWidth={s(0.35)} />
             </g>
           )
         })}
 
+        {/* the actual answer, revealed — gold flag */}
         {targetXY && (
-          <g data-testid="globetrotter-map-target">
-            <circle
-              cx={targetXY.x}
-              cy={targetXY.y}
-              r={s(6)}
-              fill="none"
-              stroke="#fbbf24"
-              strokeWidth={s(0.9)}
-              opacity="0.9"
+          <g
+            data-testid="globetrotter-map-target"
+            className="gt-map-actual"
+            transform={`translate(${targetXY.x}, ${targetXY.y})`}
+          >
+            <path
+              d={`M 0 ${s(-5.2)} L ${s(2.3)} ${s(-0.8)} L 0 ${s(1.6)} L ${s(-2.3)} ${s(-0.8)} Z`}
+              className="gt-pin-flag"
+              strokeWidth={s(0.55)}
             />
-            <circle
-              cx={targetXY.x}
-              cy={targetXY.y}
-              r={s(2.6)}
-              fill="#fbbf24"
-              stroke="#0f172a"
-              strokeWidth={s(0.7)}
-            />
+            <circle r={s(1.4)} className="gt-pin-flag-dot" />
           </g>
         )}
       </svg>
 
-      <div className="absolute right-2 bottom-2 flex flex-col gap-1">
+      <div className="gt-zoom">
         <button
           type="button"
           aria-label="Zoom in"
           data-testid="globetrotter-zoom-in"
           onClick={() => zoomCentered(1.6)}
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-slate-900/80 text-sm font-bold text-white/80 transition hover:bg-slate-800"
         >
           +
         </button>
@@ -348,7 +343,6 @@ export function WorldMap({
           aria-label="Zoom out"
           data-testid="globetrotter-zoom-out"
           onClick={() => zoomCentered(1 / 1.6)}
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-slate-900/80 text-sm font-bold text-white/80 transition hover:bg-slate-800"
         >
           −
         </button>
@@ -358,7 +352,6 @@ export function WorldMap({
             aria-label="Reset zoom"
             data-testid="globetrotter-zoom-reset"
             onClick={() => setView(FULL_VIEW)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-slate-900/80 text-[10px] font-bold text-white/80 transition hover:bg-slate-800"
           >
             ⤢
           </button>
