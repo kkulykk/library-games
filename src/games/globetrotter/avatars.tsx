@@ -1,7 +1,7 @@
 // Blocky player avatars from the Library Games design system (util.jsx).
 // Deterministic by roster index so every client renders the same face.
 
-export const AVATAR_HUES = [130, 45, 200, 340, 95, 260, 20, 170]
+export const AVATAR_HUES = [96, 45, 200, 340, 130, 260, 20, 170]
 
 export function avatarHue(idx: number): number {
   return AVATAR_HUES[((idx % AVATAR_HUES.length) + AVATAR_HUES.length) % AVATAR_HUES.length]

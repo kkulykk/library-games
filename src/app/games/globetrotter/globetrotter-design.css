@@ -16,9 +16,9 @@
   --line: oklch(0.85 0.01 85);
   --line-strong: oklch(0.65 0.01 85);
 
-  --acid: oklch(0.88 0.22 130); /* electric lime */
-  --acid-ink: oklch(0.2 0.08 130);
-  --acid-deep: oklch(0.45 0.18 130);
+  --acid: oklch(0.88 0.22 96); /* library yellow — matches the site-wide --acid */
+  --acid-ink: oklch(0.2 0.08 96);
+  --acid-deep: oklch(0.5 0.13 85);
   --magenta: oklch(0.72 0.26 340);
   --amber: oklch(0.82 0.18 75);
   --danger: oklch(0.68 0.22 25);
@@ -234,7 +234,7 @@
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: oklch(0.35 0.18 130);
+  color: oklch(0.45 0.12 85);
   width: fit-content;
 }
 .gt-scope .sk-tag::before {
@@ -606,8 +606,8 @@
   border: 1px solid var(--line);
 }
 .gt-scope .sk-player-tag.host {
-  color: oklch(0.35 0.18 130);
-  border-color: oklch(0.35 0.18 130);
+  color: oklch(0.45 0.12 85);
+  border-color: oklch(0.45 0.12 85);
 }
 .gt-scope .sk-player-tag.locked {
   color: oklch(0.4 0.18 145);
@@ -1082,7 +1082,7 @@ a.gt-pano-watermark:hover {
   opacity: 0.5;
 }
 .gt-scope .gt-map-pin .gt-pin-dot {
-  fill: oklch(0.7 0.2 var(--pin-hue, 130));
+  fill: oklch(0.7 0.2 var(--pin-hue, 96));
   stroke: var(--ink);
 }
 .gt-scope .gt-map-pin.is-you .gt-pin-dot {
@@ -1112,7 +1112,7 @@ a.gt-pano-watermark:hover {
   opacity: 0.7;
 }
 .gt-scope .gt-map-connector.is-you {
-  stroke: oklch(0.55 0.2 130);
+  stroke: oklch(0.6 0.14 85);
   opacity: 1;
 }
 .gt-scope .gt-zoom {
@@ -1153,7 +1153,7 @@ a.gt-pano-watermark:hover {
   letter-spacing: 0.08em;
 }
 .gt-scope .gt-locked-msg {
-  color: oklch(0.45 0.18 130);
+  color: oklch(0.5 0.13 85);
   font-size: 11px;
   letter-spacing: 0.1em;
 }
@@ -1248,7 +1248,7 @@ a.gt-pano-watermark:hover {
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: 13px;
-  color: oklch(0.4 0.18 130);
+  color: oklch(0.48 0.12 85);
 }
 
 /* ── Responsive ──────────────────────────────────────────── */
