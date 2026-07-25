@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { cn } from '@/lib/utils'
 import type { GeoPano } from './locations'
@@ -16,6 +16,9 @@ function yawToDegrees(yaw: number): number {
 // yaw/pitch/fov camera and samples the 360° image. Drag to look around,
 // scroll to zoom. Wikimedia Commons serves images with CORS headers, so the
 // texture upload works cross-origin.
+//
+// Panoramas are multi-megabyte files, so the download is streamed and its
+// progress surfaced — a silent black rectangle reads as a frozen app.
 
 const VERTEX_SHADER = `
 attribute vec2 position;
@@ -64,21 +67,82 @@ interface PanoViewerProps {
 
 type Status = 'loading' | 'ready' | 'error'
 
+/**
+ * Stream the panorama so the download can report progress, falling back to a
+ * plain <img> load when streaming is unavailable (then progress is unknown).
+ */
+async function loadPanorama(
+  url: string,
+  onProgress: (ratio: number | null) => void,
+  signal: AbortSignal
+): Promise<TexImageSource> {
+  try {
+    const response = await fetch(url, { mode: 'cors', signal })
+    if (!response.ok) throw new Error(`Panorama ${response.status}`)
+    const total = Number(response.headers.get('content-length') ?? 0)
+    const reader = response.body?.getReader()
+    let blob: Blob
+    if (reader) {
+      const chunks: Uint8Array[] = []
+      let received = 0
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+        received += value.length
+        onProgress(total > 0 ? Math.min(1, received / total) : null)
+      }
+      blob = new Blob(chunks as BlobPart[], { type: 'image/jpeg' })
+    } else {
+      blob = await response.blob()
+    }
+    onProgress(1)
+    if (typeof createImageBitmap === 'function') return await createImageBitmap(blob)
+    return await decodeViaImage(URL.createObjectURL(blob), true)
+  } catch (error) {
+    if (signal.aborted) throw error
+    // Streaming can fail where a plain image load still succeeds (proxies,
+    // odd CORS setups) — try the simple path before giving up.
+    onProgress(null)
+    return decodeViaImage(url, false)
+  }
+}
+
+function decodeViaImage(src: string, revoke: boolean): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => {
+      if (revoke) URL.revokeObjectURL(src)
+      resolve(image)
+    }
+    image.onerror = () => {
+      if (revoke) URL.revokeObjectURL(src)
+      reject(new Error('Panorama failed to load'))
+    }
+    image.src = src
+  })
+}
+
 export function PanoViewer({ pano, className }: PanoViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const glRef = useRef<WebGLRenderingContext | null>(null)
   const uniformsRef = useRef<Record<string, WebGLUniformLocation | null>>({})
   const cameraRef = useRef<Camera>({ yaw: 0, pitch: 0, fov: 75 })
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const renderRef = useRef<(() => void) | null>(null)
   const [status, setStatus] = useState<Status>('loading')
+  const [progress, setProgress] = useState<number | null>(null)
   const [dragged, setDragged] = useState(false)
   const [compassDeg, setCompassDeg] = useState(0)
+  const [attempt, setAttempt] = useState(0)
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), [])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     setStatus('loading')
+    setProgress(null)
     setDragged(false)
     cameraRef.current = { yaw: 0, pitch: 0, fov: 75 }
 
@@ -87,7 +151,6 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
       setStatus('error')
       return
     }
-    glRef.current = gl
 
     function compile(type: number, source: string): WebGLShader | null {
       const shader = gl!.createShader(type)
@@ -128,37 +191,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     }
 
     let disposed = false
-
-    const image = new Image()
-    image.crossOrigin = 'anonymous'
-    image.onload = () => {
-      if (disposed) return
-      const texture = gl.createTexture()
-      gl.bindTexture(gl.TEXTURE_2D, texture)
-      // Non-power-of-two source: clamp + linear, wrap handled by fract() in
-      // the shader. Downscale first if the GPU cannot take the full image.
-      const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number
-      let source: TexImageSource = image
-      if (image.width > maxSize) {
-        const scale = maxSize / image.width
-        const offscreen = document.createElement('canvas')
-        offscreen.width = Math.floor(image.width * scale)
-        offscreen.height = Math.floor(image.height * scale)
-        offscreen.getContext('2d')?.drawImage(image, 0, 0, offscreen.width, offscreen.height)
-        source = offscreen
-      }
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
-      setStatus('ready')
-      render()
-    }
-    image.onerror = () => {
-      if (!disposed) setStatus('error')
-    }
-    image.src = pano.url
+    const controller = new AbortController()
 
     function render() {
       const c = canvasRef.current
@@ -180,17 +213,50 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
       gl!.drawArrays(gl!.TRIANGLES, 0, 3)
     }
 
+    loadPanorama(pano.url, (ratio) => !disposed && setProgress(ratio), controller.signal)
+      .then((source) => {
+        if (disposed) return
+        const texture = gl.createTexture()
+        gl.bindTexture(gl.TEXTURE_2D, texture)
+        // Non-power-of-two source: clamp + linear, wrap handled by fract() in
+        // the shader. Downscale first if the GPU cannot take the full image.
+        const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number
+        let upload: TexImageSource = source
+        const sourceWidth = 'width' in source ? source.width : 0
+        if (sourceWidth > maxSize) {
+          const scale = maxSize / sourceWidth
+          const sourceHeight = 'height' in source ? source.height : 0
+          const offscreen = document.createElement('canvas')
+          offscreen.width = Math.floor(sourceWidth * scale)
+          offscreen.height = Math.floor(sourceHeight * scale)
+          offscreen
+            .getContext('2d')
+            ?.drawImage(source as CanvasImageSource, 0, 0, offscreen.width, offscreen.height)
+          upload = offscreen
+        }
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, upload)
+        setStatus('ready')
+        render()
+      })
+      .catch(() => {
+        if (!disposed) setStatus('error')
+      })
+
     renderRef.current = render
     const observer = new ResizeObserver(() => render())
     observer.observe(canvas)
 
     return () => {
       disposed = true
+      controller.abort()
       observer.disconnect()
       renderRef.current = null
-      glRef.current = null
     }
-  }, [pano.url])
+  }, [pano.url, attempt])
 
   function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
@@ -235,16 +301,17 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     return () => canvas.removeEventListener('wheel', onWheel)
   }, [])
 
-  if (status === 'error') return null
-
   const dirLabel = COMPASS_DIRS[Math.round(compassDeg / 45) % 8]
+  const percent = progress === null ? null : Math.round(progress * 100)
 
   return (
     <div data-testid="globetrotter-pano" className={cn('gt-pano', className)}>
-      <div className="gt-compass mono">
-        <span>{dirLabel}</span>
-        <span className="gt-compass-deg">{String(compassDeg).padStart(3, '0')}°</span>
-      </div>
+      {status === 'ready' && (
+        <div className="gt-compass mono">
+          <span>{dirLabel}</span>
+          <span className="gt-compass-deg">{String(compassDeg).padStart(3, '0')}°</span>
+        </div>
+      )}
       <canvas
         ref={canvasRef}
         onPointerDown={handlePointerDown}
@@ -253,7 +320,36 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
         aria-label="360° panorama of the mystery location — drag to look around"
         role="img"
       />
-      {status === 'loading' && <div className="gt-pano-loading mono">Developing film…</div>}
+
+      {status === 'loading' && (
+        <div className="gt-pano-loading" data-testid="globetrotter-pano-loading">
+          <div className="gt-pano-shimmer" aria-hidden="true" />
+          <div className="gt-pano-loading-inner">
+            <span className="gt-spinner" aria-hidden="true" />
+            <span className="mono gt-pano-loading-text">
+              Developing film{percent === null ? '' : ` · ${percent}%`}
+            </span>
+            <span className="gt-pano-bar" role="progressbar" aria-label="Panorama download">
+              <span
+                className={cn('gt-pano-bar-fill', percent === null && 'is-indeterminate')}
+                style={percent === null ? undefined : { width: `${percent}%` }}
+              />
+            </span>
+          </div>
+        </div>
+      )}
+
+      {status === 'error' && (
+        <div className="gt-pano-loading" data-testid="globetrotter-pano-error">
+          <div className="gt-pano-loading-inner">
+            <span className="mono gt-pano-loading-text">This photosphere would not load.</span>
+            <button className="sk-btn sk-btn-sm" type="button" onClick={retry}>
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+
       {status === 'ready' && !dragged && (
         <div className="gt-pano-hint mono">⇄ Drag to look around · scroll to zoom</div>
       )}

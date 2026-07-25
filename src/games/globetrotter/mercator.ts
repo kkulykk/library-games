@@ -1,0 +1,169 @@
+// Web Mercator map math for the Globetrotter world map. Pure functions, no
+// React — the map component only owns the viewBox, everything geometric lives
+// here so it can be unit tested.
+//
+// The world is a WORLD_SIZE × WORLD_SIZE square (the same convention slippy
+// map tiles use at zoom 0, where one 256 px tile covers the planet). Because
+// the projection is fixed, country geometry can be projected once at module
+// load and panning/zooming is then just a viewBox change.
+
+export const WORLD_SIZE = 256
+
+/** Web Mercator cannot represent the poles; tiles stop at this latitude. */
+export const MAX_MERCATOR_LAT = 85.0511287798066
+
+/** Deepest zoom we allow: the world blown up to 2^12 × 256 px (street level). */
+export const MAX_SCALE = 4096
+
+export interface Point {
+  x: number
+  y: number
+}
+
+export interface LatLng {
+  lat: number
+  lng: number
+}
+
+export interface ViewBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface Tile {
+  z: number
+  x: number
+  y: number
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+/** lat/lng → world square coordinates (x right from −180°, y down from north). */
+export function project(lat: number, lng: number): Point {
+  const clampedLat = clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)
+  const sin = Math.sin((clampedLat * Math.PI) / 180)
+  return {
+    x: ((clamp(lng, -180, 180) + 180) / 360) * WORLD_SIZE,
+    y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * WORLD_SIZE,
+  }
+}
+
+/** Inverse of `project`, clamped to the representable world. */
+export function unproject(x: number, y: number): LatLng {
+  const nx = clamp(x, 0, WORLD_SIZE) / WORLD_SIZE
+  const ny = clamp(y, 0, WORLD_SIZE) / WORLD_SIZE
+  return {
+    lat: (Math.atan(Math.sinh(Math.PI * (1 - 2 * ny))) * 180) / Math.PI,
+    lng: nx * 360 - 180,
+  }
+}
+
+/**
+ * Keep a viewBox legal for a viewport of the given aspect ratio: the height
+ * follows the width, zoom is bounded, and the view stays over the world —
+ * once it is wider (or taller) than the world it centers instead of drifting.
+ */
+export function clampView(view: ViewBox, aspect: number): ViewBox {
+  const safeAspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 2
+  const maxW = Math.max(WORLD_SIZE, WORLD_SIZE * safeAspect)
+  const w = clamp(view.w, WORLD_SIZE / MAX_SCALE, maxW)
+  const h = w / safeAspect
+  return {
+    w,
+    h,
+    x: w >= WORLD_SIZE ? (WORLD_SIZE - w) / 2 : clamp(view.x, 0, WORLD_SIZE - w),
+    y: h >= WORLD_SIZE ? (WORLD_SIZE - h) / 2 : clamp(view.y, 0, WORLD_SIZE - h),
+  }
+}
+
+/** Default view: the whole world edge to edge, vertically centered. */
+export function worldView(aspect: number): ViewBox {
+  const height = WORLD_SIZE / (aspect > 0 && Number.isFinite(aspect) ? aspect : 2)
+  return clampView({ x: 0, y: (WORLD_SIZE - height) / 2, w: WORLD_SIZE, h: height }, aspect)
+}
+
+/** Zoom about a fixed point (in world coordinates) — used by wheel and buttons. */
+export function zoomView(view: ViewBox, anchor: Point, factor: number, aspect: number): ViewBox {
+  const next = clampView({ ...view, w: view.w / factor }, aspect)
+  const ratio = next.w / view.w
+  return clampView(
+    {
+      ...next,
+      x: anchor.x - (anchor.x - view.x) * ratio,
+      y: anchor.y - (anchor.y - view.y) * ratio,
+    },
+    aspect
+  )
+}
+
+/**
+ * Smallest view that shows every point with `pad` of breathing room on each
+ * side (0.25 = 25% of the span). Used to fly the map to the guess + answer.
+ */
+export function fitPoints(points: LatLng[], aspect: number, pad = 0.35): ViewBox {
+  if (points.length === 0) return worldView(aspect)
+  const projected = points.map((p) => project(p.lat, p.lng))
+  const minX = Math.min(...projected.map((p) => p.x))
+  const maxX = Math.max(...projected.map((p) => p.x))
+  const minY = Math.min(...projected.map((p) => p.y))
+  const maxY = Math.max(...projected.map((p) => p.y))
+  const spanX = Math.max(maxX - minX, 0.5)
+  const spanY = Math.max(maxY - minY, 0.5)
+  const w = Math.max(spanX * (1 + pad * 2), spanY * (1 + pad * 2) * aspect)
+  return clampView(
+    { w, h: w / aspect, x: (minX + maxX) / 2 - w / 2, y: (minY + maxY) / 2 - w / aspect / 2 },
+    aspect
+  )
+}
+
+/** Linear interpolation between two views — one frame of a fly-to animation. */
+export function lerpView(from: ViewBox, to: ViewBox, t: number): ViewBox {
+  const k = clamp(t, 0, 1)
+  const mix = (a: number, b: number) => a + (b - a) * k
+  return { x: mix(from.x, to.x), y: mix(from.y, to.y), w: mix(from.w, to.w), h: mix(from.h, to.h) }
+}
+
+/** Ease-in-out cubic — used for view transitions and count-up animations. */
+export function easeInOut(t: number): number {
+  const k = clamp(t, 0, 1)
+  return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2
+}
+
+/**
+ * Tile pyramid level whose 256 px tiles land closest to 256 CSS px on screen,
+ * bounded so a single frame never asks for an unreasonable number of tiles.
+ */
+export function tileZoom(view: ViewBox, viewportWidthPx: number, maxZoom = 12): number {
+  if (!(viewportWidthPx > 0) || !(view.w > 0)) return 0
+  const scale = viewportWidthPx / view.w
+  return clamp(Math.round(Math.log2(scale)), 0, maxZoom)
+}
+
+/** Every tile of `z` intersecting the view, in draw order. */
+export function visibleTiles(view: ViewBox, z: number): Tile[] {
+  const count = 2 ** z
+  const size = WORLD_SIZE / count
+  const minX = Math.max(0, Math.floor(view.x / size))
+  const maxX = Math.min(count - 1, Math.ceil((view.x + view.w) / size) - 1)
+  const minY = Math.max(0, Math.floor(view.y / size))
+  const maxY = Math.min(count - 1, Math.ceil((view.y + view.h) / size) - 1)
+  const tiles: Tile[] = []
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) tiles.push({ z, x, y })
+  }
+  return tiles
+}
+
+/** World-coordinate box a tile occupies. */
+export function tileBox(tile: Tile): ViewBox {
+  const size = WORLD_SIZE / 2 ** tile.z
+  return { x: tile.x * size, y: tile.y * size, w: size, h: size }
+}
+
+export function tileKey(tile: Tile): string {
+  return `${tile.z}/${tile.x}/${tile.y}`
+}

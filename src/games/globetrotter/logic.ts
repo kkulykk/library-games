@@ -47,33 +47,7 @@ export const SCORE_DECAY_KM = 1500
 const EARTH_RADIUS_KM = 6371
 
 // ─── Geometry ────────────────────────────────────────────────────────────────
-
-export const MAP_WIDTH = 360
-export const MAP_HEIGHT = 180
-
-export function clampLat(lat: number): number {
-  return Math.max(-90, Math.min(90, lat))
-}
-
-export function clampLng(lng: number): number {
-  return Math.max(-180, Math.min(180, lng))
-}
-
-/** Equirectangular projection onto the MAP_WIDTH×MAP_HEIGHT viewBox. */
-export function project(lat: number, lng: number): { x: number; y: number } {
-  return {
-    x: ((clampLng(lng) + 180) / 360) * MAP_WIDTH,
-    y: ((90 - clampLat(lat)) / 180) * MAP_HEIGHT,
-  }
-}
-
-/** Inverse of `project`: viewBox coordinates back to lat/lng (clamped). */
-export function unproject(x: number, y: number): Guess {
-  return {
-    lat: clampLat(90 - (y / MAP_HEIGHT) * 180),
-    lng: clampLng((x / MAP_WIDTH) * 360 - 180),
-  }
-}
+// Screen projection lives in `mercator.ts` — this file only deals in lat/lng.
 
 /** Great-circle distance in kilometers (haversine). */
 export function haversineKm(a: Guess, b: Guess): number {
@@ -418,17 +392,14 @@ export interface SoloGame {
   totalScore: number
 }
 
-export function createSoloGame(
-  rng: () => number = Math.random,
-  totalRounds: number = TOTAL_ROUNDS,
-  providedDeck?: GeoLocation[]
-): SoloGame {
-  const supplied =
-    providedDeck && providedDeck.length >= totalRounds && providedDeck.every(isPlayableLocation)
-      ? providedDeck.slice(0, totalRounds)
-      : null
+/**
+ * Solo is Random World only: the caller always supplies a freshly scouted deck
+ * (see `buildRandomWorldDeck`), and unusable entries are dropped here rather
+ * than falling back to a curated pool.
+ */
+export function createSoloGame(deck: GeoLocation[], totalRounds: number = TOTAL_ROUNDS): SoloGame {
   return {
-    rounds: supplied ?? pickLocations(totalRounds, rng),
+    rounds: deck.filter(isPlayableLocation).slice(0, totalRounds),
     roundNumber: 1,
     phase: 'guessing',
     results: [],

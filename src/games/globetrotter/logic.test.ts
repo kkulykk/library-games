@@ -4,8 +4,6 @@ import {
   applyAction,
   BULLSEYE_KM,
   canStartGame,
-  clampLat,
-  clampLng,
   createLobbyState,
   createSoloGame,
   currentSoloLocation,
@@ -15,21 +13,18 @@ import {
   hasPlayerGuessed,
   haversineKm,
   isValidGuess,
-  MAP_HEIGHT,
-  MAP_WIDTH,
   MAX_PLAYERS,
   MAX_ROUND_SCORE,
   MIN_PLAYERS,
   nextSoloRound,
   pickLocations,
-  project,
   redactForPlayer,
   removePlayer,
   scoreDistance,
   submitSoloGuess,
   TOTAL_ROUNDS,
-  unproject,
   type GameState,
+  type GeoLocation,
   type Player,
 } from './logic'
 import { LOCATIONS } from './locations'
@@ -39,8 +34,15 @@ const host: Player = { id: 'h1', name: 'Host', isHost: true, score: 0 }
 const guest: Player = { id: 'g1', name: 'Guest', isHost: false, score: 0 }
 const third: Player = { id: 'g2', name: 'Third', isHost: false, score: 0 }
 
-// Deterministic rng: always 0 → shuffle keeps a stable order.
-const rngZero = () => 0
+// Stand-in for a scouted Random World deck: no clues, spread-out coordinates.
+const randomDeck: GeoLocation[] = Array.from({ length: TOTAL_ROUNDS }, (_, i) => ({
+  name: `Country ${i}`,
+  country: `${i}.00°N, ${i}.00°E`,
+  lat: i,
+  lng: i,
+  emoji: '🌐',
+  clues: [],
+}))
 
 function playingState(players: Player[] = [host, guest]): GameState {
   let state = createLobbyState(host)
@@ -63,31 +65,6 @@ describe('geometry', () => {
     const km = haversineKm({ lat: 0, lng: 0 }, { lat: 0, lng: 180 })
     expect(km).toBeGreaterThan(20000)
     expect(km).toBeLessThan(20050)
-  })
-
-  it('project maps the corners of the world to the viewBox corners', () => {
-    expect(project(90, -180)).toEqual({ x: 0, y: 0 })
-    expect(project(-90, 180)).toEqual({ x: MAP_WIDTH, y: MAP_HEIGHT })
-    expect(project(0, 0)).toEqual({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 })
-  })
-
-  it('unproject inverts project', () => {
-    const { x, y } = project(48.8566, 2.3522)
-    const back = unproject(x, y)
-    expect(back.lat).toBeCloseTo(48.8566, 5)
-    expect(back.lng).toBeCloseTo(2.3522, 5)
-  })
-
-  it('unproject clamps out-of-range coordinates', () => {
-    expect(unproject(-50, -50)).toEqual({ lat: 90, lng: -180 })
-    expect(unproject(MAP_WIDTH + 50, MAP_HEIGHT + 50)).toEqual({ lat: -90, lng: 180 })
-  })
-
-  it('clamps latitudes and longitudes', () => {
-    expect(clampLat(120)).toBe(90)
-    expect(clampLat(-120)).toBe(-90)
-    expect(clampLng(200)).toBe(180)
-    expect(clampLng(-200)).toBe(-180)
   })
 })
 
@@ -203,15 +180,6 @@ describe('lobby', () => {
 })
 
 describe('START_GAME', () => {
-  const randomDeck = Array.from({ length: TOTAL_ROUNDS }, (_, i) => ({
-    name: `Country ${i}`,
-    country: `${i}.00°N, ${i}.00°E`,
-    lat: i,
-    lng: i,
-    emoji: '🌐',
-    clues: [],
-  }))
-
   it('uses a supplied playable deck (Random World mode)', () => {
     let state = createLobbyState(host)
     state = addPlayer(state, guest)
@@ -241,12 +209,11 @@ describe('START_GAME', () => {
     expect(malformed.deck.every((l) => Math.abs(l.lat) <= 90)).toBe(true)
   })
 
-  it('createSoloGame accepts a supplied deck too', () => {
-    const game = createSoloGame(rngZero, TOTAL_ROUNDS, randomDeck)
+  it('createSoloGame plays the supplied deck and drops malformed entries', () => {
+    const game = createSoloGame(randomDeck)
     expect(game.rounds).toEqual(randomDeck)
-    const fallback = createSoloGame(rngZero, TOTAL_ROUNDS, randomDeck.slice(0, 1))
-    expect(fallback.rounds).toHaveLength(TOTAL_ROUNDS)
-    expect(fallback.rounds[0].name).not.toBe('Country 0')
+    const dirty = createSoloGame([...randomDeck.slice(0, 2), { ...randomDeck[2], lat: 999 }])
+    expect(dirty.rounds).toHaveLength(2)
   })
 
   it('starts with a full deck and round 1 in guessing phase', () => {
@@ -478,7 +445,7 @@ describe('unknown action', () => {
 
 describe('solo mode', () => {
   it('creates a solo game with distinct rounds', () => {
-    const game = createSoloGame(rngZero)
+    const game = createSoloGame(randomDeck)
     expect(game.rounds).toHaveLength(TOTAL_ROUNDS)
     expect(game.roundNumber).toBe(1)
     expect(game.phase).toBe('guessing')
@@ -486,7 +453,7 @@ describe('solo mode', () => {
   })
 
   it('scores a bullseye guess and accumulates the total', () => {
-    let game = createSoloGame(rngZero)
+    let game = createSoloGame(randomDeck)
     const target = currentSoloLocation(game)
     game = submitSoloGuess(game, target.lat, target.lng)
     expect(game.phase).toBe('reveal')
@@ -496,14 +463,14 @@ describe('solo mode', () => {
   })
 
   it('ignores invalid or repeated guesses', () => {
-    let game = createSoloGame(rngZero)
+    let game = createSoloGame(randomDeck)
     expect(submitSoloGuess(game, 999, 0)).toBe(game)
     game = submitSoloGuess(game, 0, 0)
     expect(submitSoloGuess(game, 1, 1)).toBe(game)
   })
 
   it('advances rounds and finishes after the last one', () => {
-    let game = createSoloGame(rngZero)
+    let game = createSoloGame(randomDeck)
     expect(nextSoloRound(game)).toBe(game) // guessing phase — no-op
     for (let i = 0; i < TOTAL_ROUNDS; i++) {
       game = submitSoloGuess(game, 0, 0)
