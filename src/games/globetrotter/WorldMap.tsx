@@ -10,11 +10,11 @@ import { countryShapes } from './countryShapes'
 import {
   clampView,
   easeInOut,
-  fitPoints,
   lerpView,
   project,
   tileBox,
   tileKey,
+  revealTour,
   tileZoom,
   unproject,
   visibleTiles,
@@ -22,6 +22,7 @@ import {
   WORLD_SIZE,
   type Point,
   type Tile,
+  type TourStep,
   type ViewBox,
 } from './mercator'
 
@@ -68,7 +69,8 @@ const TILE_ERROR_LIMIT = 6
 
 // Screen-pixel movement below this is a click (drop a pin), above it a pan.
 const CLICK_SLOP_PX = 5
-const FLY_MS = 900
+/** Wait for the camera to rest this long before asking for tiles. */
+const TILE_SETTLE_MS = 220
 /** Name a country only once it is this wide on screen, and never crowd the map. */
 const MIN_LABEL_PX = 58
 const MAX_LABELS = 26
@@ -86,6 +88,29 @@ const LAND_PATH = LAND_RINGS.map((ring) => {
   })
   return d.join('') + 'Z'
 }).join('')
+
+/** The CSS animations honour this via a media query; the camera tour cannot. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
+
+/**
+ * Holds a value still until it has stopped changing. Tiles are keyed off the
+ * settled view so a drag or a reveal fly-through does not fire a request for
+ * every zoom level it passes through.
+ */
+function useSettled<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), delayMs)
+    return () => clearTimeout(timer)
+  }, [value, delayMs])
+  return settled
+}
 
 /** Tracks which tiles have finished downloading, so only ready ones are drawn. */
 function useTileLayer(tiles: Tile[], enabled: boolean) {
@@ -149,7 +174,12 @@ export function WorldMap({
   const aspect = size.height > 0 ? size.width / size.height : 2
   const [view, setView] = useState<ViewBox>(() => worldView(2))
   const [flying, setFlying] = useState(false)
+  // True from the moment the reveal tour starts until the camera has pulled
+  // back to the overview — the distance overlays wait for that.
+  const [touring, setTouring] = useState(autoFit)
   const flightRef = useRef<number | null>(null)
+  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelRef = useRef(false)
   // Mirrors `view` so a fly-to can read the live camera without re-subscribing.
   const viewRef = useRef(view)
   viewRef.current = view
@@ -186,45 +216,92 @@ export function WorldMap({
     setView((current) => clampView(current, aspect))
   }, [aspect])
 
+  /**
+   * Cancel the reveal tour. Any manual pan or zoom does this — the camera then
+   * belongs to the player, and the overview overlays (connectors, distance)
+   * are shown straight away rather than waiting for a tour that will not come.
+   */
   const stopFlight = useCallback(() => {
     if (flightRef.current !== null) cancelAnimationFrame(flightRef.current)
+    if (holdRef.current !== null) clearTimeout(holdRef.current)
     flightRef.current = null
+    holdRef.current = null
+    cancelRef.current = true
     setFlying(false)
+    setTouring((current) => (current ? false : current))
   }, [])
 
-  const flyTo = useCallback(
-    (destination: ViewBox) => {
+  /** Walk the camera through a script of destinations, holds and all. */
+  const runTour = useCallback(
+    (steps: TourStep[]) => {
       stopFlight()
+      cancelRef.current = false
       setFlying(true)
-      const from = viewRef.current
-      const start = performance.now()
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / FLY_MS)
-        setView(lerpView(from, destination, easeInOut(t)))
-        if (t < 1) {
-          flightRef.current = requestAnimationFrame(step)
-        } else {
-          flightRef.current = null
+      setTouring(true)
+      let index = 0
+
+      const nextStep = () => {
+        if (cancelRef.current) return
+        const step = steps[index]
+        if (!step) {
           setFlying(false)
+          setTouring(false)
+          return
         }
+        const isLast = index === steps.length - 1
+        index += 1
+        const from = viewRef.current
+        const startedAt = performance.now()
+
+        const frame = (now: number) => {
+          if (cancelRef.current) return
+          const t = step.travelMs > 0 ? Math.min(1, (now - startedAt) / step.travelMs) : 1
+          setView(lerpView(from, step.view, easeInOut(t)))
+          if (t < 1) {
+            flightRef.current = requestAnimationFrame(frame)
+            return
+          }
+          flightRef.current = null
+          // The pull-back has landed: the whole miss is on screen now.
+          if (isLast) setTouring(false)
+          if (step.holdMs > 0) holdRef.current = setTimeout(nextStep, step.holdMs)
+          else nextStep()
+        }
+
+        flightRef.current = requestAnimationFrame(frame)
       }
-      flightRef.current = requestAnimationFrame(step)
+
+      nextStep()
     },
     [stopFlight]
   )
 
   useEffect(() => stopFlight, [stopFlight])
 
-  // Reveal: frame every guess together with the answer, then hold that view.
+  // Reveal: open on the player's pin, travel to the real spot, hold, pull back.
   const fitKey = autoFit ? JSON.stringify([target, pins.map((p) => [p.lat, p.lng])]) : 'none'
   useEffect(() => {
     if (!autoFit || !target) return
-    const points = [target, ...pins.map((pin) => ({ lat: pin.lat, lng: pin.lng }))]
-    setView(worldView(aspect))
-    const timer = setTimeout(() => flyTo(fitPoints(points, aspect)), 420)
+    const yours = pins.find((pin) => pin.isYou) ?? pins[0] ?? null
+    const guess = yours ? { lat: yours.lat, lng: yours.lng } : null
+    const others = pins
+      .filter((pin) => pin !== yours)
+      .map((pin) => ({ lat: pin.lat, lng: pin.lng }))
+    const steps = revealTour(target, guess, others, aspect)
+
+    // Anyone who asked for less motion gets the answer, not the flight.
+    if (prefersReducedMotion()) {
+      setView(steps[steps.length - 1].view)
+      setTouring(false)
+      return
+    }
+
+    setView(steps[0].view)
+    // One frame of settle so the opening close-up paints before the tour runs.
+    const timer = setTimeout(() => runTour(steps), 120)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitKey, aspect, autoFit, flyTo])
+  }, [fitKey, aspect, autoFit, runTour])
 
   const zoom = WORLD_SIZE / view.w
   /** CSS pixels → view-box units, so markers keep a constant on-screen size. */
@@ -233,8 +310,10 @@ export function WorldMap({
     [view.w, size.width]
   )
 
-  const z = tileZoom(view, size.width, MAX_TILE_ZOOM)
-  const tiles = useMemo(() => (TILES_ENABLED ? visibleTiles(view, z) : []), [view, z])
+  // Only fetch tiles for a camera that has come to rest.
+  const settledView = useSettled(view, TILE_SETTLE_MS)
+  const z = tileZoom(settledView, size.width, MAX_TILE_ZOOM)
+  const tiles = useMemo(() => (TILES_ENABLED ? visibleTiles(settledView, z) : []), [settledView, z])
   const { readyTiles, active: tilesActive } = useTileLayer(tiles, TILES_ENABLED)
 
   // Country outlines never move (the projection is fixed), so build the paths
@@ -439,8 +518,10 @@ export function WorldMap({
           </text>
         ))}
 
-        {/* reveal: connectors drawn from each guess to the actual point */}
+        {/* reveal: connectors drawn from each guess to the actual point, once
+            the camera has pulled back far enough to show the whole distance */}
         {targetXY &&
+          !touring &&
           pins.map((pin, index) => {
             const { x, y } = project(pin.lat, pin.lng)
             return (
@@ -509,7 +590,7 @@ export function WorldMap({
         )}
 
         {/* distance readout riding the midpoint of your connector */}
-        {targetXY && yourXY && distanceLabel && (
+        {targetXY && yourXY && distanceLabel && !touring && (
           <g
             className="gt-map-distance"
             transform={`translate(${(targetXY.x + yourXY.x) / 2} ${(targetXY.y + yourXY.y) / 2})`}

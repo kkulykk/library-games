@@ -100,9 +100,14 @@ export function zoomView(view: ViewBox, anchor: Point, factor: number, aspect: n
   )
 }
 
+/** Roughly 25 km across at the equator — close enough to read streets. */
+export const CLOSE_VIEW_WIDTH = (WORLD_SIZE * 25) / 40075
+
 /**
  * Smallest view that shows every point with `pad` of breathing room on each
  * side (0.25 = 25% of the span). Used to fly the map to the guess + answer.
+ * A near-bullseye never zooms tighter than a close-up, so the pull-back always
+ * has somewhere to pull back to.
  */
 export function fitPoints(points: LatLng[], aspect: number, pad = 0.35): ViewBox {
   if (points.length === 0) return worldView(aspect)
@@ -111,13 +116,79 @@ export function fitPoints(points: LatLng[], aspect: number, pad = 0.35): ViewBox
   const maxX = Math.max(...projected.map((p) => p.x))
   const minY = Math.min(...projected.map((p) => p.y))
   const maxY = Math.max(...projected.map((p) => p.y))
-  const spanX = Math.max(maxX - minX, 0.5)
-  const spanY = Math.max(maxY - minY, 0.5)
+  const spanX = Math.max(maxX - minX, CLOSE_VIEW_WIDTH)
+  const spanY = Math.max(maxY - minY, CLOSE_VIEW_WIDTH)
   const w = Math.max(spanX * (1 + pad * 2), spanY * (1 + pad * 2) * aspect)
   return clampView(
     { w, h: w / aspect, x: (minX + maxX) / 2 - w / 2, y: (minY + maxY) / 2 - w / aspect / 2 },
     aspect
   )
+}
+
+// ─── Reveal camera tour ──────────────────────────────────────────────────────
+
+/** Below this ratio the two pins are near neighbours; skip the travel arc. */
+const ARC_RATIO = 6
+
+export const GUESS_HOLD_MS = 900
+export const TRAVEL_MS = 1700
+export const ANSWER_HOLD_MS = 2000
+export const ZOOM_OUT_MS = 1200
+
+export interface TourStep {
+  /** Where the camera ends up. */
+  view: ViewBox
+  /** Time to travel there from the previous step (0 jumps straight there). */
+  travelMs: number
+  /** Time to sit still once it arrives. */
+  holdMs: number
+}
+
+/** A close-up centered on one point. */
+export function closeView(point: LatLng, aspect: number): ViewBox {
+  const center = project(point.lat, point.lng)
+  const w = CLOSE_VIEW_WIDTH
+  return clampView({ x: center.x - w / 2, y: center.y - w / aspect / 2, w, h: w / aspect }, aspect)
+}
+
+/**
+ * The reveal camera script: open tight on the player's pin, travel to the real
+ * spot (arcing out over the distance when the two are far apart), hold there,
+ * then pull back to frame the whole miss.
+ */
+export function revealTour(
+  target: LatLng,
+  guess: LatLng | null,
+  others: LatLng[],
+  aspect: number
+): TourStep[] {
+  const overview = fitPoints([target, ...(guess ? [guess] : []), ...others], aspect)
+
+  if (!guess) {
+    return [
+      { view: closeView(target, aspect), travelMs: 0, holdMs: ANSWER_HOLD_MS },
+      { view: overview, travelMs: ZOOM_OUT_MS, holdMs: 0 },
+    ]
+  }
+
+  const start = closeView(guess, aspect)
+  const answer = closeView(target, aspect)
+  const steps: TourStep[] = [{ view: start, travelMs: 0, holdMs: GUESS_HOLD_MS }]
+
+  if (overview.w > start.w * ARC_RATIO) {
+    // Too far to pan at street level — lift over the gap and drop back in.
+    steps.push({
+      view: fitPoints([guess, target], aspect, 0.05),
+      travelMs: TRAVEL_MS / 2,
+      holdMs: 0,
+    })
+    steps.push({ view: answer, travelMs: TRAVEL_MS / 2, holdMs: ANSWER_HOLD_MS })
+  } else {
+    steps.push({ view: answer, travelMs: TRAVEL_MS, holdMs: ANSWER_HOLD_MS })
+  }
+
+  steps.push({ view: overview, travelMs: ZOOM_OUT_MS, holdMs: 0 })
+  return steps
 }
 
 /** Linear interpolation between two views — one frame of a fly-to animation. */

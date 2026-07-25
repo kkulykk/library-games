@@ -1,17 +1,25 @@
 import {
+  ANSWER_HOLD_MS,
   clampView,
+  CLOSE_VIEW_WIDTH,
+  closeView,
   easeInOut,
   fitPoints,
+  GUESS_HOLD_MS,
   lerpView,
   MAX_MERCATOR_LAT,
   project,
+  revealTour,
   tileBox,
   tileKey,
   tileZoom,
+  TRAVEL_MS,
   unproject,
   visibleTiles,
   worldView,
   WORLD_SIZE,
+  ZOOM_OUT_MS,
+  type ViewBox,
 } from './mercator'
 import { countryShapes } from './countryShapes'
 
@@ -113,6 +121,108 @@ describe('fitPoints', () => {
 
   it('falls back to the world when there is nothing to frame', () => {
     expect(fitPoints([], 2)).toEqual(worldView(2))
+  })
+})
+
+describe('closeView', () => {
+  it('centers a street-level box on the point', () => {
+    const point = { lat: 48.8566, lng: 2.3522 }
+    const view = closeView(point, 1.5)
+    const center = project(point.lat, point.lng)
+
+    expect(view.w).toBeCloseTo(CLOSE_VIEW_WIDTH, 8)
+    expect(view.h).toBeCloseTo(CLOSE_VIEW_WIDTH / 1.5, 8)
+    expect(view.x + view.w / 2).toBeCloseTo(center.x, 8)
+    expect(view.y + view.h / 2).toBeCloseTo(center.y, 8)
+  })
+
+  it('stays inside the world at the edges of the map', () => {
+    for (const point of [
+      { lat: 84, lng: -180 },
+      { lat: -84, lng: 180 },
+    ]) {
+      const view = closeView(point, 1.5)
+      expect(view.x).toBeGreaterThanOrEqual(0)
+      expect(view.y).toBeGreaterThanOrEqual(0)
+      expect(view.x + view.w).toBeLessThanOrEqual(WORLD_SIZE)
+      expect(view.y + view.h).toBeLessThanOrEqual(WORLD_SIZE)
+    }
+  })
+})
+
+describe('revealTour', () => {
+  const target = { lat: 48.85, lng: 2.35 } // Paris
+  const far = { lat: -33.86, lng: 151.21 } // Sydney
+  const near = { lat: 48.87, lng: 2.4 } // a few km across Paris
+
+  function contains(view: ViewBox, point: { lat: number; lng: number }): boolean {
+    const { x, y } = project(point.lat, point.lng)
+    return x >= view.x && x <= view.x + view.w && y >= view.y && y <= view.y + view.h
+  }
+
+  it('opens tight on the guess, ends framing both pins', () => {
+    const steps = revealTour(target, far, [], 1.5)
+
+    expect(steps[0].travelMs).toBe(0)
+    expect(steps[0].holdMs).toBe(GUESS_HOLD_MS)
+    expect(contains(steps[0].view, far)).toBe(true)
+    expect(steps[0].view.w).toBeCloseTo(CLOSE_VIEW_WIDTH, 6)
+
+    const last = steps[steps.length - 1]
+    expect(last.travelMs).toBe(ZOOM_OUT_MS)
+    expect(contains(last.view, far)).toBe(true)
+    expect(contains(last.view, target)).toBe(true)
+  })
+
+  it('holds close on the answer before pulling back', () => {
+    const steps = revealTour(target, far, [], 1.5)
+    const answer = steps[steps.length - 2]
+
+    expect(answer.holdMs).toBe(ANSWER_HOLD_MS)
+    expect(answer.view.w).toBeCloseTo(CLOSE_VIEW_WIDTH, 6)
+    expect(contains(answer.view, target)).toBe(true)
+  })
+
+  it('arcs out over a long distance and pans directly over a short one', () => {
+    const long = revealTour(target, far, [], 1.5)
+    const short = revealTour(target, near, [], 1.5)
+
+    // The long trip gets an extra keyframe framing both ends of the journey.
+    expect(long).toHaveLength(4)
+    expect(long[1].view.w).toBeGreaterThan(long[0].view.w)
+    expect(short).toHaveLength(3)
+    expect(short[1].travelMs).toBe(TRAVEL_MS)
+  })
+
+  it('frames every other player in the final pull-back', () => {
+    const others = [
+      { lat: 64.14, lng: -21.94 },
+      { lat: 1.35, lng: 103.82 },
+    ]
+    const last = revealTour(target, near, others, 1.5).slice(-1)[0]
+    for (const point of [target, near, ...others]) {
+      expect(contains(last.view, point)).toBe(true)
+    }
+  })
+
+  it('opens on the answer when the player never guessed', () => {
+    const steps = revealTour(target, null, [], 1.5)
+    expect(steps).toHaveLength(2)
+    expect(steps[0].travelMs).toBe(0)
+    expect(steps[0].holdMs).toBe(ANSWER_HOLD_MS)
+    expect(contains(steps[0].view, target)).toBe(true)
+  })
+
+  it('keeps every keyframe a legal view', () => {
+    for (const steps of [
+      revealTour(target, far, [], 1.5),
+      revealTour({ lat: 84, lng: 179 }, { lat: -84, lng: -179 }, [], 0.6),
+    ]) {
+      for (const step of steps) {
+        expect(step.view).toEqual(clampView(step.view, step.view.w / step.view.h))
+        expect(step.view.w).toBeGreaterThan(0)
+      }
+    }
   })
 })
 
