@@ -21,6 +21,7 @@
     "e2e:ui": "playwright test --ui",
     "e2e:debug": "playwright test --debug",
     "e2e:ci": "playwright test --reporter=github,line",
+    "test:all": "pnpm lint && pnpm typecheck && pnpm check:schema && pnpm test:coverage && pnpm e2e:ci",
     "test:supabase": "playwright test --config=playwright.integration.config.ts",
     "prepare": "husky"
   },
@@ -33,9 +34,10 @@
   },
   "pnpm": {
     "overrides": {
-      "postcss": ">=8.5.15",
+      "postcss": ">=8.5.18",
       "@babel/core": ">=7.29.6",
-      "ws": ">=8.21.0"
+      "ws": ">=8.21.0",
+      "sharp": ">=0.35.0"
     }
   },
   "dependencies": {

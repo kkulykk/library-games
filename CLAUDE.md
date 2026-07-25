@@ -91,17 +91,43 @@ Online games use Supabase as a real-time state bus — no custom WebSocket serve
 
 ## CI/CD
 
-Two workflows, each with a single responsibility:
+Two workflows, each with a single responsibility and a single trigger:
 
-- **`test.yml`** — the CI gate. Runs on every PR and push:
-  1. **lint-and-test** — ESLint + Prettier + `typecheck` + `check:schema` +
-     `pnpm audit --prod` + `pnpm test:coverage`
-  2. **e2e** — Playwright (`pnpm e2e:ci`) against the fake Supabase server;
-     `needs: lint-and-test`
-- **`deploy.yml`** — builds the static export and publishes to GitHub Pages.
-  Runs **only** on push/merge to `main` (or manual dispatch). It does not run the
-  test suite; gate deploys by requiring the **Test** workflow as a branch-
-  protection check on `main` so only tested code reaches `deploy`.
+- **`test.yml`** (_Test_) — the CI gate. Runs on **every branch push except
+  `main`** (`branches-ignore: [main]`). A single `test` job runs
+  `pnpm test:all`, which chains `lint` (ESLint + Prettier), `typecheck`,
+  `check:schema`, `test:coverage`, and Playwright (`e2e:ci`) against the fake
+  Supabase server. Keep the whole gate in `test:all` so it stays one command
+  locally and in CI.
+- **`deploy.yml`** (_Deploy_) — builds the static export and
+  publishes it. Runs **only** on push/merge to `main`. It does not run the test
+  suite; gate deploys by requiring **Test** as a branch-protection check on
+  `main` so only tested code reaches `deploy`. The Pages artifact is `out/` —
+  Next's static export dir, set by `output: 'export'`.
+
+So: a branch push runs tests, a merge to `main` runs the deploy. Neither runs
+both. Do not let `test.yml` trigger on `main` — a branch is already green before
+it merges, so re-running the suite on the merge commit only creates a way for
+`main` to go red after the fact.
+
+Both workflows use **pnpm**, not npm. There is no `package-lock.json`, so
+`npm ci` fails outright; `playwright.config.ts` also shells out to `pnpm dev` for
+its web server.
+
+**Keep CI deterministic.** A check belongs in the pipeline only if its verdict
+depends solely on the commit. `pnpm audit` is the counter-example and is
+deliberately not wired into any workflow: it resolves the lockfile against a live
+advisory database, so it fails commits that have not changed whenever a new
+advisory lands on a transitive dependency. Do not add it back. Apply the same
+rule to anything else whose result depends on the outside world at the moment it
+runs.
+
+Dependency vulnerabilities are handled out of band instead — Dependabot PRs, or
+manually running `pnpm audit --prod` when you want to look. Fix findings by
+bumping the dependency, or — when it is a transitive dependency you do not depend
+on directly — by adding or raising an entry in `pnpm.overrides` in `package.json`
+(that block already pins `postcss`, `@babel/core`, `ws`, and `sharp` past known
+advisories).
 
 Never skip the lint, test, or e2e step. Do not force-push to `main`.
 
