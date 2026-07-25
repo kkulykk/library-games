@@ -328,6 +328,36 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     await expect(solo.soloButton).toBeVisible()
   })
 
+  test('fits the whole board on a phone screen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 664 })
+    await mockCommons(page)
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+    await expect(solo.pano).toBeVisible()
+
+    const layout = await page.evaluate(() => {
+      const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect()
+      return {
+        innerHeight: window.innerHeight,
+        scrollHeight: document.documentElement.scrollHeight,
+        viewportHeight: rect('.gt-viewport').height,
+        panoHeight: rect('.gt-pano').height,
+        mapDockBottom: rect('.gt-mapdock').bottom,
+      }
+    })
+
+    // The photo fills the slot reserved for it. It used to collapse to the
+    // canvas' intrinsic size, leaving a band of dead space underneath.
+    expect(layout.panoHeight).toBeCloseTo(layout.viewportHeight, 0)
+    expect(layout.panoHeight).toBeGreaterThan(200)
+    // Everything — photo, minimap, field notes — sits inside one screenful.
+    expect(layout.scrollHeight).toBeLessThanOrEqual(layout.innerHeight + 1)
+    expect(layout.mapDockBottom).toBeLessThanOrEqual(layout.innerHeight)
+  })
+
   test('shows scouting progress while the deck is assembled', async ({ page }) => {
     await mockCommons(page)
     let release: () => void = () => {}
