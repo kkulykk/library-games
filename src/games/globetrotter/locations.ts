@@ -15,6 +15,12 @@ export interface GeoPano {
   license: string
 }
 
+/** Reverse-geocoded settlement, filled in for Random World rounds. */
+export interface GeoPlace {
+  name: string
+  country: string | null
+}
+
 export interface GeoLocation {
   name: string
   country: string
@@ -23,6 +29,7 @@ export interface GeoLocation {
   emoji: string
   clues: string[]
   pano?: GeoPano
+  place?: GeoPlace
 }
 
 export const LOCATIONS: GeoLocation[] = [

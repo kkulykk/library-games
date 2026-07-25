@@ -20,6 +20,10 @@ pnpm e2e:debug        # playwright test --debug
 
 # Run a single test file:
 pnpm test -- src/games/wordle/logic.test.ts
+
+# Occasional, network-dependent data jobs (never wired into CI):
+pnpm generate:worldmap   # rebuild Globetrotter land/country polygons
+pnpm generate:reserve    # widen Globetrotter's offline Random World deck
 ```
 
 ## Architecture

@@ -10,16 +10,32 @@ export class GlobetrotterPage extends RoomLobbyPage {
     return this.page.getByTestId('globetrotter-solo-button')
   }
 
-  get soloRandomButton(): Locator {
-    return this.page.getByTestId('globetrotter-solo-random-button')
-  }
-
-  get randomDropCard(): Locator {
-    return this.page.getByTestId('globetrotter-random-drop')
+  get scouting(): Locator {
+    return this.page.getByTestId('globetrotter-scouting')
   }
 
   get pano(): Locator {
     return this.page.getByTestId('globetrotter-pano')
+  }
+
+  get panoLoading(): Locator {
+    return this.page.getByTestId('globetrotter-pano-loading')
+  }
+
+  get mapExpandButton(): Locator {
+    return this.page.getByTestId('globetrotter-map-expand')
+  }
+
+  get mapDock(): Locator {
+    return this.page.getByTestId('globetrotter-mapdock')
+  }
+
+  get revealDistance(): Locator {
+    return this.page.getByTestId('globetrotter-reveal-distance')
+  }
+
+  get revealPlace(): Locator {
+    return this.page.getByTestId('globetrotter-reveal-place')
   }
 
   get status(): Locator {
@@ -84,8 +100,17 @@ export class GlobetrotterPage extends RoomLobbyPage {
     await expect(this.map).toBeVisible()
   }
 
+  /** The map docks as a minimap; pins can only be dropped once it is popped out. */
+  async expandMap(): Promise<void> {
+    if (await this.mapExpandButton.isVisible()) {
+      await this.mapExpandButton.click()
+      await expect(this.mapExpandButton).toBeHidden()
+    }
+  }
+
   /** Click the map at a fractional position (0..1 of the rendered width/height). */
   async clickMap(xFraction = 0.5, yFraction = 0.5): Promise<void> {
+    await this.expandMap()
     const box = await this.map.boundingBox()
     if (!box) throw new Error('Globetrotter map is not visible')
     await this.map.click({

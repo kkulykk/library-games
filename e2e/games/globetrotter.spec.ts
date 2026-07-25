@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import { fakeSupabaseQuery, test, expect } from '../helpers/fakeSupabase'
 import { closePlayers, createPlayer } from '../helpers/players'
 import { GlobetrotterPage } from '../pages'
@@ -16,6 +17,7 @@ type GlobetrotterLocation = {
   lng: number
   emoji: string
   clues: string[]
+  place?: { name: string; country: string | null }
 }
 
 type GlobetrotterRound = {
@@ -137,6 +139,49 @@ function seededGuessingState(players: GlobetrotterPlayer[]): GlobetrotterState {
   }
 }
 
+/** A Random World round: no field notes, so the reveal needs a geocoder. */
+function seededRandomWorldState(players: GlobetrotterPlayer[]): GlobetrotterState {
+  const drop: GlobetrotterLocation = {
+    name: 'Austria',
+    country: '47.92°N, 14.34°E',
+    lat: 47.921,
+    lng: 14.341,
+    emoji: '\u{1F310}',
+    clues: [],
+  }
+  return {
+    phase: 'playing',
+    players: players.map((player) => ({ ...player, score: 0 })),
+    totalRounds: 5,
+    roundNumber: 1,
+    deck: [drop],
+    currentRound: {
+      number: 1,
+      location: drop,
+      guesses: {},
+      distances: {},
+      roundScores: {},
+      phase: 'guessing',
+    },
+    log: ['Expedition started — pin your first guess on the map.'],
+  }
+}
+
+/** Counts reverse-geocode calls made by one player's browser. */
+async function countGeocodes(page: Page): Promise<() => number> {
+  let calls = 0
+  await page.route('https://nominatim.openstreetmap.org/**', (route) => {
+    calls += 1
+    return route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify({ address: { village: 'Ternberg', country: 'Austria' } }),
+    })
+  })
+  return () => calls
+}
+
 function seededFinalRevealState(players: GlobetrotterPlayer[]): GlobetrotterState {
   const [host, guest] = players.map((player) => ({ ...player, score: 12000 }))
 
@@ -161,74 +206,62 @@ function seededFinalRevealState(players: GlobetrotterPlayer[]): GlobetrotterStat
   }
 }
 
-test.describe('Globetrotter solo mode', () => {
-  test('plays a solo round: pin, lock, reveal, advance, quit', async ({ page }) => {
-    const solo = new GlobetrotterPage(page)
-    await solo.goto()
-    await solo.startSolo()
-
-    await expect(solo.clues).toBeVisible()
-    await solo.expectStatus('Round 1 of 5')
-    await expect(solo.lockGuessButton).toBeDisabled()
-
-    await solo.clickMap(0.5, 0.5)
-    await expect(solo.lockGuessButton).toBeEnabled()
-    await solo.lockGuessButton.click()
-
-    await expect(solo.reveal).toBeVisible()
-    await expect(solo.roundScore).toContainText('+')
-    await expect(solo.mapTarget).toBeVisible()
-
-    await solo.advanceRound()
-    await solo.expectStatus('Round 2 of 5')
-
-    await solo.exitSoloButton.click()
-    await expect(solo.soloButton).toBeVisible()
-  })
-})
-
 // 1×1 white JPEG — enough for the WebGL pano texture in tests.
 const TINY_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
   'base64'
 )
 
-test.describe('Globetrotter random world (mocked Commons)', () => {
-  test('fetches a random deck, plays a round, reveals the country', async ({ page }) => {
-    let batch = 0
+test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
+  /**
+   * Commons double for the two-request pipeline: one `generator=categorymembers`
+   * sweep listing geotagged photospheres, then one `titles=…&iiurlwidth=…`
+   * request rendering their thumbnails.
+   */
+  async function mockCommons(page: Page): Promise<void> {
     await page.route('https://commons.wikimedia.org/**', async (route) => {
       const url = new URL(route.request().url())
       let body: unknown
-      if (url.searchParams.get('list') === 'categorymembers') {
-        batch++
-        body = { query: { categorymembers: [{ title: `File:Mock pano ${batch}.jpg` }] } }
-      } else {
-        // Spread batches ~350 km apart across the US so the min-separation
-        // rule passes and every reveal names the same country.
-        const lat = 39 + batch * 2
-        const lng = -100 + batch * 3
-        body = {
-          query: {
-            pages: {
-              '1': {
-                title: `File:Mock pano ${batch}.jpg`,
-                imageinfo: [
-                  {
-                    width: 4096,
-                    height: 2048,
-                    mime: 'image/jpeg',
-                    thumburl: `https://upload.wikimedia.org/mock-${batch}.jpg`,
-                    extmetadata: {
-                      Artist: { value: 'Mock Mapper' },
-                      LicenseShortName: { value: 'CC BY-SA 4.0' },
-                    },
-                  },
-                ],
-                coordinates: [{ lat, lon: lng }],
+      if (url.searchParams.get('generator') === 'categorymembers') {
+        const pages: Record<string, unknown> = {}
+        for (let i = 0; i < 5; i++) {
+          // Spread across the US so the min-separation rule passes and every
+          // reveal names the same country.
+          pages[String(i)] = {
+            title: `File:Mock pano ${i}.jpg`,
+            imageinfo: [
+              {
+                width: 4096,
+                height: 2048,
+                mime: 'image/jpeg',
+                extmetadata: {
+                  Artist: { value: 'Mock Mapper' },
+                  LicenseShortName: { value: 'CC BY-SA 4.0' },
+                },
               },
-            },
-          },
+            ],
+            coordinates: [{ lat: 39 + i * 2, lon: -100 + i * 3 }],
+          }
         }
+        body = { query: { pages } }
+      } else {
+        const titles = (url.searchParams.get('titles') ?? '').split('|')
+        const pages: Record<string, unknown> = {}
+        titles.forEach((title, index) => {
+          pages[String(index)] = {
+            title,
+            imageinfo: [
+              {
+                thumburl: `https://upload.wikimedia.org/mock-${index}.jpg`,
+                extmetadata: {
+                  Artist: { value: 'Mock Mapper' },
+                  LicenseShortName: { value: 'CC BY-SA 4.0' },
+                },
+              },
+            ],
+          }
+        })
+        body = { query: { pages } }
       }
       await route.fulfill({
         status: 200,
@@ -245,41 +278,96 @@ test.describe('Globetrotter random world (mocked Commons)', () => {
         body: TINY_JPEG,
       })
     )
+    await page.route('https://nominatim.openstreetmap.org/**', (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({
+          address: { town: 'Dodge City', county: 'Ford County', country: 'United States' },
+        }),
+      })
+    )
+  }
+
+  test('scouts a deck, plays a round, reveals the country', async ({ page }) => {
+    await mockCommons(page)
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()
     await solo.dismissPlayGate()
-    await solo.soloRandomButton.click()
+    await solo.soloButton.click()
 
-    await expect(solo.map).toBeVisible()
-    await expect(solo.randomDropCard).toBeVisible()
     await expect(solo.pano).toBeVisible()
+    await expect(solo.clues).toBeHidden()
     await solo.expectStatus('Round 1 of 5')
+
+    // The map docks small until it is popped open to guess.
+    await expect(solo.mapExpandButton).toBeVisible()
+    await expect(solo.lockGuessButton).toBeHidden()
+    await solo.expandMap()
+    await expect(solo.lockGuessButton).toBeDisabled()
 
     await solo.clickMap(0.5, 0.5)
     await expect(solo.lockGuessButton).toBeEnabled()
     await solo.lockGuessButton.click()
 
-    await expect(solo.reveal).toContainText('United States of America')
+    // The reveal upgrades the polygon-level country to the town the drop
+    // actually landed in, keeping the country and coordinates underneath.
+    await expect(solo.revealPlace).toContainText('Dodge City')
+    await expect(solo.reveal).toContainText('United States')
     await expect(solo.reveal).toContainText('°N')
     await expect(solo.roundScore).toContainText('+')
+    await expect(solo.revealDistance).toBeVisible()
+    await expect(solo.mapTarget).toBeVisible()
 
     await solo.advanceRound()
     await solo.expectStatus('Round 2 of 5')
+
+    await solo.exitSoloButton.click()
+    await expect(solo.soloButton).toBeVisible()
   })
 
-  test('shows a friendly error when Commons is unreachable', async ({ page }) => {
-    await page.route('https://commons.wikimedia.org/**', (route) => route.abort())
+  test('shows scouting progress while the deck is assembled', async ({ page }) => {
+    await mockCommons(page)
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    // Hold the first sweep open so the scouting screen is observable.
+    await page.route('https://commons.wikimedia.org/**', async (route) => {
+      await held
+      await route.fallback()
+    })
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()
     await solo.dismissPlayGate()
-    await solo.soloRandomButton.click()
+    await solo.soloButton.click()
 
-    await expect(page.getByTestId('globetrotter-solo-error')).toContainText(
-      'Could not reach the panorama archive'
-    )
-    await expect(solo.soloButton).toBeVisible()
+    await expect(solo.scouting).toBeVisible()
+    await expect(solo.scouting).toContainText('0 of 5 locations locked')
+    release()
+    await expect(solo.pano).toBeVisible()
+  })
+
+  test('falls back to the offline reserve when Commons is unreachable', async ({ page }) => {
+    await page.route('https://commons.wikimedia.org/**', (route) => route.abort())
+    await page.route('https://upload.wikimedia.org/**', (route) => route.abort())
+    await page.route('https://nominatim.openstreetmap.org/**', (route) => route.abort())
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+
+    // The reserve deck keeps the round playable even with the archive down.
+    await solo.expectStatus('Round 1 of 5')
+    await expect(page.getByTestId('globetrotter-deck-source')).toContainText('offline reserve')
+    await expect(page.getByTestId('globetrotter-pano-error')).toBeVisible()
+
+    await solo.placeAndLockGuess(0.5, 0.5)
+    await expect(solo.reveal).toBeVisible()
   })
 })
 
@@ -299,6 +387,7 @@ test.describe('Globetrotter gameplay smoke', () => {
 
       await guestPage.goto()
       await guestPage.joinRoom(roomCode, guest.name)
+      await hostPage.page.getByTestId('globetrotter-mode-landmarks').click()
       await hostPage.startGame()
 
       // Seed a deterministic round 1 so assertions do not depend on the shuffle.
@@ -348,6 +437,47 @@ test.describe('Globetrotter gameplay smoke', () => {
 
       const finalRoom = await readGlobetrotterRoom(roomCode)
       expect(finalRoom.state.phase).toBe('finished')
+    } finally {
+      await closePlayers([guest])
+    }
+  })
+})
+
+test.describe('Globetrotter shared place lookup', () => {
+  test('one reverse-geocode per room, not one per player', async ({ page, browser }) => {
+    const hostPage = new GlobetrotterPage(page)
+    const guest = await createPlayer(browser, 'Guest Globe')
+    const guestPage = new GlobetrotterPage(guest.page)
+    const hostCalls = await countGeocodes(page)
+    const guestCalls = await countGeocodes(guest.page)
+
+    try {
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom('Host Globe')
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
+      await hostPage.page.getByTestId('globetrotter-mode-landmarks').click()
+      await hostPage.startGame()
+
+      // Seed a Random World round — the drop is named only by its country.
+      const started = await readGlobetrotterRoom(roomCode)
+      await updateGlobetrotterRoom(roomCode, started, seededRandomWorldState(started.state.players))
+
+      // The host resolves the town during the round and shares it via the room.
+      await expect
+        .poll(async () => (await readGlobetrotterRoom(roomCode)).state.currentRound?.location.place)
+        .toEqual({ name: 'Ternberg', country: 'Austria' })
+
+      await hostPage.placeAndLockGuess(0.5, 0.3)
+      await guestPage.placeAndLockGuess(0.52, 0.32)
+
+      // Both players read the same shared answer.
+      await expect(hostPage.revealPlace).toContainText('Ternberg')
+      await expect(guestPage.revealPlace).toContainText('Ternberg')
+      await expect(hostPage.reveal).toContainText('Austria')
+
+      expect(hostCalls()).toBe(1)
+      expect(guestCalls()).toBe(0)
     } finally {
       await closePlayers([guest])
     }

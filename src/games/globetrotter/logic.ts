@@ -1,8 +1,8 @@
 import { shuffle } from '@/lib/shuffle'
-import { LOCATIONS, type GeoLocation } from './locations'
+import { LOCATIONS, type GeoLocation, type GeoPlace } from './locations'
 import type { GameState } from './schema'
 export type { GameState }
-export type { GeoLocation }
+export type { GeoLocation, GeoPlace }
 export { shuffle }
 
 export interface Player {
@@ -35,6 +35,7 @@ export type GameAction =
   | { type: 'NEXT_ROUND'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
   | { type: 'REMOVE_PLAYER'; playerId: string }
+  | { type: 'SET_PLACE'; playerId: string; roundNumber: number; place: GeoPlace }
 
 export const MIN_PLAYERS = 2
 export const MAX_PLAYERS = 8
@@ -47,33 +48,7 @@ export const SCORE_DECAY_KM = 1500
 const EARTH_RADIUS_KM = 6371
 
 // ─── Geometry ────────────────────────────────────────────────────────────────
-
-export const MAP_WIDTH = 360
-export const MAP_HEIGHT = 180
-
-export function clampLat(lat: number): number {
-  return Math.max(-90, Math.min(90, lat))
-}
-
-export function clampLng(lng: number): number {
-  return Math.max(-180, Math.min(180, lng))
-}
-
-/** Equirectangular projection onto the MAP_WIDTH×MAP_HEIGHT viewBox. */
-export function project(lat: number, lng: number): { x: number; y: number } {
-  return {
-    x: ((clampLng(lng) + 180) / 360) * MAP_WIDTH,
-    y: ((90 - clampLat(lat)) / 180) * MAP_HEIGHT,
-  }
-}
-
-/** Inverse of `project`: viewBox coordinates back to lat/lng (clamped). */
-export function unproject(x: number, y: number): Guess {
-  return {
-    lat: clampLat(90 - (y / MAP_HEIGHT) * 180),
-    lng: clampLng((x / MAP_WIDTH) * 360 - 180),
-  }
-}
+// Screen projection lives in `mercator.ts` — this file only deals in lat/lng.
 
 /** Great-circle distance in kilometers (haversine). */
 export function haversineKm(a: Guess, b: Guess): number {
@@ -115,6 +90,15 @@ export function isPlayableLocation(location: GeoLocation): boolean {
     Array.isArray(location.clues) &&
     location.clues.every((clue) => typeof clue === 'string')
   )
+}
+
+/**
+ * Random World drops carry no field notes, and their `name` is only the
+ * country the coordinate fell in — so the reveal reverse-geocodes them for a
+ * town name, while curated landmarks already name themselves.
+ */
+export function isRandomDrop(location: GeoLocation): boolean {
+  return location.clues.length === 0
 }
 
 export function pickLocations(
@@ -383,6 +367,35 @@ export function removePlayer(state: GameState, playerId: string): GameState {
   return { ...state, players: remaining, currentRound: round, log }
 }
 
+/**
+ * Record the reverse-geocoded name of the current round's location. Only the
+ * host resolves it (one lookup per round for the whole room, instead of one
+ * per player), and it is written once — a late or duplicate answer is ignored.
+ */
+function setPlace(
+  state: GameState,
+  playerId: string,
+  roundNumber: number,
+  place: GeoPlace
+): GameState {
+  if (state.phase !== 'playing' || !state.currentRound) return state
+  if (state.currentRound.number !== roundNumber) return state
+  if (state.currentRound.location.place) return state
+  if (!state.players.find((p) => p.id === playerId)?.isHost) return state
+  if (typeof place.name !== 'string' || place.name.trim().length === 0) return state
+
+  return {
+    ...state,
+    currentRound: {
+      ...state.currentRound,
+      location: {
+        ...state.currentRound.location,
+        place: { name: place.name, country: place.country },
+      },
+    },
+  }
+}
+
 export function applyAction(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'START_GAME':
@@ -395,6 +408,8 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       return playAgain(state, action.playerId)
     case 'REMOVE_PLAYER':
       return removePlayer(state, action.playerId)
+    case 'SET_PLACE':
+      return setPlace(state, action.playerId, action.roundNumber, action.place)
     default:
       return state
   }
@@ -418,17 +433,14 @@ export interface SoloGame {
   totalScore: number
 }
 
-export function createSoloGame(
-  rng: () => number = Math.random,
-  totalRounds: number = TOTAL_ROUNDS,
-  providedDeck?: GeoLocation[]
-): SoloGame {
-  const supplied =
-    providedDeck && providedDeck.length >= totalRounds && providedDeck.every(isPlayableLocation)
-      ? providedDeck.slice(0, totalRounds)
-      : null
+/**
+ * Solo is Random World only: the caller always supplies a freshly scouted deck
+ * (see `buildRandomWorldDeck`), and unusable entries are dropped here rather
+ * than falling back to a curated pool.
+ */
+export function createSoloGame(deck: GeoLocation[], totalRounds: number = TOTAL_ROUNDS): SoloGame {
   return {
-    rounds: supplied ?? pickLocations(totalRounds, rng),
+    rounds: deck.filter(isPlayableLocation).slice(0, totalRounds),
     roundNumber: 1,
     phase: 'guessing',
     results: [],

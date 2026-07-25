@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
@@ -11,7 +11,9 @@ import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { SupabaseSetupNotice } from '@/components/multiplayer/SupabaseSetupNotice'
 import { useGlobetrotterRoom } from './useGlobetrotterRoom'
-import { fetchRandomWorldDeck } from './randomWorld'
+import { buildRandomWorldDeck, type DeckSource } from './randomWorld'
+import { reverseGeocode, type PlaceName } from './placeName'
+import { easeInOut } from './mercator'
 import { PanoViewer } from './PanoViewer'
 import { WorldMap, type MapPin } from './WorldMap'
 import { AvatarSvg } from './avatars'
@@ -20,11 +22,13 @@ import {
   currentSoloLocation,
   formatKm,
   getLeaderboard,
+  isRandomDrop,
   MIN_PLAYERS,
   nextSoloRound,
   redactForPlayer,
   submitSoloGuess,
   TOTAL_ROUNDS,
+  type GameAction,
   type GameState,
   type GeoLocation,
   type Guess,
@@ -32,6 +36,11 @@ import {
 } from './logic'
 
 type ExpeditionMode = 'landmarks' | 'random'
+
+interface ScoutProgress {
+  found: number
+  total: number
+}
 
 // ─── Shared shell (design .sk-topbar) ────────────────────────────────────────
 
@@ -77,6 +86,33 @@ function Stage({ children }: { children: React.ReactNode }) {
   )
 }
 
+/** Animated number — the reveal reads better when the score climbs to its value. */
+function CountUp({
+  value,
+  duration = 1100,
+  format = (n: number) => Math.round(n).toLocaleString('en-US'),
+}: {
+  value: number
+  duration?: number
+  format?: (n: number) => string
+}) {
+  const [shown, setShown] = useState(0)
+
+  useEffect(() => {
+    let frame = 0
+    const start = performance.now()
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / duration)
+      setShown(value * easeInOut(t))
+      if (t < 1) frame = requestAnimationFrame(step)
+    }
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+  }, [value, duration])
+
+  return <>{format(shown)}</>
+}
+
 // ─── How to play (design GlobetrotterHowTo) ──────────────────────────────────
 
 const HOWTO_ICON = {
@@ -104,9 +140,9 @@ function HowToScreen({ onStart }: { onStart: () => void }) {
             <em>Nail it.</em>
           </h1>
           <p className="sk-howto-sub">
-            A 360° drop into a real place — look around for clues, then pin your best guess on the
-            world map. Closer pins score more. Landmark tours add field notes; Random World gives
-            you nothing but your eyes.
+            A 360° drop into a real place, anywhere on Earth — look around for clues, then open the
+            map and pin your best guess. Closer pins score more. No labels, no hints: just your eyes
+            and a world map.
           </p>
           <div className="sk-howto-cta">
             <button className="sk-btn" data-testid="play-game-button" onClick={onStart}>
@@ -126,7 +162,7 @@ function HowToScreen({ onStart }: { onStart: () => void }) {
             </div>
             <div className="sk-step-title">Drag the scene</div>
             <div className="sk-step-desc">
-              Most rounds drop you into a real 360° panorama — no labels. Pan around for clues.
+              Every round drops you into a real 360° panorama — no labels. Pan around for clues.
             </div>
           </div>
           <div className="sk-step">
@@ -137,9 +173,9 @@ function HowToScreen({ onStart }: { onStart: () => void }) {
                 <circle cx="16" cy="13" r="3" fill="currentColor" stroke="none" />
               </svg>
             </div>
-            <div className="sk-step-title">Drop your guess</div>
+            <div className="sk-step-title">Open the map</div>
             <div className="sk-step-desc">
-              Click anywhere on the world map to place a pin, then lock it in.
+              Pop the corner map out to full size, zoom into the streets, then drop your pin.
             </div>
           </div>
           <div className="sk-step">
@@ -172,12 +208,52 @@ function HowToScreen({ onStart }: { onStart: () => void }) {
   )
 }
 
+// ─── Scouting (deck fetch progress) ──────────────────────────────────────────
+
+function ScoutingScreen({ progress, onCancel }: { progress: ScoutProgress; onCancel: () => void }) {
+  const pct = Math.round((progress.found / Math.max(1, progress.total)) * 100)
+  return (
+    <Stage>
+      <div className="gt-scouting" data-testid="globetrotter-scouting">
+        <div className="gt-scout-globe" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="32" cy="32" r="24" />
+            <path d="M 8 32 L 56 32 M 32 8 Q 46 32 32 56 Q 18 32 32 8" />
+          </svg>
+        </div>
+        <span className="sk-tag mono">Scouting the planet</span>
+        <h2>Dropping you somewhere real</h2>
+        <p className="gt-scout-sub">
+          Pulling {progress.total} random geotagged photospheres out of the Wikimedia Commons
+          archive. Anywhere with a camera counts.
+        </p>
+        <div className="gt-scout-bar" role="progressbar" aria-label="Locations found">
+          <span className="gt-scout-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="gt-scout-dots">
+          {Array.from({ length: progress.total }, (_, index) => (
+            <span
+              key={index}
+              className={cn('gt-scout-dot', index < progress.found && 'is-on')}
+              style={{ animationDelay: `${index * 0.12}s` }}
+            />
+          ))}
+        </div>
+        <span className="mono gt-scout-count" data-testid="globetrotter-scout-count">
+          {progress.found} of {progress.total} locations locked
+        </span>
+        <button className="sk-btn sk-btn-ghost sk-btn-sm" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </Stage>
+  )
+}
+
 // ─── Entry (design GlobetrotterEntry: solo / create / join) ──────────────────
 
 interface EntryScreenProps {
   onSolo: () => void
-  onSoloRandom: () => void
-  soloLoading: boolean
   soloError: string | null
   onCreate: (name: string) => void
   onJoin: (code: string, name: string) => void
@@ -190,8 +266,6 @@ interface EntryScreenProps {
 
 function EntryScreen({
   onSolo,
-  onSoloRandom,
-  soloLoading,
   soloError,
   onCreate,
   onJoin,
@@ -240,29 +314,14 @@ function EntryScreen({
               className="sk-entry-card alt"
               data-testid="globetrotter-solo-button"
               onClick={onSolo}
-              disabled={soloLoading}
-            >
-              <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M 6 10 L 15 6 L 25 10 L 34 6 L 34 30 L 25 34 L 15 30 L 6 34 Z M 15 6 L 15 30 M 25 10 L 25 34" />
-              </svg>
-              <div>
-                <div className="big">Solo · Landmarks</div>
-                <div className="small">Five famous spots · clues + 360° views</div>
-              </div>
-            </button>
-            <button
-              className="sk-entry-card"
-              data-testid="globetrotter-solo-random-button"
-              onClick={onSoloRandom}
-              disabled={soloLoading}
             >
               <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <circle cx="20" cy="20" r="14" />
                 <path d="M 6 20 L 34 20 M 20 6 Q 28 20 20 34 Q 12 20 20 6" />
               </svg>
               <div>
-                <div className="big">{soloLoading ? 'Scouting…' : 'Solo · Random World'}</div>
-                <div className="small">Anywhere on Earth · no clues, just eyes</div>
+                <div className="big">Solo · Random World</div>
+                <div className="small">Five random drops · no clues, just your eyes</div>
               </div>
             </button>
             <button
@@ -374,9 +433,8 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const ready = gameState.players.length >= MIN_PLAYERS
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
-  const [mode, setMode] = useState<ExpeditionMode>('landmarks')
-  const [starting, setStarting] = useState(false)
-  const [startError, setStartError] = useState<string | null>(null)
+  const [mode, setMode] = useState<ExpeditionMode>('random')
+  const [scouting, setScouting] = useState<ScoutProgress | null>(null)
 
   function copy(text: string, key: 'code' | 'link') {
     copyText(text).then(() => {
@@ -390,15 +448,12 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
       onStart()
       return
     }
-    setStarting(true)
-    setStartError(null)
-    try {
-      onStart(await fetchRandomWorldDeck(TOTAL_ROUNDS))
-    } catch {
-      setStartError('Could not fetch random panoramas — check your connection or pick Landmarks.')
-    } finally {
-      setStarting(false)
-    }
+    setScouting({ found: 0, total: TOTAL_ROUNDS })
+    const { deck } = await buildRandomWorldDeck(TOTAL_ROUNDS, {
+      onProgress: (found, total) => setScouting({ found, total }),
+    })
+    setScouting(null)
+    onStart(deck)
   }
 
   return (
@@ -460,20 +515,20 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
               <label>Expedition</label>
               <div className="sk-pill-group">
                 <button
-                  className={cn('sk-pill', mode === 'landmarks' && 'is-on')}
-                  data-testid="globetrotter-mode-landmarks"
-                  onClick={() => setMode('landmarks')}
-                  disabled={!isHost}
-                >
-                  Landmarks
-                </button>
-                <button
                   className={cn('sk-pill', mode === 'random' && 'is-on')}
                   data-testid="globetrotter-mode-random"
                   onClick={() => setMode('random')}
                   disabled={!isHost}
                 >
                   Random world
+                </button>
+                <button
+                  className={cn('sk-pill', mode === 'landmarks' && 'is-on')}
+                  data-testid="globetrotter-mode-landmarks"
+                  onClick={() => setMode('landmarks')}
+                  disabled={!isHost}
+                >
+                  Landmarks
                 </button>
               </div>
             </div>
@@ -483,9 +538,12 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
                 {TOTAL_ROUNDS} · distance scored
               </span>
             </div>
-            {startError && (
-              <div data-testid="globetrotter-start-error" className="gt-form-error">
-                {startError}
+            {scouting && (
+              <div className="sk-settings-row">
+                <label>Scouting</label>
+                <span className="mono" style={{ color: 'var(--ink-dim)' }}>
+                  {scouting.found} of {scouting.total} found
+                </span>
               </div>
             )}
           </div>
@@ -511,10 +569,10 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
               <button
                 className="sk-btn"
                 data-testid="start-game-button"
-                disabled={!ready || starting}
+                disabled={!ready || scouting !== null}
                 onClick={() => void handleStart()}
               >
-                {starting ? 'Scouting the planet…' : 'Start trip →'}
+                {scouting ? 'Scouting the planet…' : 'Start trip →'}
               </button>
             )}
           </div>
@@ -524,11 +582,11 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
   )
 }
 
-// ─── Field notes / random drop panels ────────────────────────────────────────
+// ─── Field notes (landmark rooms only) ───────────────────────────────────────
 
-function FieldNotes({ clues, hero }: { clues: string[]; hero: boolean }) {
+function FieldNotes({ clues }: { clues: string[] }) {
   return (
-    <div data-testid="globetrotter-clues" className={cn('gt-briefing', hero ? 'hero' : 'aside')}>
+    <div data-testid="globetrotter-clues" className="gt-briefing aside">
       <span className="tx-panel-label">Field notes</span>
       <ol>
         {clues.map((clue, index) => (
@@ -537,23 +595,6 @@ function FieldNotes({ clues, hero }: { clues: string[]; hero: boolean }) {
             <span>{clue}</span>
           </li>
         ))}
-      </ol>
-    </div>
-  )
-}
-
-function RandomDropNote() {
-  return (
-    <div data-testid="globetrotter-random-drop" className="gt-briefing aside">
-      <span className="tx-panel-label">Random world drop</span>
-      <ol>
-        <li>
-          <span className="n">--</span>
-          <span>
-            No field notes out here — you could be anywhere on Earth. Scan for road signs, language,
-            driving side, vegetation and architecture, then trust your gut.
-          </span>
-        </li>
       </ol>
     </div>
   )
@@ -578,6 +619,7 @@ interface GameBoardProps {
   youLocked: boolean
   lockedGhosts: Guess[]
   crumbScore: number
+  deckNote?: string | null
   onLockGuess: (guess: Guess) => void
   onLeave: () => void
   leaveTestId: string
@@ -592,20 +634,28 @@ function GameBoard({
   youLocked,
   lockedGhosts,
   crumbScore,
+  deckNote = null,
   onLockGuess,
   onLeave,
   leaveTestId,
 }: GameBoardProps) {
   const [pending, setPending] = useState<Guess | null>(null)
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     setPending(null)
+    setExpanded(false)
   }, [roundNumber])
 
   const lockedCount = players.filter((p) => p.locked).length
   const waitingFor = players.length - lockedCount
-  const hasPano = Boolean(location.pano)
   const hasClues = location.clues.length > 0
+
+  function lockIn() {
+    if (!pending) return
+    setExpanded(false)
+    onLockGuess(pending)
+  }
 
   return (
     <div className="gt-board">
@@ -636,52 +686,17 @@ function GameBoard({
       </div>
 
       <div className="gt-board-main">
-        <div className="gt-panorama-col">
-          {hasPano && location.pano ? (
+        <div className="gt-viewport">
+          {location.pano ? (
             <PanoViewer pano={location.pano} />
           ) : (
-            hasClues && <FieldNotes clues={location.clues} hero />
-          )}
-          {hasPano && hasClues && <FieldNotes clues={location.clues} hero={false} />}
-          {hasPano && !hasClues && <RandomDropNote />}
-        </div>
-
-        <div className="gt-sidebar">
-          <div className="gt-mappanel">
-            <span className="tx-panel-label" style={{ padding: '10px 12px 0' }}>
-              Where in the world?
-            </span>
-            <WorldMap
-              interactive={!youLocked}
-              pins={pending && !youLocked ? [{ ...pending, isYou: true, pending: true }] : []}
-              ghosts={lockedGhosts}
-              onSelect={(guess) => setPending(guess)}
-            />
-            <div className="gt-guess-actions">
-              {youLocked ? (
-                <span className="mono gt-locked-msg" data-testid="globetrotter-waiting">
-                  ✓ Locked — Waiting for {waitingFor} more…
-                </span>
-              ) : (
-                <>
-                  <span className="mono gt-guess-hint">
-                    {pending ? 'Pin placed — lock it in' : 'Click the map to drop a pin'}
-                  </span>
-                  <button
-                    className="sk-btn sk-btn-sm"
-                    data-testid="globetrotter-lock-guess"
-                    disabled={!pending}
-                    onClick={() => pending && onLockGuess(pending)}
-                  >
-                    Lock in guess →
-                  </button>
-                </>
-              )}
+            <div className="gt-pano gt-pano-empty">
+              <span className="mono">No panorama for this round — go by the field notes.</span>
             </div>
-          </div>
+          )}
 
           {!isSolo && (
-            <div className="sk-players-panel gt-players-mini">
+            <div className="sk-players-panel gt-players-float" data-testid="globetrotter-roster">
               <div className="sk-panel-head">
                 <span>Explorers</span>
                 <span>
@@ -690,13 +705,13 @@ function GameBoard({
               </div>
               {players.map((player, index) => (
                 <div key={player.id} className={cn('sk-player-row', player.isYou && 'is-you')}>
-                  <div className="sk-player-avatar" style={{ width: 30, height: 30 }}>
-                    <AvatarSvg idx={index} size={24} />
+                  <div className="sk-player-avatar" style={{ width: 26, height: 26 }}>
+                    <AvatarSvg idx={index} size={20} />
                   </div>
-                  <span className="sk-player-name" style={{ fontSize: 13 }}>
+                  <span className="sk-player-name" style={{ fontSize: 12 }}>
                     {player.name}
                   </span>
-                  <span className="sk-score-pts" style={{ fontSize: 12 }}>
+                  <span className="sk-score-pts" style={{ fontSize: 11 }}>
                     {player.score.toLocaleString('en-US')}
                   </span>
                   {player.locked && <span className="sk-player-tag locked">✓</span>}
@@ -704,7 +719,78 @@ function GameBoard({
               ))}
             </div>
           )}
+
+          {/* The map starts as a corner minimap so the photo gets the room, and
+              pops out to full size the moment you want to place a pin. */}
+          <div
+            className={cn('gt-mapdock', expanded ? 'is-expanded' : 'is-collapsed')}
+            data-testid="globetrotter-mapdock"
+          >
+            <WorldMap
+              interactive={expanded && !youLocked}
+              pins={pending && !youLocked ? [{ ...pending, isYou: true, pending: true }] : []}
+              ghosts={lockedGhosts}
+              onSelect={(guess) => setPending(guess)}
+            />
+
+            {!expanded && (
+              <button
+                type="button"
+                className="gt-map-open"
+                data-testid="globetrotter-map-expand"
+                onClick={() => setExpanded(true)}
+              >
+                <span className="mono">{youLocked ? 'View map' : '⤢ Open map to guess'}</span>
+              </button>
+            )}
+
+            {expanded && (
+              <div className="gt-guess-actions">
+                {youLocked ? (
+                  <span className="mono gt-locked-msg" data-testid="globetrotter-waiting">
+                    ✓ Locked — Waiting for {waitingFor} more…
+                  </span>
+                ) : (
+                  <>
+                    <span className="mono gt-guess-hint">
+                      {pending ? 'Pin placed — lock it in' : 'Click the map to drop a pin'}
+                    </span>
+                    <button
+                      className="sk-btn sk-btn-sm"
+                      data-testid="globetrotter-lock-guess"
+                      disabled={!pending}
+                      onClick={lockIn}
+                    >
+                      Lock in guess →
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="gt-map-close"
+                  data-testid="globetrotter-map-collapse"
+                  aria-label="Shrink map"
+                  onClick={() => setExpanded(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+
+          {youLocked && !expanded && (
+            <span className="mono gt-locked-badge" data-testid="globetrotter-waiting">
+              ✓ Locked — Waiting for {waitingFor} more…
+            </span>
+          )}
         </div>
+
+        {hasClues && <FieldNotes clues={location.clues} />}
+        {deckNote && (
+          <span className="mono gt-deck-note" data-testid="globetrotter-deck-source">
+            {deckNote}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -732,6 +818,37 @@ interface RevealScreenProps {
   onNext: () => void
 }
 
+/**
+ * Names the town a Random World drop landed in.
+ *
+ * In a room the host resolves it once and shares it through the game state
+ * (`useHostPlaceLookup`), so `location.place` is already there and no lookup
+ * happens here — the geocoder sees one request per round per room, not one per
+ * player. Solo has no room to share through, so it looks the drop up locally,
+ * which is a single user-triggered request per reveal.
+ */
+function usePlaceName(location: GeoLocation, allowLookup: boolean): PlaceName | null {
+  const [place, setPlace] = useState<PlaceName | null>(null)
+  const shared = location.place
+  const wanted = allowLookup && !shared && isRandomDrop(location)
+  const { lat, lng } = location
+
+  useEffect(() => {
+    setPlace(null)
+    if (!wanted) return
+    let cancelled = false
+    void reverseGeocode(lat, lng).then((result) => {
+      if (!cancelled) setPlace(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [wanted, lat, lng])
+
+  if (shared) return { place: shared.name, country: shared.country }
+  return place?.place ? place : null
+}
+
 function RevealScreen({
   roundNumber,
   totalRounds,
@@ -742,6 +859,13 @@ function RevealScreen({
   onNext,
 }: RevealScreenProps) {
   const sorted = [...rows].sort((a, b) => b.points - a.points)
+  const geo = usePlaceName(location, isSolo)
+  // Random World knows only the country from its own polygons; a resolved town
+  // name is more specific, so it takes the headline and the country drops down.
+  const headline = geo?.place ?? location.name
+  const subline = [geo ? (geo.country ?? location.name) : null, location.country]
+    .filter(Boolean)
+    .join(' · ')
   const pins: MapPin[] = sorted
     .filter((row) => row.guess)
     .map((row) => ({
@@ -751,6 +875,9 @@ function RevealScreen({
       hueIndex: rows.findIndex((r) => r.id === row.id),
     }))
 
+  const you = rows.find((row) => row.isYou)
+  const yourDistance = you?.distanceKm ?? null
+
   return (
     <Stage>
       <div className="gt-reveal" data-testid="globetrotter-reveal">
@@ -758,42 +885,65 @@ function RevealScreen({
           <span className="sk-pick-meta">
             Round {roundNumber} of {totalRounds}
           </span>
-          <h2>
-            {location.emoji} {location.name}
+          <h2 key={headline} data-testid="globetrotter-reveal-place">
+            {location.emoji} {headline}
           </h2>
-          <span className="gt-reveal-sub">{location.country}</span>
+          <span className="gt-reveal-sub">{subline}</span>
         </div>
         <div className="gt-reveal-body">
           <div className="gt-reveal-map">
             <WorldMap
               interactive={false}
+              autoFit
               pins={pins}
               target={{ lat: location.lat, lng: location.lng }}
+              distanceLabel={yourDistance !== null ? formatKm(yourDistance) : null}
             />
           </div>
-          <div className="gt-reveal-table">
-            <div className="sk-panel-head">
-              <span>{isSolo ? 'Your guess' : 'Round results'}</span>
-              <span>the gold flag was the spot</span>
-            </div>
-            {sorted.map((row, index) => (
-              <div key={row.id} className={cn('gt-reveal-row', row.isYou && 'you')}>
-                <span className="gt-reveal-rank">{index + 1}</span>
-                <div className="sk-player-avatar" style={{ width: 26, height: 26 }}>
-                  <AvatarSvg idx={row.avatarIdx} size={20} />
-                </div>
-                <span className="gt-reveal-name">{row.name}</span>
-                <span className="gt-reveal-dist mono">
-                  {row.distanceKm !== null ? formatKm(row.distanceKm) : 'no guess'}
-                </span>
-                <span
-                  className="gt-reveal-pts"
-                  data-testid={row.isYou ? 'globetrotter-round-score' : undefined}
-                >
-                  +{row.points.toLocaleString('en-US')}
+          <div className="gt-reveal-side">
+            {yourDistance !== null && (
+              <div className="gt-reveal-verdict" data-testid="globetrotter-reveal-distance">
+                <span className="tx-panel-label">You were off by</span>
+                <strong>
+                  <CountUp
+                    value={yourDistance}
+                    format={(n) => formatKm(Math.max(0, n))}
+                    duration={1200}
+                  />
+                </strong>
+                <span className="gt-reveal-verdict-pts">
+                  +<CountUp value={you?.points ?? 0} /> pts
                 </span>
               </div>
-            ))}
+            )}
+            <div className="gt-reveal-table">
+              <div className="sk-panel-head">
+                <span>{isSolo ? 'Your guess' : 'Round results'}</span>
+                <span>the gold flag was the spot</span>
+              </div>
+              {sorted.map((row, index) => (
+                <div
+                  key={row.id}
+                  className={cn('gt-reveal-row', row.isYou && 'you')}
+                  style={{ animationDelay: `${0.5 + index * 0.09}s` }}
+                >
+                  <span className="gt-reveal-rank">{index + 1}</span>
+                  <div className="sk-player-avatar" style={{ width: 26, height: 26 }}>
+                    <AvatarSvg idx={row.avatarIdx} size={20} />
+                  </div>
+                  <span className="gt-reveal-name">{row.name}</span>
+                  <span className="gt-reveal-dist mono">
+                    {row.distanceKm !== null ? formatKm(row.distanceKm) : 'no guess'}
+                  </span>
+                  <span
+                    className="gt-reveal-pts"
+                    data-testid={row.isYou ? 'globetrotter-round-score' : undefined}
+                  >
+                    +{row.points.toLocaleString('en-US')}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
         <div className="sk-end-cta">
@@ -908,13 +1058,61 @@ function FinishedScreen({
 
 // ─── Root component ──────────────────────────────────────────────────────────
 
+/**
+ * Host-only: resolve the current Random World round's town and write it into
+ * the room, so every player reads one shared answer.
+ *
+ * It runs during the guessing phase rather than at the reveal, which spreads
+ * the lookups across the round instead of firing one the instant every client
+ * flips to the reveal — the room costs the geocoder one request per round.
+ */
+function useHostPlaceLookup(
+  state: GameState | null,
+  playerId: string | null,
+  dispatch: (action: GameAction) => void
+): void {
+  const done = useRef<string | null>(null)
+  const round = state?.phase === 'playing' ? state.currentRound : null
+  const isHost = Boolean(playerId && state?.players.find((p) => p.id === playerId)?.isHost)
+  const needed = Boolean(round && isRandomDrop(round.location) && !round.location.place)
+  const key = round ? `${round.number}:${round.location.lat},${round.location.lng}` : null
+
+  useEffect(() => {
+    if (!needed || !isHost || !key || !round || !playerId) return
+    if (done.current === key) return
+    done.current = key
+    let cancelled = false
+    void reverseGeocode(round.location.lat, round.location.lng).then((result) => {
+      if (cancelled || !result?.place) return
+      dispatch({
+        type: 'SET_PLACE',
+        playerId,
+        roundNumber: round.number,
+        place: { name: result.place, country: result.country },
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+    // `key` identifies the round and its coordinates; the rest is read through it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, needed, isHost, playerId])
+}
+
+const DECK_NOTES: Record<DeckSource, string | null> = {
+  live: null,
+  mixed: 'Commons was stingy — some rounds come from the offline reserve.',
+  reserve: 'Commons was unreachable — playing the offline reserve deck.',
+}
+
 export function GlobetrotterGame() {
   const inviteCode = useInviteCode()
   const [gateDismissed, setGateDismissed] = useState(false)
   const [soloGame, setSoloGame] = useState<SoloGame | null>(null)
-  const [soloMode, setSoloMode] = useState<ExpeditionMode>('landmarks')
-  const [soloLoading, setSoloLoading] = useState(false)
+  const [soloSource, setSoloSource] = useState<DeckSource>('live')
+  const [scouting, setScouting] = useState<ScoutProgress | null>(null)
   const [soloError, setSoloError] = useState<string | null>(null)
+  const scoutRef = useRef<AbortController | null>(null)
 
   const {
     gameState,
@@ -931,32 +1129,55 @@ export function GlobetrotterGame() {
     leaveRoom,
   } = useGlobetrotterRoom()
 
+  // One reverse-geocode per round for the whole room, run by the host.
+  useHostPlaceLookup(gameState, playerId, dispatch)
+
   // An invite link should land the player straight on the join form.
   useEffect(() => {
     if (inviteCode) setGateDismissed(true)
   }, [inviteCode])
 
-  function startLandmarkSolo() {
-    setSoloMode('landmarks')
+  useEffect(() => () => scoutRef.current?.abort(), [])
+
+  async function startSolo() {
+    const controller = new AbortController()
+    scoutRef.current?.abort()
+    scoutRef.current = controller
     setSoloError(null)
-    setSoloGame(createSoloGame())
+    setScouting({ found: 0, total: TOTAL_ROUNDS })
+    const { deck, source } = await buildRandomWorldDeck(TOTAL_ROUNDS, {
+      signal: controller.signal,
+      onProgress: (found, total) => {
+        if (!controller.signal.aborted) setScouting({ found, total })
+      },
+    })
+    if (controller.signal.aborted) return
+    scoutRef.current = null
+    setScouting(null)
+    if (deck.length < TOTAL_ROUNDS) {
+      setSoloError('Could not scout enough panoramas right now — give it another go in a moment.')
+      return
+    }
+    setSoloSource(source)
+    setSoloGame(createSoloGame(deck))
   }
 
-  async function startRandomSolo() {
-    setSoloLoading(true)
-    setSoloError(null)
-    try {
-      const deck = await fetchRandomWorldDeck(TOTAL_ROUNDS)
-      setSoloMode('random')
-      setSoloGame(createSoloGame(Math.random, TOTAL_ROUNDS, deck))
-    } catch {
-      setSoloError('Could not reach the panorama archive — try a Landmarks trip instead.')
-    } finally {
-      setSoloLoading(false)
-    }
+  function cancelScouting() {
+    scoutRef.current?.abort()
+    scoutRef.current = null
+    setScouting(null)
   }
 
   const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
+
+  // ── Scouting a solo deck ───────────────────────────────────────────────────
+  if (scouting && !soloGame) {
+    return (
+      <Shell crumb="Scouting">
+        <ScoutingScreen progress={scouting} onCancel={cancelScouting} />
+      </Shell>
+    )
+  }
 
   // ── Solo flow ──────────────────────────────────────────────────────────────
   if (soloGame) {
@@ -974,12 +1195,8 @@ export function GlobetrotterGame() {
             isSolo
             canRestart
             onPlayAgain={() => {
-              if (soloMode === 'random') {
-                setSoloGame(null)
-                void startRandomSolo()
-              } else {
-                startLandmarkSolo()
-              }
+              setSoloGame(null)
+              void startSolo()
             }}
             onLeave={() => setSoloGame(null)}
             leaveLabel="Back to menu"
@@ -1028,6 +1245,7 @@ export function GlobetrotterGame() {
           youLocked={false}
           lockedGhosts={[]}
           crumbScore={soloGame.totalScore}
+          deckNote={DECK_NOTES[soloSource]}
           onLockGuess={(guess) => setSoloGame(submitSoloGuess(soloGame, guess.lat, guess.lng))}
           onLeave={() => setSoloGame(null)}
           leaveTestId="globetrotter-exit-solo"
@@ -1063,21 +1281,10 @@ export function GlobetrotterGame() {
                 <button
                   className="sk-entry-card alt"
                   data-testid="globetrotter-solo-button"
-                  onClick={startLandmarkSolo}
+                  onClick={() => void startSolo()}
                 >
                   <div>
-                    <div className="big">Solo · Landmarks</div>
-                    <div className="small">Five famous spots</div>
-                  </div>
-                </button>
-                <button
-                  className="sk-entry-card"
-                  data-testid="globetrotter-solo-random-button"
-                  onClick={() => void startRandomSolo()}
-                  disabled={soloLoading}
-                >
-                  <div>
-                    <div className="big">{soloLoading ? 'Scouting…' : 'Solo · Random World'}</div>
+                    <div className="big">Solo · Random World</div>
                     <div className="small">Anywhere on Earth</div>
                   </div>
                 </button>
@@ -1091,9 +1298,7 @@ export function GlobetrotterGame() {
     return (
       <Shell crumb="Choose your trip">
         <EntryScreen
-          onSolo={startLandmarkSolo}
-          onSoloRandom={() => void startRandomSolo()}
-          soloLoading={soloLoading}
+          onSolo={() => void startSolo()}
           soloError={soloError}
           onCreate={createRoom}
           onJoin={joinRoom}
