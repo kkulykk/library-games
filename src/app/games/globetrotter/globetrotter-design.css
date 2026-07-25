@@ -1,0 +1,1344 @@
+/* =========================================================================
+   GLOBETROTTER — Library Games design system port (claude.ai/design project,
+   Globetrotter.html). Tokens + the shared .sk-* shell vocabulary + the .gt-*
+   board styles, everything scoped under .gt-scope so the neo-brutalist skin
+   never leaks into the rest of the site. Light theme + accent hue 130 are
+   baked in (the design's TWEAK_DEFAULTS).
+   ========================================================================= */
+
+.gt-scope {
+  --bg: oklch(0.97 0.005 85);
+  --bg-2: oklch(0.93 0.008 85);
+  --bg-3: oklch(0.88 0.008 85);
+  --ink: oklch(0.15 0.01 85);
+  --ink-dim: oklch(0.38 0.01 85);
+  --ink-mute: oklch(0.55 0.01 85);
+  --line: oklch(0.85 0.01 85);
+  --line-strong: oklch(0.65 0.01 85);
+
+  --acid: oklch(0.88 0.22 96); /* library yellow — matches the site-wide --acid */
+  --acid-ink: oklch(0.2 0.08 96);
+  --acid-deep: oklch(0.5 0.13 85);
+  --magenta: oklch(0.72 0.26 340);
+  --amber: oklch(0.82 0.18 75);
+  --danger: oklch(0.68 0.22 25);
+
+  --font-display: var(--gt-font-display, 'Space Grotesk'), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--gt-font-display, 'Space Grotesk'), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--gt-font-mono, 'JetBrains Mono'), ui-monospace, monospace;
+
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* grain overlay */
+.gt-scope::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
+  opacity: 0.03;
+  mix-blend-mode: multiply;
+}
+
+.gt-scope .mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+/* ─── Shell / top bar ─────────────────────────────────────── */
+.gt-scope.sk-shell,
+.gt-scope .sk-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+.gt-scope .sk-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklch, var(--bg) 92%, transparent);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(12px);
+}
+.gt-scope .sk-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+.gt-scope .sk-back:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.gt-scope .sk-crumb {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.gt-scope .sk-crumb .cur {
+  color: var(--acid-deep);
+}
+.gt-scope .sk-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+.gt-scope .sk-logo-mark {
+  width: 28px;
+  height: 28px;
+  background: var(--ink);
+  color: var(--acid);
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 14px;
+  transform: rotate(-4deg);
+  font-family: var(--font-display);
+}
+
+/* ─── Centered stage ──────────────────────────────────────── */
+.gt-scope .sk-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  position: relative;
+}
+.gt-scope .sk-stage-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.25;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+.gt-scope .sk-stage-inner {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* ─── Buttons ─────────────────────────────────────────────── */
+.gt-scope .sk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 22px;
+  background: var(--acid);
+  color: var(--acid-ink);
+  border: 1px solid var(--ink);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.gt-scope .sk-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.gt-scope .sk-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.gt-scope .sk-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.gt-scope .sk-btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  box-shadow: none;
+}
+.gt-scope .sk-btn-ghost:hover {
+  background: var(--ink);
+  color: var(--bg);
+  transform: none;
+  box-shadow: none;
+}
+.gt-scope .sk-btn-sm {
+  padding: 8px 14px;
+  font-size: 13px;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.gt-scope .sk-btn-sm:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+/* ─── How to play ─────────────────────────────────────────── */
+.gt-scope .sk-howto {
+  width: 100%;
+  max-width: 1040px;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 48px;
+  align-items: center;
+}
+.gt-scope .sk-howto-left {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.gt-scope .sk-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: oklch(0.45 0.12 85);
+  width: fit-content;
+}
+.gt-scope .sk-tag::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: var(--acid);
+  border-radius: 50%;
+}
+.gt-scope .sk-howto h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(44px, 6vw, 84px);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  margin: 0;
+  color: var(--ink);
+}
+.gt-scope .sk-howto h1 em {
+  font-style: normal;
+  background: var(--acid);
+  color: var(--acid-ink);
+  padding: 0 10px;
+  display: inline-block;
+  transform: rotate(-2deg);
+}
+.gt-scope .sk-howto-sub {
+  color: var(--ink-dim);
+  font-size: 17px;
+  line-height: 1.5;
+  max-width: 42ch;
+}
+.gt-scope .sk-howto-cta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.gt-scope .sk-howto-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.gt-scope .sk-steps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.gt-scope .sk-step {
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  min-height: 150px;
+}
+.gt-scope .sk-step-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+  letter-spacing: 0.15em;
+}
+.gt-scope .sk-step-icon {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--ink);
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+}
+.gt-scope .sk-step-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+.gt-scope .sk-step-desc {
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.gt-scope .sk-step:nth-child(2) {
+  background: var(--acid);
+  color: var(--acid-ink);
+  border-color: var(--ink);
+}
+.gt-scope .sk-step:nth-child(2) .sk-step-num {
+  color: var(--acid-ink);
+  opacity: 0.6;
+}
+.gt-scope .sk-step:nth-child(2) .sk-step-icon {
+  background: color-mix(in oklch, var(--acid) 60%, white);
+}
+.gt-scope .sk-step:nth-child(2) .sk-step-desc {
+  color: var(--acid-ink);
+  opacity: 0.8;
+}
+
+/* ─── Entry (choose / create / join) ──────────────────────── */
+.gt-scope .sk-entry {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.gt-scope .sk-entry.wide {
+  max-width: 640px;
+}
+.gt-scope .sk-entry-head {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gt-scope .sk-entry-head h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 40px;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.gt-scope .sk-entry-head p {
+  color: var(--ink-dim);
+  margin: 0;
+}
+.gt-scope .sk-entry-choose {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.gt-scope .sk-entry-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  font-family: var(--font-body);
+  color: var(--ink);
+}
+.gt-scope .sk-entry-card:hover {
+  border-color: var(--ink);
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.gt-scope .sk-entry-card:disabled {
+  opacity: 0.5;
+  cursor: wait;
+  transform: none;
+  box-shadow: none;
+}
+.gt-scope .sk-entry-card.alt {
+  background: var(--acid);
+  color: var(--acid-ink);
+  border-color: var(--ink);
+}
+.gt-scope .sk-entry-card .big {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+.gt-scope .sk-entry-card .small {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.gt-scope .sk-entry-card svg {
+  width: 40px;
+  height: 40px;
+}
+.gt-scope .sk-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 32px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.gt-scope .sk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gt-scope .sk-field label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.gt-scope .sk-input {
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 14px 16px;
+  font-family: var(--font-body);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.gt-scope .sk-input:focus {
+  border-color: var(--acid);
+}
+.gt-scope .sk-input.code {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  letter-spacing: 0.4em;
+  text-align: center;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.gt-scope .gt-form-error {
+  border: 1px solid var(--danger);
+  background: color-mix(in oklch, var(--danger) 10%, transparent);
+  color: var(--danger);
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+/* ─── Lobby ───────────────────────────────────────────────── */
+.gt-scope .sk-lobby {
+  width: 100%;
+  max-width: 960px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 24px;
+}
+.gt-scope .sk-roomcard {
+  background: var(--ink);
+  color: var(--bg);
+  border: 1px solid var(--ink);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+}
+.gt-scope .sk-roomcard::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 1px dashed color-mix(in oklch, var(--bg) 30%, transparent);
+  pointer-events: none;
+}
+.gt-scope .sk-room-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.gt-scope .sk-room-code {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 64px;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  color: var(--acid);
+  text-shadow: 4px 4px 0 color-mix(in oklch, var(--bg) 50%, transparent);
+}
+.gt-scope .sk-room-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.gt-scope .sk-room-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--bg);
+  border: 1px solid color-mix(in oklch, var(--bg) 40%, transparent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: all 0.15s;
+}
+.gt-scope .sk-room-action:hover {
+  background: var(--acid);
+  color: var(--acid-ink);
+  border-color: var(--acid);
+}
+.gt-scope .sk-lobby-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.gt-scope .sk-players-panel {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gt-scope .sk-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.gt-scope .sk-player-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  transition: all 0.15s;
+}
+.gt-scope .sk-player-row.is-you {
+  border-color: var(--acid);
+}
+.gt-scope .sk-player-avatar {
+  width: 36px;
+  height: 36px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.gt-scope .sk-player-avatar svg {
+  width: 28px;
+  height: 28px;
+}
+.gt-scope .sk-player-name {
+  flex: 1;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gt-scope .sk-player-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+}
+.gt-scope .sk-player-tag.host {
+  color: oklch(0.45 0.12 85);
+  border-color: oklch(0.45 0.12 85);
+}
+.gt-scope .sk-player-tag.locked {
+  color: oklch(0.4 0.18 145);
+  border-color: oklch(0.4 0.18 145);
+}
+.gt-scope .sk-score-pts {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.gt-scope .sk-settings {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gt-scope .sk-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.gt-scope .sk-settings-row label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.gt-scope .sk-pill-group {
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--line);
+}
+.gt-scope .sk-pill {
+  padding: 6px 12px;
+  background: #fff;
+  color: var(--ink-dim);
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.1s;
+}
+.gt-scope .sk-pill.is-on {
+  background: var(--ink);
+  color: var(--bg);
+}
+.gt-scope .sk-pill:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.gt-scope .sk-lobby-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 18px 24px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.gt-scope .sk-waiting {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.gt-scope .sk-waiting::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--acid);
+  animation: gt-sk-pulse 1.2s infinite;
+}
+@keyframes gt-sk-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.6);
+  }
+}
+
+/* ─── HUD ─────────────────────────────────────────────────── */
+.gt-scope .sk-hud {
+  display: grid;
+  grid-template-columns: 220px 1fr 280px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+  min-height: 64px;
+}
+.gt-scope .sk-hud-left,
+.gt-scope .sk-hud-center,
+.gt-scope .sk-hud-right {
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.gt-scope .sk-hud-center {
+  justify-content: center;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+.gt-scope .sk-hud-right {
+  justify-content: flex-end;
+}
+.gt-scope .sk-round {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gt-scope .sk-round-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.gt-scope .sk-round-val {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* ─── End / results ───────────────────────────────────────── */
+.gt-scope .sk-end {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  align-items: center;
+}
+.gt-scope .sk-end h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 52px;
+  letter-spacing: -0.03em;
+  margin: 0;
+  text-align: center;
+}
+.gt-scope .sk-end-word {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  text-align: center;
+}
+.gt-scope .sk-end-word strong {
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--acid);
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  background: var(--ink);
+  padding: 2px 10px;
+  margin-left: 8px;
+}
+.gt-scope .sk-end-table {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.gt-scope .sk-end-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.gt-scope .sk-end-row:last-child {
+  border-bottom: 0;
+}
+.gt-scope .sk-end-row.win {
+  background: var(--acid);
+  color: var(--acid-ink);
+}
+.gt-scope .sk-end-rank {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+.gt-scope .sk-end-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.gt-scope .sk-end-delta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+.gt-scope .sk-end-row.win .sk-end-delta {
+  color: var(--acid-ink);
+  opacity: 0.7;
+}
+.gt-scope .sk-end-total {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.gt-scope .sk-end-cta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.gt-scope .sk-end-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.gt-scope .sk-pick-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.gt-scope .tx-panel-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+/* =========================================================================
+   .gt-* — panorama + map board (globetrotter-styles.css)
+   ========================================================================= */
+.gt-scope .gt-board {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.gt-scope .gt-hud {
+  position: relative;
+}
+.gt-scope .gt-hud-mode {
+  color: var(--ink-mute);
+  letter-spacing: 0.14em;
+}
+.gt-scope .gt-board-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+  padding: 20px;
+  min-height: 0;
+  align-items: start;
+}
+
+/* ─── Panorama ─────────────────────────────────────────────── */
+.gt-scope .gt-panorama-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.gt-scope .gt-pano {
+  position: relative;
+  aspect-ratio: 16 / 8;
+  overflow: hidden;
+  background: #111;
+  border: 1px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.gt-scope .gt-pano:active {
+  cursor: grabbing;
+}
+.gt-scope .gt-pano canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.gt-scope .gt-compass {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  pointer-events: none;
+}
+.gt-scope .gt-compass-deg {
+  opacity: 0.6;
+}
+.gt-scope .gt-pano-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  padding: 8px 14px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  pointer-events: none;
+  animation: gt-hint-pulse 1.8s infinite;
+  white-space: nowrap;
+}
+@keyframes gt-hint-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+.gt-scope .gt-pano-watermark {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  z-index: 3;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-decoration: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+a.gt-pano-watermark:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+.gt-scope .gt-pano-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ─── Field notes (clue briefing) ──────────────────────────── */
+.gt-scope .gt-briefing {
+  background: var(--bg-2);
+  border: 1px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.gt-scope .gt-briefing.hero {
+  padding: 40px;
+  gap: 22px;
+}
+.gt-scope .gt-briefing ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.gt-scope .gt-briefing li {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+}
+.gt-scope .gt-briefing.hero li {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+.gt-scope .gt-briefing li .n {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+  flex-shrink: 0;
+}
+.gt-scope .gt-briefing.aside li {
+  font-size: 13px;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+
+/* ─── Sidebar: map + guess actions + player list ───────────── */
+.gt-scope .gt-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.gt-scope .gt-mappanel {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+.gt-scope .gt-mapwrap {
+  position: relative;
+}
+.gt-scope .gt-map-svg {
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  display: block;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.gt-scope .gt-map-svg.is-pickable {
+  cursor: crosshair;
+}
+.gt-scope .gt-map-ocean {
+  fill: oklch(0.88 0.02 230);
+}
+.gt-scope .gt-map-grid-line {
+  stroke: color-mix(in oklch, var(--ink) 8%, transparent);
+}
+.gt-scope .gt-map-land {
+  fill: oklch(0.78 0.05 130);
+  stroke: var(--ink);
+  stroke-linejoin: round;
+}
+.gt-scope .gt-map-line {
+  stroke: color-mix(in oklch, var(--ink) 18%, transparent);
+}
+.gt-scope .gt-map-line-dash {
+  stroke: color-mix(in oklch, var(--ink) 12%, transparent);
+}
+.gt-scope .gt-map-ghostpin {
+  fill: var(--ink-mute);
+  opacity: 0.5;
+}
+.gt-scope .gt-map-pin .gt-pin-dot {
+  fill: oklch(0.7 0.2 var(--pin-hue, 96));
+  stroke: var(--ink);
+}
+.gt-scope .gt-map-pin.is-you .gt-pin-dot {
+  fill: var(--acid);
+}
+.gt-scope .gt-map-pin .gt-pin-ring {
+  fill: none;
+  stroke: var(--ink);
+  opacity: 0.5;
+}
+.gt-scope .gt-map-pin-label {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--bg);
+}
+.gt-scope .gt-map-actual .gt-pin-flag {
+  fill: var(--amber);
+  stroke: var(--ink);
+}
+.gt-scope .gt-map-actual .gt-pin-flag-dot {
+  fill: var(--ink);
+}
+.gt-scope .gt-map-connector {
+  stroke: var(--ink-mute);
+  opacity: 0.7;
+}
+.gt-scope .gt-map-connector.is-you {
+  stroke: oklch(0.6 0.14 85);
+  opacity: 1;
+}
+.gt-scope .gt-zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gt-scope .gt-zoom button {
+  width: 26px;
+  height: 26px;
+  background: var(--bg);
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+}
+.gt-scope .gt-zoom button:hover {
+  background: var(--acid);
+  color: var(--acid-ink);
+}
+.gt-scope .gt-guess-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px;
+}
+.gt-scope .gt-guess-hint {
+  color: var(--ink-mute);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.gt-scope .gt-locked-msg {
+  color: oklch(0.5 0.13 85);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+.gt-scope .gt-players-mini {
+  flex: 0 0 auto;
+}
+
+/* ─── Reveal ───────────────────────────────────────────────── */
+.gt-scope .gt-reveal {
+  width: 100%;
+  max-width: 1040px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+}
+.gt-scope .gt-reveal-head {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gt-scope .gt-reveal-head h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 44px;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.gt-scope .gt-reveal-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.gt-scope .gt-reveal-body {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.gt-scope .gt-reveal-map {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+.gt-scope .gt-reveal-table {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+.gt-scope .gt-reveal-table .sk-panel-head {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.gt-scope .gt-reveal-row {
+  display: grid;
+  grid-template-columns: 22px 30px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.gt-scope .gt-reveal-row:last-child {
+  border-bottom: 0;
+}
+.gt-scope .gt-reveal-row.you {
+  background: color-mix(in oklch, var(--acid) 12%, transparent);
+}
+.gt-scope .gt-reveal-rank {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+  text-align: center;
+}
+.gt-scope .gt-reveal-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gt-scope .gt-reveal-dist {
+  color: var(--ink-mute);
+  font-size: 11px;
+}
+.gt-scope .gt-reveal-pts {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  color: oklch(0.48 0.12 85);
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .gt-scope .sk-howto {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .gt-scope .sk-lobby {
+    grid-template-columns: 1fr;
+  }
+  .gt-scope .sk-hud {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    min-height: 0;
+  }
+  .gt-scope .sk-hud-left,
+  .gt-scope .sk-hud-center,
+  .gt-scope .sk-hud-right {
+    justify-content: center;
+  }
+  .gt-scope .sk-hud-center {
+    border: 0;
+  }
+  .gt-scope .gt-board-main {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px;
+  }
+  .gt-scope .gt-pano {
+    aspect-ratio: 16 / 9;
+  }
+  .gt-scope .gt-reveal-body {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 680px) {
+  .gt-scope .gt-board-main {
+    padding: 10px;
+    gap: 12px;
+  }
+  .gt-scope .gt-pano {
+    aspect-ratio: 4 / 3;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+  .gt-scope .gt-compass {
+    font-size: 10px;
+  }
+  .gt-scope .gt-pano-hint {
+    font-size: 9px;
+    padding: 7px 12px;
+  }
+  .gt-scope .gt-guess-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .gt-scope .gt-guess-hint {
+    text-align: center;
+  }
+  .gt-scope .gt-guess-actions .sk-btn {
+    width: 100%;
+    padding: 14px 18px;
+  }
+  .gt-scope .gt-locked-msg {
+    text-align: center;
+  }
+  .gt-scope .gt-reveal-head h2 {
+    font-size: 30px;
+  }
+  .gt-scope .gt-reveal-row {
+    grid-template-columns: 18px 24px 1fr auto;
+    gap: 6px;
+    padding: 9px 10px;
+    font-size: 12px;
+  }
+  .gt-scope .gt-reveal-dist {
+    display: none;
+  }
+  .gt-scope .sk-end-cta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .gt-scope .sk-end-cta .sk-btn {
+    width: 100%;
+  }
+  .gt-scope .sk-entry-choose {
+    grid-template-columns: 1fr;
+  }
+  .gt-scope .sk-room-code {
+    font-size: 48px;
+  }
+}

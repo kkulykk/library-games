@@ -63,16 +63,16 @@ describe('3-layer agreement', () => {
 // Post-Phase-3 seal: the permissive insert-CHECK policies (which carried the
 // room-code regex as `code ~ '<regex>'`) were dropped; INSERT is now RPC-only.
 // SQL-side room-code validation therefore lives entirely in the SECURITY DEFINER
-// RPC bodies as `p_code !~ '<regex>'` — one per RPC across 6 games × 5 RPC
-// families (create/join/restore/dispatch/get) = 30. This guard keeps those 30
+// RPC bodies as `p_code !~ '<regex>'` — one per RPC across 7 games × 5 RPC
+// families (create/join/restore/dispatch/get) = 35. This guard keeps those 35
 // literals from drifting off ROOM_CODE_REGEX_SQL (CODE-03).
 describe('SQL drift guard', () => {
   const schemaPath = path.resolve(__dirname, '../../supabase/schema.sql')
   const sql = fs.readFileSync(schemaPath, 'utf8')
   const literals = [...sql.matchAll(/p_code !~ '([^']+)'/g)].map((m) => m[1])
 
-  it('finds exactly 30 RPC code-validation regex literals (6 games × 5 RPC families)', () => {
-    expect(literals).toHaveLength(30)
+  it('finds exactly 35 RPC code-validation regex literals (7 games × 5 RPC families)', () => {
+    expect(literals).toHaveLength(35)
   })
 
   it('has no permissive insert-CHECK code literals left after the seal', () => {
@@ -87,8 +87,8 @@ describe('SQL drift guard', () => {
 })
 
 // MIGR-03: the access-control / broadcast DB layer is templated identically
-// across all 6 room tables. Each templated element must appear exactly 6×; a
-// future edit that templates only 5 of 6 (or drops one) trips these guards.
+// across all 7 room tables. Each templated element must appear exactly 7×; a
+// future edit that templates only 6 of 7 (or drops one) trips these guards.
 // ACCESS-04: every SECURITY DEFINER body must pin search_path to '' (lint 0011).
 describe('schema templating drift guard (MIGR-03 / ACCESS-04)', () => {
   const schemaPath = path.resolve(__dirname, '../../supabase/schema.sql')
@@ -96,18 +96,18 @@ describe('schema templating drift guard (MIGR-03 / ACCESS-04)', () => {
 
   const countMatches = (re: RegExp) => [...sql.matchAll(re)].length
 
-  it('declares the room_token column on all 6 tables', () => {
-    expect(countMatches(/room_token uuid not null default gen_random_uuid\(\)/g)).toBe(6)
+  it('declares the room_token column on all 7 tables', () => {
+    expect(countMatches(/room_token uuid not null default gen_random_uuid\(\)/g)).toBe(7)
   })
 
-  it('wires the _broadcast_state after-update trigger on all 6 tables', () => {
-    expect(countMatches(/_broadcast_state after update on public\./g)).toBe(6)
+  it('wires the _broadcast_state after-update trigger on all 7 tables', () => {
+    expect(countMatches(/_broadcast_state after update on public\./g)).toBe(7)
   })
 
   it.each(['create', 'join', 'restore', 'dispatch', 'get'])(
-    'defines the %s_<game> RPC 6×',
+    'defines the %s_<game> RPC 7×',
     (op) => {
-      expect(countMatches(new RegExp(`create or replace function public\\.${op}_`, 'g'))).toBe(6)
+      expect(countMatches(new RegExp(`create or replace function public\\.${op}_`, 'g'))).toBe(7)
     }
   )
 
@@ -121,24 +121,24 @@ describe('schema templating drift guard (MIGR-03 / ACCESS-04)', () => {
     expect(pinned).toBeGreaterThanOrEqual(definer)
   })
 
-  it('validates player names server-side on create + join + dispatch (18× — CR-04/INPUT-01)', () => {
+  it('validates player names server-side on create + join + dispatch (21× — CR-04/INPUT-01)', () => {
     // Each of create/join/dispatch loops over players and calls is_valid_player_name,
-    // templated across all 6 tables → 18 call sites. dispatch (the steady-state write
+    // templated across all 7 tables → 21 call sites. dispatch (the steady-state write
     // path) is a trust boundary and must validate too, not only create/join.
     expect(countMatches(/if not public\.is_valid_player_name\(v_player ->> 'name'\) then/g)).toBe(
-      18
+      21
     )
   })
 
-  it('enforces the lobby + add-one-player join invariant on all 6 tables (CR-02)', () => {
+  it('enforces the lobby + add-one-player join invariant on all 7 tables (CR-02)', () => {
     // join_<game> must read the existing row and reject any write that is not a
     // single-player addition during lobby, so join cannot overwrite live state.
-    expect(countMatches(/join is only valid in lobby/g)).toBe(6)
+    expect(countMatches(/join is only valid in lobby/g)).toBe(7)
     expect(
       countMatches(
         /jsonb_array_length\(p_new_state -> 'players'\) <> jsonb_array_length\(v_row\.state -> 'players'\) \+ 1/g
       )
-    ).toBe(6)
+    ).toBe(7)
   })
 })
 

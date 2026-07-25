@@ -10,6 +10,7 @@ export type MultiplayerSlug =
   | 'agario'
   | 'cards-against-humanity'
   | 'mindmeld'
+  | 'globetrotter'
 
 export class RoomLobbyPage {
   readonly page: Page
