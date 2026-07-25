@@ -9,6 +9,7 @@ const multiplayerGames: MultiplayerSlug[] = [
   'cards-against-humanity',
   'codenames',
   'mindmeld',
+  'globetrotter',
 ]
 
 test.describe.configure({ mode: 'serial' })

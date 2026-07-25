@@ -202,6 +202,32 @@ alter table mindmeld_rooms enable row level security;
 
 -- delete from mindmeld_rooms where updated_at < now() - interval '24 hours';
 
+-- ─── Globetrotter rooms table ─────────────────────────────────────────────────────
+
+create table if not exists globetrotter_rooms (
+  id         uuid        default gen_random_uuid() primary key,
+  code       text        unique not null,
+  state      jsonb       not null,
+  version    integer     not null default 1,
+  updated_at timestamptz default now()
+);
+
+create or replace trigger globetrotter_rooms_updated_at
+  before update on globetrotter_rooms
+  for each row execute function update_updated_at();
+
+create or replace trigger globetrotter_rooms_protect_immutable
+  before update on globetrotter_rooms
+  for each row execute function protect_immutable_columns();
+
+alter publication supabase_realtime add table globetrotter_rooms;
+
+-- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
+-- for anon). Access flows through the SECURITY DEFINER RPCs only.
+alter table globetrotter_rooms enable row level security;
+
+-- delete from globetrotter_rooms where updated_at < now() - interval '24 hours';
+
 -- ─── SEAL: drop any pre-existing permissive policies (Phase 3, ACCESS-01) ─────
 -- On a FRESH project this is a no-op (no policies were ever created). On an
 -- EXISTING project that ran an earlier version of this schema, the old
@@ -218,7 +244,7 @@ declare
   pol record;
 begin
   foreach t in array array[
-    'uno_rooms', 'skribbl_rooms', 'agario_rooms', 'cah_rooms', 'codenames_rooms', 'mindmeld_rooms'
+    'uno_rooms', 'skribbl_rooms', 'agario_rooms', 'cah_rooms', 'codenames_rooms', 'mindmeld_rooms', 'globetrotter_rooms'
   ] loop
     for pol in
       select policyname from pg_policies
@@ -231,7 +257,7 @@ begin
   end loop;
 end $$;
 
--- ─── room_token column (×6) ─────────────────────────────────────────────────
+-- ─── room_token column (×7) ─────────────────────────────────────────────────
 -- The per-room write capability (D-01). UUID v4 = ~122 bits CSPRNG, server-
 -- minted, never in the invite URL. This is a room-scoped write token, NOT
 -- per-player auth (any member shares it; see README trust-boundaries section).
@@ -242,6 +268,7 @@ alter table public.agario_rooms add column if not exists room_token uuid not nul
 alter table public.cah_rooms add column if not exists room_token uuid not null default gen_random_uuid();
 alter table public.codenames_rooms add column if not exists room_token uuid not null default gen_random_uuid();
 alter table public.mindmeld_rooms add column if not exists room_token uuid not null default gen_random_uuid();
+alter table public.globetrotter_rooms add column if not exists room_token uuid not null default gen_random_uuid();
 
 -- ─── Shared broadcast trigger function ───────────────────────────────────────
 -- Emits the full {state, version} on the PUBLIC topic `room:CODE` after every
@@ -268,7 +295,7 @@ begin
 end;
 $$;
 
--- ─── Per-table broadcast triggers (×6) ───────────────────────────────────────
+-- ─── Per-table broadcast triggers (×7) ───────────────────────────────────────
 
 create or replace trigger uno_rooms_broadcast_state after update on public.uno_rooms
   for each row execute function public.broadcast_room_state();
@@ -286,6 +313,9 @@ create or replace trigger codenames_rooms_broadcast_state after update on public
   for each row execute function public.broadcast_room_state();
 
 create or replace trigger mindmeld_rooms_broadcast_state after update on public.mindmeld_rooms
+  for each row execute function public.broadcast_room_state();
+
+create or replace trigger globetrotter_rooms_broadcast_state after update on public.globetrotter_rooms
   for each row execute function public.broadcast_room_state();
 
 -- ─── Server-side player-name validation helper (INPUT-01, D-05) ──────────────
@@ -332,7 +362,7 @@ $$;
 revoke all on function public.is_valid_player_name(text) from public;
 grant execute on function public.is_valid_player_name(text) to anon;
 
--- ─── Member-scoped SECURITY DEFINER RPCs (×6 games) ──────────────────────────
+-- ─── Member-scoped SECURITY DEFINER RPCs (×7 games) ──────────────────────────
 -- Four RPCs per game (create / join / restore / dispatch). Every function:
 --   * security definer + set search_path = '' + fully-qualified public. names
 --     (ACCESS-04, clears Security Advisor lint 0011)
@@ -1524,6 +1554,202 @@ $$;
 revoke all on function public.dispatch_mindmeld(text, uuid, jsonb, integer) from public;
 grant execute on function public.dispatch_mindmeld(text, uuid, jsonb, integer) to anon;
 
+-- ── globetrotter_rooms ──
+
+create or replace function public.create_globetrotter(p_code text, p_state jsonb)
+returns table(state jsonb, version integer, room_token uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_player jsonb;
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  if pg_column_size(p_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
+  if jsonb_typeof(p_state -> 'players') <> 'array' then
+    raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
+  end if;
+  for v_player in select * from jsonb_array_elements(p_state -> 'players') loop
+    if not public.is_valid_player_name(v_player ->> 'name') then
+      raise exception 'invalid name' using errcode = '22023';
+    end if;
+  end loop;
+  -- P2-6: opportunistic, bounded cleanup so orphaned rooms decay even if the
+  -- pg_cron job was never scheduled. Cheap on the create path.
+  delete from public.globetrotter_rooms
+   where ctid in (
+     select ctid from public.globetrotter_rooms
+      where updated_at < now() - interval '24 hours'
+      limit 100
+   );
+  return query
+  insert into public.globetrotter_rooms (code, state, room_token)
+  values (p_code, p_state, gen_random_uuid())
+  returning public.globetrotter_rooms.state, public.globetrotter_rooms.version, public.globetrotter_rooms.room_token;
+end;
+$$;
+
+revoke all on function public.create_globetrotter(text, jsonb) from public;
+grant execute on function public.create_globetrotter(text, jsonb) to anon;
+
+create or replace function public.join_globetrotter(p_code text, p_new_state jsonb, p_expected_version integer)
+returns table(state jsonb, version integer, room_token uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_player jsonb;
+  v_row public.globetrotter_rooms;
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
+  if jsonb_typeof(p_new_state -> 'players') <> 'array' then
+    raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
+  end if;
+  for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
+    if not public.is_valid_player_name(v_player ->> 'name') then
+      raise exception 'invalid name' using errcode = '22023';
+    end if;
+  end loop;
+  select * into v_row from public.globetrotter_rooms where public.globetrotter_rooms.code = p_code;
+  if not found then
+    raise exception 'unauthorized' using errcode = '42501';
+  end if;
+  if v_row.version <> p_expected_version then
+    raise exception 'version conflict' using errcode = '40001';
+  end if;
+  -- CR-02: join is only valid in lobby and must add exactly one player without
+  -- dropping an existing member, so join cannot overwrite live game state.
+  if (v_row.state ->> 'phase') is distinct from 'lobby' then
+    raise exception 'unauthorized' using errcode = '42501';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') <> jsonb_array_length(v_row.state -> 'players') + 1 then
+    raise exception 'unauthorized' using errcode = '42501';
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(v_row.state -> 'players') as old_p
+     where not exists (
+       select 1 from jsonb_array_elements(p_new_state -> 'players') as new_p
+        where new_p ->> 'id' = old_p ->> 'id'
+     )
+  ) then
+    raise exception 'unauthorized' using errcode = '42501';
+  end if;
+  -- CAS: add the joining player by overwriting state at the expected version.
+  return query
+  update public.globetrotter_rooms
+     set state = p_new_state, version = public.globetrotter_rooms.version + 1
+   where public.globetrotter_rooms.code = p_code
+     and public.globetrotter_rooms.version = p_expected_version
+  returning public.globetrotter_rooms.state, public.globetrotter_rooms.version, public.globetrotter_rooms.room_token;
+  if not found then
+    raise exception 'version conflict' using errcode = '40001';
+  end if;
+end;
+$$;
+
+revoke all on function public.join_globetrotter(text, jsonb, integer) from public;
+grant execute on function public.join_globetrotter(text, jsonb, integer) to anon;
+
+create or replace function public.restore_globetrotter(p_code text, p_player_id text)
+returns table(state jsonb, version integer, room_token uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.globetrotter_rooms;
+  v_present boolean;
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  select * into v_row from public.globetrotter_rooms where public.globetrotter_rooms.code = p_code;
+  if not found then
+    raise exception 'unauthorized' using errcode = '42501';
+  end if;
+  -- verify p_player_id ∈ state.players (jsonb membership) (D-04). NOTE: player
+  -- ids are readable via get_globetrotter, so this is not per-player auth — see README.
+  select exists (
+    select 1 from jsonb_array_elements(v_row.state -> 'players') as p
+     where p ->> 'id' = p_player_id
+  ) into v_present;
+  if not v_present then
+    raise exception 'unauthorized' using errcode = '42501';
+  end if;
+  -- re-issue (return) the existing token so token-less sessions survive a reload
+  return query select v_row.state, v_row.version, v_row.room_token;
+end;
+$$;
+
+revoke all on function public.restore_globetrotter(text, text) from public;
+grant execute on function public.restore_globetrotter(text, text) to anon;
+
+create or replace function public.dispatch_globetrotter(p_code text, p_room_token uuid, p_new_state jsonb, p_expected_version integer)
+returns table(state jsonb, version integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.globetrotter_rooms;
+  v_player jsonb;
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  select * into v_row from public.globetrotter_rooms where public.globetrotter_rooms.code = p_code;
+  if not found or v_row.room_token <> p_room_token then
+    raise exception 'unauthorized' using errcode = '42501';   -- token gate (ACCESS-03)
+  end if;
+  if pg_column_size(p_new_state) > 262144 then
+    raise exception 'state too large' using errcode = '22023';  -- P0-1 payload cap
+  end if;
+  -- INPUT-01: validate every player name server-side on the steady-state write
+  -- path too (CR-04), consistent with create/join — dispatch is a trust boundary.
+  if jsonb_typeof(p_new_state -> 'players') <> 'array' then
+    raise exception 'invalid name' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_new_state -> 'players') > 16 then
+    raise exception 'too many players' using errcode = '22023';  -- P0-1 roster cap
+  end if;
+  for v_player in select * from jsonb_array_elements(p_new_state -> 'players') loop
+    if not public.is_valid_player_name(v_player ->> 'name') then
+      raise exception 'invalid name' using errcode = '22023';
+    end if;
+  end loop;
+  -- CAS (optimistic concurrency); 40001 on conflict → client re-reads + retries
+  return query
+  update public.globetrotter_rooms
+     set state = p_new_state, version = public.globetrotter_rooms.version + 1
+   where public.globetrotter_rooms.code = p_code
+     and public.globetrotter_rooms.version = p_expected_version
+  returning public.globetrotter_rooms.state, public.globetrotter_rooms.version;
+  if not found then
+    raise exception 'version conflict' using errcode = '40001';
+  end if;
+end;
+$$;
+
+revoke all on function public.dispatch_globetrotter(text, uuid, jsonb, integer) from public;
+grant execute on function public.dispatch_globetrotter(text, uuid, jsonb, integer) to anon;
+
 -- ─── Code-gated read RPCs (ACCESS-01) ─────────────────────────────────────────
 -- get_<game>(p_code) is the sealed-world read primitive. It requires the EXACT
 -- room code and returns at most one room's { state, version } — there is no list
@@ -1658,3 +1884,24 @@ $$;
 
 revoke all on function public.get_mindmeld(text) from public;
 grant execute on function public.get_mindmeld(text) to anon;
+
+create or replace function public.get_globetrotter(p_code text)
+returns table(state jsonb, version integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_code !~ '^[0-9A-HJKMNP-TV-Z]{6}$' then
+    raise exception 'invalid code' using errcode = '22023';
+  end if;
+  return query
+  select public.globetrotter_rooms.state, public.globetrotter_rooms.version
+    from public.globetrotter_rooms
+   where public.globetrotter_rooms.code = p_code;
+  -- NO `if not found` raise: unknown code → zero rows (preserves "Room not found" UX).
+end;
+$$;
+
+revoke all on function public.get_globetrotter(text) from public;
+grant execute on function public.get_globetrotter(text) to anon;
