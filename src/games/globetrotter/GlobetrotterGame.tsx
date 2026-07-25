@@ -28,6 +28,7 @@ import {
   redactForPlayer,
   submitSoloGuess,
   TOTAL_ROUNDS,
+  type GameAction,
   type GameState,
   type GeoLocation,
   type Guess,
@@ -818,12 +819,18 @@ interface RevealScreenProps {
 }
 
 /**
- * Names the town a Random World drop landed in. Renders the country-level
- * answer immediately and upgrades it when (if) the geocoder answers.
+ * Names the town a Random World drop landed in.
+ *
+ * In a room the host resolves it once and shares it through the game state
+ * (`useHostPlaceLookup`), so `location.place` is already there and no lookup
+ * happens here — the geocoder sees one request per round per room, not one per
+ * player. Solo has no room to share through, so it looks the drop up locally,
+ * which is a single user-triggered request per reveal.
  */
-function usePlaceName(location: GeoLocation): PlaceName | null {
+function usePlaceName(location: GeoLocation, allowLookup: boolean): PlaceName | null {
   const [place, setPlace] = useState<PlaceName | null>(null)
-  const wanted = isRandomDrop(location)
+  const shared = location.place
+  const wanted = allowLookup && !shared && isRandomDrop(location)
   const { lat, lng } = location
 
   useEffect(() => {
@@ -838,6 +845,7 @@ function usePlaceName(location: GeoLocation): PlaceName | null {
     }
   }, [wanted, lat, lng])
 
+  if (shared) return { place: shared.name, country: shared.country }
   return place?.place ? place : null
 }
 
@@ -851,7 +859,7 @@ function RevealScreen({
   onNext,
 }: RevealScreenProps) {
   const sorted = [...rows].sort((a, b) => b.points - a.points)
-  const geo = usePlaceName(location)
+  const geo = usePlaceName(location, isSolo)
   // Random World knows only the country from its own polygons; a resolved town
   // name is more specific, so it takes the headline and the country drops down.
   const headline = geo?.place ?? location.name
@@ -1050,6 +1058,47 @@ function FinishedScreen({
 
 // ─── Root component ──────────────────────────────────────────────────────────
 
+/**
+ * Host-only: resolve the current Random World round's town and write it into
+ * the room, so every player reads one shared answer.
+ *
+ * It runs during the guessing phase rather than at the reveal, which spreads
+ * the lookups across the round instead of firing one the instant every client
+ * flips to the reveal — the room costs the geocoder one request per round.
+ */
+function useHostPlaceLookup(
+  state: GameState | null,
+  playerId: string | null,
+  dispatch: (action: GameAction) => void
+): void {
+  const done = useRef<string | null>(null)
+  const round = state?.phase === 'playing' ? state.currentRound : null
+  const isHost = Boolean(playerId && state?.players.find((p) => p.id === playerId)?.isHost)
+  const needed = Boolean(round && isRandomDrop(round.location) && !round.location.place)
+  const key = round ? `${round.number}:${round.location.lat},${round.location.lng}` : null
+
+  useEffect(() => {
+    if (!needed || !isHost || !key || !round || !playerId) return
+    if (done.current === key) return
+    done.current = key
+    let cancelled = false
+    void reverseGeocode(round.location.lat, round.location.lng).then((result) => {
+      if (cancelled || !result?.place) return
+      dispatch({
+        type: 'SET_PLACE',
+        playerId,
+        roundNumber: round.number,
+        place: { name: result.place, country: result.country },
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+    // `key` identifies the round and its coordinates; the rest is read through it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, needed, isHost, playerId])
+}
+
 const DECK_NOTES: Record<DeckSource, string | null> = {
   live: null,
   mixed: 'Commons was stingy — some rounds come from the offline reserve.',
@@ -1079,6 +1128,9 @@ export function GlobetrotterGame() {
     dispatch,
     leaveRoom,
   } = useGlobetrotterRoom()
+
+  // One reverse-geocode per round for the whole room, run by the host.
+  useHostPlaceLookup(gameState, playerId, dispatch)
 
   // An invite link should land the player straight on the join form.
   useEffect(() => {

@@ -21,6 +21,16 @@ const PanoSchema = z.object({
   license: z.string(),
 })
 
+/**
+ * Reverse-geocoded settlement for a Random World drop. Resolved once by the
+ * host and shared through the room, so a reveal costs the geocoder one lookup
+ * per round rather than one per player.
+ */
+const PlaceSchema = z.object({
+  name: z.string().min(1).max(120),
+  country: z.string().max(120).nullable(),
+})
+
 const LocationSchema = z.object({
   name: z.string(),
   country: z.string(),
@@ -29,6 +39,7 @@ const LocationSchema = z.object({
   emoji: z.string(),
   clues: z.array(z.string()),
   pano: PanoSchema.optional(),
+  place: PlaceSchema.optional(),
 })
 
 const RoundSchema = z.object({

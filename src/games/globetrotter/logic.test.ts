@@ -436,6 +436,94 @@ describe('leaderboard & redaction', () => {
   })
 })
 
+describe('SET_PLACE', () => {
+  function randomWorldRound(): GameState {
+    let state = createLobbyState(host)
+    state = addPlayer(state, guest)
+    return applyAction(state, { type: 'START_GAME', playerId: host.id, deck: randomDeck })
+  }
+
+  const place = { name: 'Ternberg', country: 'Austria' }
+
+  it('records the host lookup on the current round', () => {
+    const state = applyAction(randomWorldRound(), {
+      type: 'SET_PLACE',
+      playerId: host.id,
+      roundNumber: 1,
+      place,
+    })
+    expect(state.currentRound?.location.place).toEqual(place)
+  })
+
+  it('keeps a null country (open country has no settlement above it)', () => {
+    const state = applyAction(randomWorldRound(), {
+      type: 'SET_PLACE',
+      playerId: host.id,
+      roundNumber: 1,
+      place: { name: 'Somewhere', country: null },
+    })
+    expect(state.currentRound?.location.place).toEqual({ name: 'Somewhere', country: null })
+  })
+
+  it('ignores non-hosts, stale rounds, blank names, and repeat writes', () => {
+    const base = randomWorldRound()
+
+    expect(
+      applyAction(base, { type: 'SET_PLACE', playerId: guest.id, roundNumber: 1, place })
+    ).toBe(base)
+    expect(applyAction(base, { type: 'SET_PLACE', playerId: host.id, roundNumber: 2, place })).toBe(
+      base
+    )
+    expect(
+      applyAction(base, {
+        type: 'SET_PLACE',
+        playerId: host.id,
+        roundNumber: 1,
+        place: { name: '  ', country: 'Austria' },
+      })
+    ).toBe(base)
+
+    // First write wins — a duplicate or late answer cannot overwrite it.
+    const named = applyAction(base, {
+      type: 'SET_PLACE',
+      playerId: host.id,
+      roundNumber: 1,
+      place,
+    })
+    expect(
+      applyAction(named, {
+        type: 'SET_PLACE',
+        playerId: host.id,
+        roundNumber: 1,
+        place: { name: 'Elsewhere', country: 'France' },
+      })
+    ).toBe(named)
+  })
+
+  it('is a no-op outside a live round', () => {
+    const lobby = createLobbyState(host)
+    expect(
+      applyAction(lobby, { type: 'SET_PLACE', playerId: host.id, roundNumber: 1, place })
+    ).toBe(lobby)
+  })
+
+  it('stays hidden until the reveal', () => {
+    const state = applyAction(randomWorldRound(), {
+      type: 'SET_PLACE',
+      playerId: host.id,
+      roundNumber: 1,
+      place,
+    })
+    expect(redactForPlayer(state, guest.id).currentRound?.location.place).toBeUndefined()
+
+    const revealed = applyAction(
+      applyAction(state, { type: 'SUBMIT_GUESS', playerId: host.id, lat: 1, lng: 1 }),
+      { type: 'SUBMIT_GUESS', playerId: guest.id, lat: 2, lng: 2 }
+    )
+    expect(redactForPlayer(revealed, guest.id).currentRound?.location.place).toEqual(place)
+  })
+})
+
 describe('unknown action', () => {
   it('returns the state unchanged', () => {
     const state = playingState()

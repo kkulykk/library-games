@@ -154,6 +154,35 @@ describe('globetrotter GameStateSchema', () => {
     expect(GameStateSchema.safeParse(malformed).success).toBe(false)
   })
 
+  it('accepts a resolved place, including one with no country', () => {
+    for (const place of [
+      { name: 'Ternberg', country: 'Austria' },
+      { name: 'Somewhere', country: null },
+    ]) {
+      const state = {
+        ...playing,
+        currentRound: { ...validRound, location: { ...validLocation, place } },
+      }
+      expect(GameStateSchema.safeParse(state).success).toBe(true)
+    }
+  })
+
+  it('rejects a malformed or oversized place', () => {
+    for (const place of [
+      { name: '', country: 'Austria' },
+      { name: 'Ternberg' },
+      { name: 'x'.repeat(121), country: 'Austria' },
+      { name: 'Ternberg', country: 'y'.repeat(121) },
+      'Ternberg',
+    ]) {
+      const state = {
+        ...playing,
+        currentRound: { ...validRound, location: { ...validLocation, place } },
+      }
+      expect(GameStateSchema.safeParse(state).success).toBe(false)
+    }
+  })
+
   it('rejects a deck entry missing clues', () => {
     const noClues: Partial<typeof validLocation> = { ...validLocation }
     delete noClues.clues

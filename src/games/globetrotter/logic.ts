@@ -1,8 +1,8 @@
 import { shuffle } from '@/lib/shuffle'
-import { LOCATIONS, type GeoLocation } from './locations'
+import { LOCATIONS, type GeoLocation, type GeoPlace } from './locations'
 import type { GameState } from './schema'
 export type { GameState }
-export type { GeoLocation }
+export type { GeoLocation, GeoPlace }
 export { shuffle }
 
 export interface Player {
@@ -35,6 +35,7 @@ export type GameAction =
   | { type: 'NEXT_ROUND'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
   | { type: 'REMOVE_PLAYER'; playerId: string }
+  | { type: 'SET_PLACE'; playerId: string; roundNumber: number; place: GeoPlace }
 
 export const MIN_PLAYERS = 2
 export const MAX_PLAYERS = 8
@@ -366,6 +367,35 @@ export function removePlayer(state: GameState, playerId: string): GameState {
   return { ...state, players: remaining, currentRound: round, log }
 }
 
+/**
+ * Record the reverse-geocoded name of the current round's location. Only the
+ * host resolves it (one lookup per round for the whole room, instead of one
+ * per player), and it is written once — a late or duplicate answer is ignored.
+ */
+function setPlace(
+  state: GameState,
+  playerId: string,
+  roundNumber: number,
+  place: GeoPlace
+): GameState {
+  if (state.phase !== 'playing' || !state.currentRound) return state
+  if (state.currentRound.number !== roundNumber) return state
+  if (state.currentRound.location.place) return state
+  if (!state.players.find((p) => p.id === playerId)?.isHost) return state
+  if (typeof place.name !== 'string' || place.name.trim().length === 0) return state
+
+  return {
+    ...state,
+    currentRound: {
+      ...state.currentRound,
+      location: {
+        ...state.currentRound.location,
+        place: { name: place.name, country: place.country },
+      },
+    },
+  }
+}
+
 export function applyAction(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'START_GAME':
@@ -378,6 +408,8 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       return playAgain(state, action.playerId)
     case 'REMOVE_PLAYER':
       return removePlayer(state, action.playerId)
+    case 'SET_PLACE':
+      return setPlace(state, action.playerId, action.roundNumber, action.place)
     default:
       return state
   }

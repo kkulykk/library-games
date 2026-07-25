@@ -118,36 +118,41 @@ function useTileLayer(tiles: Tile[], enabled: boolean) {
   const ready = useRef(new Set<string>())
   const pending = useRef(new Set<string>())
   const failures = useRef(0)
+  const mounted = useRef(true)
   const [broken, setBroken] = useState(false)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const keys = tiles.map(tileKey).join(',')
 
   useEffect(() => {
     if (!enabled || broken) return
-    let cancelled = false
     for (const tile of tiles) {
       const key = tileKey(tile)
       if (ready.current.has(key) || pending.current.has(key)) continue
       pending.current.add(key)
       const image = new Image()
       image.decoding = 'async'
+      // A tile that finishes after the camera moved on is still downloaded and
+      // cached, so it is recorded either way — bailing out here would strand
+      // the key in `pending` and the guard above would never re-request it.
       image.onload = () => {
-        if (cancelled) return
         pending.current.delete(key)
         failures.current = 0
         ready.current.add(key)
-        force((n) => n + 1)
+        if (mounted.current) force((n) => n + 1)
       }
       image.onerror = () => {
-        if (cancelled) return
         pending.current.delete(key)
         failures.current += 1
-        if (failures.current >= TILE_ERROR_LIMIT) setBroken(true)
+        if (mounted.current && failures.current >= TILE_ERROR_LIMIT) setBroken(true)
       }
       image.src = TILE_URL(tile)
-    }
-    return () => {
-      cancelled = true
     }
     // `keys` captures the tile set; `tiles` itself is a fresh array each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps

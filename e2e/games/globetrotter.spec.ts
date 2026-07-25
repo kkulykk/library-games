@@ -17,6 +17,7 @@ type GlobetrotterLocation = {
   lng: number
   emoji: string
   clues: string[]
+  place?: { name: string; country: string | null }
 }
 
 type GlobetrotterRound = {
@@ -136,6 +137,49 @@ function seededGuessingState(players: GlobetrotterPlayer[]): GlobetrotterState {
     },
     log: ['Expedition started — pin your first guess on the map.'],
   }
+}
+
+/** A Random World round: no field notes, so the reveal needs a geocoder. */
+function seededRandomWorldState(players: GlobetrotterPlayer[]): GlobetrotterState {
+  const drop: GlobetrotterLocation = {
+    name: 'Austria',
+    country: '47.92°N, 14.34°E',
+    lat: 47.921,
+    lng: 14.341,
+    emoji: '\u{1F310}',
+    clues: [],
+  }
+  return {
+    phase: 'playing',
+    players: players.map((player) => ({ ...player, score: 0 })),
+    totalRounds: 5,
+    roundNumber: 1,
+    deck: [drop],
+    currentRound: {
+      number: 1,
+      location: drop,
+      guesses: {},
+      distances: {},
+      roundScores: {},
+      phase: 'guessing',
+    },
+    log: ['Expedition started — pin your first guess on the map.'],
+  }
+}
+
+/** Counts reverse-geocode calls made by one player's browser. */
+async function countGeocodes(page: Page): Promise<() => number> {
+  let calls = 0
+  await page.route('https://nominatim.openstreetmap.org/**', (route) => {
+    calls += 1
+    return route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify({ address: { village: 'Ternberg', country: 'Austria' } }),
+    })
+  })
+  return () => calls
 }
 
 function seededFinalRevealState(players: GlobetrotterPlayer[]): GlobetrotterState {
@@ -393,6 +437,47 @@ test.describe('Globetrotter gameplay smoke', () => {
 
       const finalRoom = await readGlobetrotterRoom(roomCode)
       expect(finalRoom.state.phase).toBe('finished')
+    } finally {
+      await closePlayers([guest])
+    }
+  })
+})
+
+test.describe('Globetrotter shared place lookup', () => {
+  test('one reverse-geocode per room, not one per player', async ({ page, browser }) => {
+    const hostPage = new GlobetrotterPage(page)
+    const guest = await createPlayer(browser, 'Guest Globe')
+    const guestPage = new GlobetrotterPage(guest.page)
+    const hostCalls = await countGeocodes(page)
+    const guestCalls = await countGeocodes(guest.page)
+
+    try {
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom('Host Globe')
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
+      await hostPage.page.getByTestId('globetrotter-mode-landmarks').click()
+      await hostPage.startGame()
+
+      // Seed a Random World round — the drop is named only by its country.
+      const started = await readGlobetrotterRoom(roomCode)
+      await updateGlobetrotterRoom(roomCode, started, seededRandomWorldState(started.state.players))
+
+      // The host resolves the town during the round and shares it via the room.
+      await expect
+        .poll(async () => (await readGlobetrotterRoom(roomCode)).state.currentRound?.location.place)
+        .toEqual({ name: 'Ternberg', country: 'Austria' })
+
+      await hostPage.placeAndLockGuess(0.5, 0.3)
+      await guestPage.placeAndLockGuess(0.52, 0.32)
+
+      // Both players read the same shared answer.
+      await expect(hostPage.revealPlace).toContainText('Ternberg')
+      await expect(guestPage.revealPlace).toContainText('Ternberg')
+      await expect(hostPage.reveal).toContainText('Austria')
+
+      expect(hostCalls()).toBe(1)
+      expect(guestCalls()).toBe(0)
     } finally {
       await closePlayers([guest])
     }
