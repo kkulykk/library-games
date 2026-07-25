@@ -1505,6 +1505,9 @@ a.gt-pano-watermark:hover {
   font-size: 44px;
   letter-spacing: -0.03em;
   margin: 0;
+  /* Keyed on the headline, so a late-arriving town name fades in over the
+     country-level answer instead of snapping. */
+  animation: gt-fade-up 0.4s ease-out both;
 }
 .gt-scope .gt-reveal-sub {
   font-family: var(--font-mono);
@@ -1627,6 +1630,7 @@ a.gt-pano-watermark:hover {
   .gt-scope .gt-map-actual .gt-pin-flag-halo,
   .gt-scope .gt-reveal-row,
   .gt-scope .gt-reveal-head,
+  .gt-scope .gt-reveal-head h2,
   .gt-scope .gt-reveal-verdict,
   .gt-scope .gt-map-tile,
   .gt-scope .gt-scout-globe,

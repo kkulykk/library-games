@@ -234,6 +234,16 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
         body: TINY_JPEG,
       })
     )
+    await page.route('https://nominatim.openstreetmap.org/**', (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({
+          address: { town: 'Dodge City', county: 'Ford County', country: 'United States' },
+        }),
+      })
+    )
   }
 
   test('scouts a deck, plays a round, reveals the country', async ({ page }) => {
@@ -258,7 +268,10 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     await expect(solo.lockGuessButton).toBeEnabled()
     await solo.lockGuessButton.click()
 
-    await expect(solo.reveal).toContainText('United States of America')
+    // The reveal upgrades the polygon-level country to the town the drop
+    // actually landed in, keeping the country and coordinates underneath.
+    await expect(solo.revealPlace).toContainText('Dodge City')
+    await expect(solo.reveal).toContainText('United States')
     await expect(solo.reveal).toContainText('°N')
     await expect(solo.roundScore).toContainText('+')
     await expect(solo.revealDistance).toBeVisible()
@@ -297,6 +310,7 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
   test('falls back to the offline reserve when Commons is unreachable', async ({ page }) => {
     await page.route('https://commons.wikimedia.org/**', (route) => route.abort())
     await page.route('https://upload.wikimedia.org/**', (route) => route.abort())
+    await page.route('https://nominatim.openstreetmap.org/**', (route) => route.abort())
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()

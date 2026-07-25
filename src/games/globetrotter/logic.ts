@@ -91,6 +91,15 @@ export function isPlayableLocation(location: GeoLocation): boolean {
   )
 }
 
+/**
+ * Random World drops carry no field notes, and their `name` is only the
+ * country the coordinate fell in — so the reveal reverse-geocodes them for a
+ * town name, while curated landmarks already name themselves.
+ */
+export function isRandomDrop(location: GeoLocation): boolean {
+  return location.clues.length === 0
+}
+
 export function pickLocations(
   count: number,
   rng: () => number = Math.random,

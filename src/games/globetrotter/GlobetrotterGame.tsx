@@ -12,6 +12,7 @@ import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { SupabaseSetupNotice } from '@/components/multiplayer/SupabaseSetupNotice'
 import { useGlobetrotterRoom } from './useGlobetrotterRoom'
 import { buildRandomWorldDeck, type DeckSource } from './randomWorld'
+import { reverseGeocode, type PlaceName } from './placeName'
 import { easeInOut } from './mercator'
 import { PanoViewer } from './PanoViewer'
 import { WorldMap, type MapPin } from './WorldMap'
@@ -21,6 +22,7 @@ import {
   currentSoloLocation,
   formatKm,
   getLeaderboard,
+  isRandomDrop,
   MIN_PLAYERS,
   nextSoloRound,
   redactForPlayer,
@@ -815,6 +817,30 @@ interface RevealScreenProps {
   onNext: () => void
 }
 
+/**
+ * Names the town a Random World drop landed in. Renders the country-level
+ * answer immediately and upgrades it when (if) the geocoder answers.
+ */
+function usePlaceName(location: GeoLocation): PlaceName | null {
+  const [place, setPlace] = useState<PlaceName | null>(null)
+  const wanted = isRandomDrop(location)
+  const { lat, lng } = location
+
+  useEffect(() => {
+    setPlace(null)
+    if (!wanted) return
+    let cancelled = false
+    void reverseGeocode(lat, lng).then((result) => {
+      if (!cancelled) setPlace(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [wanted, lat, lng])
+
+  return place?.place ? place : null
+}
+
 function RevealScreen({
   roundNumber,
   totalRounds,
@@ -825,6 +851,13 @@ function RevealScreen({
   onNext,
 }: RevealScreenProps) {
   const sorted = [...rows].sort((a, b) => b.points - a.points)
+  const geo = usePlaceName(location)
+  // Random World knows only the country from its own polygons; a resolved town
+  // name is more specific, so it takes the headline and the country drops down.
+  const headline = geo?.place ?? location.name
+  const subline = [geo ? (geo.country ?? location.name) : null, location.country]
+    .filter(Boolean)
+    .join(' · ')
   const pins: MapPin[] = sorted
     .filter((row) => row.guess)
     .map((row) => ({
@@ -844,10 +877,10 @@ function RevealScreen({
           <span className="sk-pick-meta">
             Round {roundNumber} of {totalRounds}
           </span>
-          <h2>
-            {location.emoji} {location.name}
+          <h2 key={headline} data-testid="globetrotter-reveal-place">
+            {location.emoji} {headline}
           </h2>
-          <span className="gt-reveal-sub">{location.country}</span>
+          <span className="gt-reveal-sub">{subline}</span>
         </div>
         <div className="gt-reveal-body">
           <div className="gt-reveal-map">

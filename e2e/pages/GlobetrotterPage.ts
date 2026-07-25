@@ -34,6 +34,10 @@ export class GlobetrotterPage extends RoomLobbyPage {
     return this.page.getByTestId('globetrotter-reveal-distance')
   }
 
+  get revealPlace(): Locator {
+    return this.page.getByTestId('globetrotter-reveal-place')
+  }
+
   get status(): Locator {
     return this.page.getByTestId('globetrotter-status')
   }
