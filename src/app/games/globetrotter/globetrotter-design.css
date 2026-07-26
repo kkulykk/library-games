@@ -1817,6 +1817,19 @@ a.gt-pano-watermark:hover {
     width: 34px;
     height: 34px;
   }
+  /* Fingertip-sized zoom controls — 26px is a mouse target, not a thumb one. */
+  .gt-scope .gt-zoom {
+    gap: 6px;
+  }
+  .gt-scope .gt-zoom button {
+    width: 38px;
+    height: 38px;
+    font-size: 17px;
+  }
+  /* The minimap is too small to host controls; it opens on tap instead. */
+  .gt-scope .gt-mapdock.is-collapsed .gt-zoom {
+    display: none;
+  }
   .gt-scope .gt-locked-badge {
     bottom: calc(min(120px, 28vw) + 16px);
     right: 8px;

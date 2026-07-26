@@ -8,6 +8,7 @@ import {
   GUESS_HOLD_MS,
   lerpView,
   MAX_MERCATOR_LAT,
+  pinchView,
   project,
   revealTour,
   tileBox,
@@ -93,6 +94,53 @@ describe('view box', () => {
   it('survives a degenerate aspect ratio', () => {
     expect(clampView({ x: 0, y: 0, w: WORLD_SIZE, h: 1 }, 0).h).toBe(WORLD_SIZE / 2)
     expect(clampView({ x: 0, y: 0, w: WORLD_SIZE, h: 1 }, Number.NaN).h).toBe(WORLD_SIZE / 2)
+  })
+})
+
+describe('pinchView', () => {
+  // A quarter of the world, centred — plenty of room to zoom either way.
+  const origin: ViewBox = { x: 64, y: 64, w: 128, h: 64 }
+  const centre = { x: 0.5, y: 0.5 }
+
+  it('keeps the world under the fingers as they spread', () => {
+    const view = pinchView(origin, { from: centre, to: centre, scale: 2 }, 2)
+    expect(view.w).toBeCloseTo(64, 6)
+    // The point under the midpoint before the pinch is still under it after.
+    expect(view.x + view.w / 2).toBeCloseTo(origin.x + origin.w / 2, 6)
+    expect(view.y + view.h / 2).toBeCloseTo(origin.y + origin.h / 2, 6)
+  })
+
+  it('zooms out when the fingers close', () => {
+    expect(pinchView(origin, { from: centre, to: centre, scale: 0.5 }, 2).w).toBeCloseTo(256, 6)
+  })
+
+  it('anchors on the fingers, not the centre of the map', () => {
+    const corner = { x: 0.25, y: 0.25 }
+    const view = pinchView(origin, { from: corner, to: corner, scale: 2 }, 2)
+    expect(view.x + view.w * 0.25).toBeCloseTo(origin.x + origin.w * 0.25, 6)
+    expect(view.y + view.h * 0.25).toBeCloseTo(origin.y + origin.h * 0.25, 6)
+  })
+
+  it('drags the map when both fingers slide without spreading', () => {
+    const view = pinchView(origin, { from: centre, to: { x: 0.75, y: 0.5 }, scale: 1 }, 2)
+    expect(view.w).toBeCloseTo(origin.w, 6)
+    expect(view.x).toBeCloseTo(origin.x - origin.w * 0.25, 6)
+  })
+
+  it('stays inside the world and the zoom limits', () => {
+    const edge = pinchView(origin, { from: centre, to: { x: 3, y: 3 }, scale: 1 }, 2)
+    expect(edge.x).toBeGreaterThanOrEqual(0)
+    expect(edge.y).toBeGreaterThanOrEqual(0)
+    const deep = pinchView(origin, { from: centre, to: centre, scale: 1e6 }, 2)
+    expect(deep.w).toBeCloseTo(WORLD_SIZE / 4096, 8)
+  })
+
+  it('treats a degenerate scale as no zoom rather than collapsing', () => {
+    expect(pinchView(origin, { from: centre, to: centre, scale: 0 }, 2).w).toBeCloseTo(origin.w, 6)
+    expect(pinchView(origin, { from: centre, to: centre, scale: Number.NaN }, 2).w).toBeCloseTo(
+      origin.w,
+      6
+    )
   })
 })
 

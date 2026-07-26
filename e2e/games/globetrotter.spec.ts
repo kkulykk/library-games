@@ -328,6 +328,88 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     await expect(solo.soloButton).toBeVisible()
   })
 
+  test.describe('touch map navigation', () => {
+    test.use({ viewport: { width: 390, height: 664 }, hasTouch: true })
+
+    test('pinches to zoom, drags to pan, and only taps drop a pin', async ({ page }) => {
+      await mockCommons(page)
+
+      const solo = new GlobetrotterPage(page)
+      await solo.goto()
+      await solo.dismissPlayGate()
+      await solo.soloButton.click()
+      await expect(solo.pano).toBeVisible()
+      await solo.expandMap()
+      // The dock animates open; gestures need the settled element box.
+      await expect(solo.lockGuessButton).toBeDisabled()
+      await page.waitForTimeout(600)
+
+      const cdp = await page.context().newCDPSession(page)
+      const dispatch = (
+        type: 'touchStart' | 'touchMove' | 'touchEnd',
+        points: [number, number][]
+      ) =>
+        cdp.send('Input.dispatchTouchEvent', {
+          type,
+          touchPoints: points.map(([x, y], index) => ({ x, y, id: index + 1 })),
+        })
+
+      const box = (await solo.map.boundingBox())!
+      const cx = Math.round(box.x + box.width / 2)
+      const cy = Math.round(box.y + box.height / 2)
+      const viewWidth = async () => Number((await solo.map.getAttribute('viewBox'))!.split(' ')[2])
+      const viewX = async () => Number((await solo.map.getAttribute('viewBox'))!.split(' ')[0])
+      const pins = () => page.locator('.gt-map-pin').count()
+
+      // Spread two fingers: the map zooms in and drops nothing.
+      const worldWidth = await viewWidth()
+      await dispatch('touchStart', [
+        [cx - 30, cy],
+        [cx + 30, cy],
+      ])
+      for (let step = 1; step <= 8; step++) {
+        const spread = 30 + step * 15
+        await dispatch('touchMove', [
+          [cx - spread, cy],
+          [cx + spread, cy],
+        ])
+      }
+      await dispatch('touchEnd', [])
+      expect(await viewWidth()).toBeLessThan(worldWidth / 2)
+      expect(await pins()).toBe(0)
+
+      // One finger drags the map rather than dropping a pin.
+      const beforePan = await viewX()
+      await dispatch('touchStart', [[cx, cy]])
+      for (let step = 1; step <= 6; step++) await dispatch('touchMove', [[cx - step * 12, cy]])
+      await dispatch('touchEnd', [])
+      expect(await viewX()).toBeGreaterThan(beforePan)
+      expect(await pins()).toBe(0)
+
+      // Closing the fingers zooms back out.
+      const zoomedWidth = await viewWidth()
+      await dispatch('touchStart', [
+        [cx - 120, cy],
+        [cx + 120, cy],
+      ])
+      for (let step = 1; step <= 8; step++) {
+        const spread = 120 - step * 12
+        await dispatch('touchMove', [
+          [cx - spread, cy],
+          [cx + spread, cy],
+        ])
+      }
+      await dispatch('touchEnd', [])
+      expect(await viewWidth()).toBeGreaterThan(zoomedWidth)
+
+      // A plain tap is still how a pin gets placed.
+      await dispatch('touchStart', [[cx, cy]])
+      await dispatch('touchEnd', [])
+      await expect(solo.lockGuessButton).toBeEnabled()
+      expect(await pins()).toBe(1)
+    })
+  })
+
   test('fits the whole board on a phone screen', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 664 })
     await mockCommons(page)
