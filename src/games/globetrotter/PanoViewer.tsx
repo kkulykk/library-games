@@ -79,9 +79,13 @@ async function loadPanoramaFrom(
   onProgress: (ratio: number | null) => void,
   signal: AbortSignal
 ): Promise<TexImageSource> {
+  let status: number | null = null
   try {
     const response = await fetch(url, { mode: 'cors', signal })
-    if (!response.ok) throw new Error(`Panorama ${response.status}`)
+    if (!response.ok) {
+      status = response.status
+      throw new Error(`HTTP ${response.status}`)
+    }
     const total = Number(response.headers.get('content-length') ?? 0)
     const reader = response.body?.getReader()
     let blob: Blob
@@ -114,7 +118,12 @@ async function loadPanoramaFrom(
     // Streaming can fail where a plain image load still succeeds (proxies,
     // odd CORS setups) — try the simple path before giving up.
     onProgress(null)
-    return decodeViaImage(url, false)
+    try {
+      return await decodeViaImage(url, false)
+    } catch {
+      // Report what the server said, not the <img> tag's contentless failure.
+      throw status === null ? error : new Error(`HTTP ${status}`)
+    }
   }
 }
 
@@ -135,6 +144,17 @@ async function loadPanorama(
     }
   }
   throw last instanceof Error ? last : new Error('Panorama failed to load')
+}
+
+/**
+ * Turn a failure into something a player can act on. "It broke" sends people
+ * to the Try again button forever; naming the cause tells them whether it is
+ * their network, their browser or the archive.
+ */
+function failureHint(error: unknown): string {
+  const status = error instanceof Error ? error.message.match(/^HTTP (\d+)$/)?.[1] : undefined
+  if (status) return `Wikimedia answered ${status} for this image.`
+  return 'Could not reach upload.wikimedia.org — a content blocker, VPN or restricted network does this.'
 }
 
 function decodeViaImage(src: string, revoke: boolean): Promise<HTMLImageElement> {
@@ -223,6 +243,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
   const renderRef = useRef<(() => void) | null>(null)
   const [status, setStatus] = useState<Status>('loading')
   const [progress, setProgress] = useState<number | null>(null)
+  const [hint, setHint] = useState<string | null>(null)
   const [dragged, setDragged] = useState(false)
   const [compassDeg, setCompassDeg] = useState(0)
   const [attempt, setAttempt] = useState(0)
@@ -234,6 +255,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     if (!canvas) return
     setStatus('loading')
     setProgress(null)
+    setHint(null)
     setDragged(false)
     cameraRef.current = { yaw: 0, pitch: 0, fov: 75 }
     pointersRef.current.clear()
@@ -249,6 +271,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     const gl = (canvas.getContext('webgl', options) ??
       canvas.getContext('experimental-webgl', options)) as WebGLRenderingContext | null
     if (!gl) {
+      setHint('This browser will not give the page a WebGL canvas.')
       setStatus('error')
       return
     }
@@ -265,6 +288,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     const vertex = compile(gl.VERTEX_SHADER, VERTEX_SHADER)
     const fragment = compile(gl.FRAGMENT_SHADER, FRAGMENT_SHADER)
     if (!program || !vertex || !fragment) {
+      setHint('WebGL would not compile the panorama shader.')
       setStatus('error')
       return
     }
@@ -272,6 +296,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     gl.attachShader(program, fragment)
     gl.linkProgram(program)
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      setHint('WebGL would not link the panorama shader.')
       setStatus('error')
       return
     }
@@ -334,6 +359,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
         if (!uploadTexture(gl, source)) {
+          setHint('This device could not fit the photosphere in video memory.')
           setStatus('error')
           return
         }
@@ -345,8 +371,10 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
         // stretched first paint.
         requestAnimationFrame(render)
       })
-      .catch(() => {
-        if (!disposed) setStatus('error')
+      .catch((error: unknown) => {
+        if (disposed) return
+        setHint(failureHint(error))
+        setStatus('error')
       })
 
     renderRef.current = render
@@ -501,6 +529,11 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
         <div className="gt-pano-loading" data-testid="globetrotter-pano-error">
           <div className="gt-pano-loading-inner">
             <span className="mono gt-pano-loading-text">This photosphere would not load.</span>
+            {hint && (
+              <span className="mono gt-pano-error-hint" data-testid="globetrotter-pano-error-hint">
+                {hint}
+              </span>
+            )}
             <button className="sk-btn sk-btn-sm" type="button" onClick={retry}>
               Try again
             </button>

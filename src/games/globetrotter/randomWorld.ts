@@ -21,8 +21,16 @@ import { RESERVE_PANORAMAS, type ReservePanorama } from './randomWorldReserve'
 
 const API = 'https://commons.wikimedia.org/w/api.php'
 const CATEGORY = 'Category:360° panoramas'
-/** Wide enough for a crisp WebGL texture, small enough that Commons renders it fast. */
-const TEXTURE_WIDTH = 2560
+/**
+ * Deck URLs are asked for at Wikimedia's widest standard rendition, and each
+ * player's browser snaps that down to what its own screen can use
+ * (`panoTexture.ts`). Asking for anything off the standard ladder is pointless
+ * here — the API silently rounds *up* to the next standard width, so this used
+ * to read 2560 while every deck was served 3840 anyway.
+ *
+ * @see https://www.mediawiki.org/wiki/Common_thumbnail_sizes
+ */
+const TEXTURE_WIDTH = 3840
 const MIN_SOURCE_WIDTH = 2048
 /** Equirectangular photospheres are 2:1; allow a little slack for odd crops. */
 const ASPECT_TOLERANCE = 0.05

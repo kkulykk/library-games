@@ -1066,6 +1066,15 @@ a.gt-pano-watermark:hover {
     transform: rotate(360deg);
   }
 }
+.gt-scope .gt-pano-error-hint {
+  max-width: 34ch;
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.55);
+}
 .gt-scope .gt-pano-bar {
   position: relative;
   display: block;

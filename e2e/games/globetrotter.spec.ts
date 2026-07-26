@@ -252,7 +252,9 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
             title,
             imageinfo: [
               {
-                thumburl: `https://upload.wikimedia.org/mock-${index}.jpg`,
+                // Shaped like a real Commons rendition: the client rewrites the
+                // `NNNpx-` segment to pick a size its screen can use.
+                thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Mock_pano_${index}.jpg/3840px-Mock_pano_${index}.jpg`,
                 extmetadata: {
                   Artist: { value: 'Mock Mapper' },
                   LicenseShortName: { value: 'CC BY-SA 4.0' },
@@ -480,6 +482,66 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
 
     await solo.placeAndLockGuess(0.5, 0.5)
     await expect(solo.reveal).toBeVisible()
+  })
+
+  test('only ever asks Wikimedia for a rendition it will serve', async ({ page }) => {
+    // upload.wikimedia.org rejects any width off its standard ladder with a
+    // 400 ("Use thumbnail sizes listed on https://w.wiki/GHai"), so a phone
+    // asking for a convenient 2048px gets nothing at all.
+    const STANDARD = [20, 40, 60, 120, 250, 330, 500, 960, 1280, 1920, 3840]
+    const widths: number[] = []
+    await mockCommons(page)
+    // Registered after mockCommons so it wins over its blanket image route.
+    await page.route('https://upload.wikimedia.org/**', (route) => {
+      const width = Number(
+        route
+          .request()
+          .url()
+          .match(/\/(\d+)px-/)?.[1]
+      )
+      if (Number.isFinite(width)) widths.push(width)
+      return route.fulfill({
+        status: STANDARD.includes(width) ? 200 : 400,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'image/jpeg',
+        body: TINY_JPEG,
+      })
+    })
+    await page.setViewportSize({ width: 390, height: 664 })
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+    await expect(solo.pano).toBeVisible()
+    await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
+
+    expect(widths.length).toBeGreaterThan(0)
+    expect(widths.filter((width) => !STANDARD.includes(width))).toEqual([])
+    // A phone takes the small rendition, not the 1.2 MB one.
+    expect(widths[0]).toBe(1920)
+    await expect(page.getByTestId('globetrotter-pano-error')).toBeHidden()
+  })
+
+  test('names the reason a photosphere would not load', async ({ page }) => {
+    await mockCommons(page)
+    await page.route('https://upload.wikimedia.org/**', (route) =>
+      route.fulfill({
+        status: 400,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'text/html',
+        body: 'Use thumbnail sizes listed on https://w.wiki/GHai',
+      })
+    )
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+
+    // An opaque "would not load" sends players to Try again forever; the
+    // status code says whether it is the archive, the network or the device.
+    await expect(page.getByTestId('globetrotter-pano-error-hint')).toContainText('400')
   })
 })
 
