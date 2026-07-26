@@ -154,7 +154,10 @@ async function loadPanorama(
 function failureHint(error: unknown): string {
   const status = error instanceof Error ? error.message.match(/^HTTP (\d+)$/)?.[1] : undefined
   if (status) return `Wikimedia answered ${status} for this image.`
-  return 'Could not reach upload.wikimedia.org — a content blocker, VPN or restricted network does this.'
+  // No status at all means the request never got a reply: this site's own
+  // content-security-policy refusing the origin looks identical to a content
+  // blocker or a network that cannot route there.
+  return 'upload.wikimedia.org could not be reached — a blocked origin, content blocker or offline network.'
 }
 
 function decodeViaImage(src: string, revoke: boolean): Promise<HTMLImageElement> {
