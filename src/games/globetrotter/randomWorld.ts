@@ -236,6 +236,15 @@ function farEnough(candidate: Candidate, taken: Candidate[]): boolean {
   )
 }
 
+function sparesCanComplete(picked: Candidate[], spare: Candidate[], count: number): boolean {
+  const trial = [...picked]
+  for (const candidate of spare) {
+    if (trial.length >= count) return true
+    if (farEnough(candidate, trial)) trial.push(candidate)
+  }
+  return trial.length >= count
+}
+
 function pause(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -284,7 +293,10 @@ async function collectCandidates(
         deps.signal
       )) as PagesResponse
     } catch {
-      // A rate-limited or flaky sweep is not fatal — try the next window.
+      // A rate-limited or flaky sweep is not fatal. If earlier windows already
+      // left enough usable finds behind the diversity cap, use them now instead
+      // of waiting through the rest of the request budget.
+      if (sparesCanComplete(picked, spare, count)) break
       continue
     }
     let taken = 0

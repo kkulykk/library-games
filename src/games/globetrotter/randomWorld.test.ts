@@ -24,6 +24,7 @@ function makeFetchDouble(options: DoubleOptions = {}) {
   const perBatch = options.perBatch ?? 3
   let batch = 0
   const calls: string[] = []
+  const windows = new Map<string, number>()
 
   const fetchFn = (async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -40,15 +41,19 @@ function makeFetchDouble(options: DoubleOptions = {}) {
     let body: unknown
     if (isSweep) {
       batch++
+      const params = new URL(url).searchParams
+      const window = params.get('gcmstart') ?? params.get('gcmstartsortkeyprefix') ?? ''
+      const windowNumber = windows.get(window) ?? windows.size + 1
+      windows.set(window, windowNumber)
       const height = 2000
       const width = Math.round(height * (options.ratio ?? 2))
       const pages: Record<string, unknown> = {}
       for (let i = 0; i < perBatch; i++) {
         // ~5° apart: comfortably past the 50 km minimum separation.
-        const lat = 10 + batch * 5 + i * 5
-        const lng = 20 + batch * 5 + i * 5
+        const lat = 10 + windowNumber * 5 + i * 5
+        const lng = 20 + windowNumber * 5 + i * 5
         pages[String(i)] = {
-          title: `File:Pano ${batch}-${i}.jpg`,
+          title: `File:Pano ${windowNumber}-${i}.jpg`,
           imageinfo: [
             {
               width,
@@ -93,6 +98,13 @@ function makeFetchDouble(options: DoubleOptions = {}) {
 
 const fixedRandom = () => 0.5
 
+function seededRandom(seed: number): () => number {
+  return () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0
+    return seed / 2 ** 32
+  }
+}
+
 describe('fetchRandomWorldDeck', () => {
   it('assembles a deck of distinct, playable panorama locations', async () => {
     const { fetchFn } = makeFetchDouble()
@@ -130,11 +142,12 @@ describe('fetchRandomWorldDeck', () => {
   // request, defaulting to 10. Every file past the tenth came back geotag-less
   // and was dropped, so sweeps almost never found five usable panoramas and the
   // deck was topped up from the reserve — the same photos every game.
-  it('asks Commons to geotag every file in the window, not just the first ten', async () => {
+  it('asks Commons for a wide window and geotags every file in it', async () => {
     const { fetchFn, calls } = makeFetchDouble({ perBatch: 5 })
     await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
 
     for (const sweep of calls.filter((url) => url.includes('generator=categorymembers'))) {
+      expect(sweep).toContain('gcmlimit=500')
       expect(sweep).toContain('colimit=max')
     }
   })
@@ -142,8 +155,16 @@ describe('fetchRandomWorldDeck', () => {
   it('draws a deck from several windows instead of one photographer’s series', async () => {
     // One window offers far more than a deck needs; a single sweep could fill
     // it, and every round would come from the same contiguous run of uploads.
-    const { fetchFn } = makeFetchDouble({ perBatch: 20 })
-    const deck = await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
+    const { fetchFn, calls } = makeFetchDouble({ perBatch: 20 })
+    const deck = await fetchRandomWorldDeck(5, { fetchFn, random: seededRandom(181) })
+
+    const windows = calls
+      .filter((url) => url.includes('generator=categorymembers'))
+      .map((url) => {
+        const params = new URL(url).searchParams
+        return params.get('gcmstart') ?? params.get('gcmstartsortkeyprefix')
+      })
+    expect(new Set(windows).size).toBeGreaterThan(1)
 
     // The double names files `Pano <sweep>-<index>`, so the sweep each round
     // came from is readable straight off the panorama URL.
@@ -159,16 +180,19 @@ describe('fetchRandomWorldDeck', () => {
     }
   })
 
-  it('finishes a deck from finds an earlier sweep held back when later ones fail', async () => {
-    // Sweep 1 is rich but capped; sweeps 2+ are rate-limited. The finds the cap
-    // turned away complete the deck rather than letting it fall short.
+  it('finishes a deck with finds held back by an earlier sweep when the next one fails', async () => {
+    // Sweep 1 is rich but capped; sweep 2 is rate-limited. The finds turned
+    // away by the cap complete the deck immediately rather than letting it fall
+    // short or waiting for more failed sweeps.
     const { fetchFn, calls } = makeFetchDouble({ perBatch: 20, failStatus: 429, failAfterBatch: 1 })
     const deck = await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
 
     expect(deck).toHaveLength(5)
-    expect(
-      calls.filter((url) => url.includes('generator=categorymembers')).length
-    ).toBeLessThanOrEqual(4)
+    expect(calls.filter((url) => url.includes('generator=categorymembers'))).toHaveLength(2)
+    const contributingWindows = new Set(
+      deck.map((spot) => decodeURIComponent(spot.pano!.url).match(/Pano (\d+)-/)![1])
+    )
+    expect(contributingWindows.size).toBe(1)
   })
 
   it('reports progress as the deck fills up', async () => {
