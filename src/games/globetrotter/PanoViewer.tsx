@@ -288,6 +288,9 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     const vertex = compile(gl.VERTEX_SHADER, VERTEX_SHADER)
     const fragment = compile(gl.FRAGMENT_SHADER, FRAGMENT_SHADER)
     if (!program || !vertex || !fragment) {
+      if (program) gl.deleteProgram(program)
+      if (vertex) gl.deleteShader(vertex)
+      if (fragment) gl.deleteShader(fragment)
       setHint('WebGL would not compile the panorama shader.')
       setStatus('error')
       return
@@ -295,7 +298,11 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     gl.attachShader(program, vertex)
     gl.attachShader(program, fragment)
     gl.linkProgram(program)
+    // A linked program owns its shaders; these handles are ours to drop.
+    gl.deleteShader(vertex)
+    gl.deleteShader(fragment)
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      gl.deleteProgram(program)
       setHint('WebGL would not link the panorama shader.')
       setStatus('error')
       return
@@ -318,6 +325,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
 
     let disposed = false
     let textured = false
+    let texture: WebGLTexture | null = null
     const controller = new AbortController()
 
     function render() {
@@ -350,7 +358,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     )
       .then((source) => {
         if (disposed || gl.isContextLost()) return
-        const texture = gl.createTexture()
+        texture = gl.createTexture()
         gl.bindTexture(gl.TEXTURE_2D, texture)
         // Non-power-of-two source: clamp + linear, wrap handled by fract() in
         // the shader.
@@ -359,6 +367,10 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
         if (!uploadTexture(gl, source)) {
+          // Whatever partial allocation the failed upload left behind goes
+          // back now, rather than sitting on a GPU that just said it was full.
+          if (texture) gl.deleteTexture(texture)
+          texture = null
           setHint('This device could not fit the photosphere in video memory.')
           setStatus('error')
           return
@@ -393,6 +405,16 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
       document.removeEventListener('visibilitychange', repaint)
       window.removeEventListener('pageshow', repaint)
       window.removeEventListener('orientationchange', repaint)
+      // One canvas keeps one context for the component's whole life, and each
+      // round builds a fresh program and texture on it. Without this a
+      // five-round trip strands five panorama textures on the GPU — exactly
+      // the memory pressure that makes a phone take the context away.
+      if (!gl.isContextLost()) {
+        if (texture) gl.deleteTexture(texture)
+        if (quad) gl.deleteBuffer(quad)
+        gl.deleteProgram(program)
+      }
+      texture = null
       renderRef.current = null
     }
   }, [pano.url, attempt])
