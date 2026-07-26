@@ -58,6 +58,10 @@
 .gt-scope.sk-shell,
 .gt-scope .sk-shell {
   min-height: 100vh;
+  /* dvh tracks the space mobile browsers actually leave between their address
+     bar and toolbar; vh does not, which is why the board used to run off the
+     bottom of a phone screen. */
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -903,10 +907,13 @@
   flex: 1;
   min-height: 340px;
 }
+/* The pano fills the viewport by inset rather than `height: 100%`: the
+   viewport's height comes from flexing, which browsers do not treat as a
+   definite height, so a percentage would collapse the photo to the canvas'
+   intrinsic size (that is the mobile "tiny photo, dead space below" bug). */
 .gt-scope .gt-pano {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   background: #111;
   border: 1px solid var(--ink);
@@ -927,6 +934,8 @@
   cursor: default;
 }
 .gt-scope .gt-pano canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -968,6 +977,18 @@
 @keyframes gt-hint-pulse {
   50% {
     opacity: 0.5;
+  }
+}
+/* Same hint, phrased for whichever input the device actually has. */
+.gt-scope .gt-pano-hint-touch {
+  display: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  .gt-scope .gt-pano-hint-desktop {
+    display: none;
+  }
+  .gt-scope .gt-pano-hint-touch {
+    display: inline;
   }
 }
 .gt-scope .gt-pano-watermark {
@@ -1044,6 +1065,15 @@ a.gt-pano-watermark:hover {
   to {
     transform: rotate(360deg);
   }
+}
+.gt-scope .gt-pano-error-hint {
+  max-width: 34ch;
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.55);
 }
 .gt-scope .gt-pano-bar {
   position: relative;
@@ -1652,18 +1682,24 @@ a.gt-pano-watermark:hover {
   .gt-scope .sk-lobby {
     grid-template-columns: 1fr;
   }
+  /* Round + score stay on one line and the flavour/status text drops to a
+     slim second row. Stacking all three cells burned ~180px of a phone
+     screen before the photo even started. */
   .gt-scope .sk-hud {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: 1fr auto;
     min-height: 0;
   }
   .gt-scope .sk-hud-left,
-  .gt-scope .sk-hud-center,
   .gt-scope .sk-hud-right {
-    justify-content: center;
+    padding: 10px 14px;
   }
   .gt-scope .sk-hud-center {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: center;
+    padding: 6px 14px;
     border: 0;
+    border-top: 1px solid var(--line);
   }
   .gt-scope .gt-board-main {
     gap: 14px;
@@ -1683,20 +1719,94 @@ a.gt-pano-watermark:hover {
   }
 }
 @media (max-width: 680px) {
+  /* The board is a single screenful: photo, map and status all have to be
+     reachable without scrolling, so pin the shell to the visible viewport and
+     let the photo absorb whatever height is left over. */
+  .gt-scope.sk-shell:has(.gt-board) {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .gt-scope .sk-topbar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .gt-scope .sk-logo {
+    font-size: 15px;
+    gap: 8px;
+  }
+  .gt-scope .sk-logo-mark {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+  .gt-scope .sk-crumb {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-align: right;
+  }
+  .gt-scope .sk-stage {
+    padding: 24px 14px;
+  }
+  .gt-scope .sk-hud-left,
+  .gt-scope .sk-hud-right {
+    padding: 8px 12px;
+    gap: 10px;
+  }
+  .gt-scope .sk-round-val {
+    font-size: 16px;
+  }
+  .gt-scope .sk-hud-right .sk-round-val {
+    font-size: 14px;
+  }
+  .gt-scope .sk-hud-center {
+    padding: 5px 12px;
+  }
+  .gt-scope .gt-hud-mode {
+    font-size: 9px;
+  }
   .gt-scope .gt-board-main {
     padding: 10px;
-    gap: 12px;
+    gap: 10px;
+    /* Everything is meant to fit, but a long clue or a wrapped deck note must
+       stay reachable rather than get clipped by the shell above. */
+    overflow-y: auto;
   }
   .gt-scope .gt-pano {
     box-shadow: 4px 4px 0 var(--ink);
   }
   .gt-scope .gt-viewport {
-    min-height: 260px;
+    /* A floor in viewport units, not pixels: the photo keeps a usable share of
+       whatever the phone actually gives us instead of forcing the field notes
+       off the bottom of a short screen. */
+    min-height: 32dvh;
+  }
+  /* Field notes get a compact, self-scrolling block so three long clues can
+     never crowd the photo out of the layout. */
+  .gt-scope .gt-briefing {
+    padding: 12px 14px;
+    gap: 8px;
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .gt-scope .gt-briefing ol {
+    gap: 6px 14px;
+    max-height: 22dvh;
+    overflow-y: auto;
+  }
+  .gt-scope .gt-briefing li {
+    flex: 1 1 100%;
+    gap: 8px;
+  }
+  .gt-scope .gt-briefing.aside li {
+    font-size: 12px;
+  }
+  .gt-scope .gt-deck-note {
+    font-size: 9px;
   }
   /* Phones get the map full-bleed when open — a corner panel is unusable. */
   .gt-scope .gt-mapdock {
     right: 8px;
     bottom: 8px;
+    box-shadow: 4px 4px 0 var(--ink);
   }
   .gt-scope .gt-mapdock.is-expanded {
     width: calc(100% - 16px);
@@ -1704,17 +1814,39 @@ a.gt-pano-watermark:hover {
   }
   .gt-scope .gt-mapdock.is-collapsed,
   .gt-scope .gt-mapdock.is-collapsed:hover {
-    width: 42vw;
-    height: 26vw;
+    width: min(200px, 46vw);
+    height: min(120px, 28vw);
+  }
+  .gt-scope .gt-map-open {
+    padding-bottom: 8px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+  }
+  .gt-scope .gt-map-close {
+    width: 34px;
+    height: 34px;
+  }
+  /* Fingertip-sized zoom controls — 26px is a mouse target, not a thumb one. */
+  .gt-scope .gt-zoom {
+    gap: 6px;
+  }
+  .gt-scope .gt-zoom button {
+    width: 38px;
+    height: 38px;
+    font-size: 17px;
+  }
+  /* The minimap is too small to host controls; it opens on tap instead. */
+  .gt-scope .gt-mapdock.is-collapsed .gt-zoom {
+    display: none;
   }
   .gt-scope .gt-locked-badge {
-    bottom: calc(26vw + 16px);
+    bottom: calc(min(120px, 28vw) + 16px);
     right: 8px;
   }
   .gt-scope .gt-players-float {
     top: 8px;
     right: 8px;
-    width: 150px;
+    width: 144px;
     font-size: 11px;
   }
   .gt-scope .gt-compass {
@@ -1722,8 +1854,15 @@ a.gt-pano-watermark:hover {
   }
   .gt-scope .gt-pano-hint {
     font-size: 9px;
-    padding: 7px 12px;
+    padding: 7px 10px;
     left: 10px;
+    bottom: 10px;
+    /* Keep clear of the minimap, which owns the bottom-right corner. */
+    right: calc(min(200px, 46vw) + 18px);
+    white-space: normal;
+  }
+  .gt-scope .gt-pano-watermark {
+    max-width: 60%;
   }
   .gt-scope .gt-guess-actions {
     flex-direction: column;
@@ -1743,6 +1882,12 @@ a.gt-pano-watermark:hover {
   .gt-scope .gt-reveal-head h2 {
     font-size: 30px;
   }
+  .gt-scope .gt-reveal-map .gt-mapwrap {
+    min-height: 240px;
+  }
+  .gt-scope .gt-reveal-verdict strong {
+    font-size: 26px;
+  }
   .gt-scope .gt-reveal-row {
     grid-template-columns: 18px 24px 1fr auto;
     gap: 6px;
@@ -1752,6 +1897,9 @@ a.gt-pano-watermark:hover {
   .gt-scope .gt-reveal-dist {
     display: none;
   }
+  .gt-scope .sk-end h2 {
+    font-size: 36px;
+  }
   .gt-scope .sk-end-cta {
     flex-direction: column;
     align-items: stretch;
@@ -1760,6 +1908,9 @@ a.gt-pano-watermark:hover {
     width: 100%;
   }
   .gt-scope .sk-entry-choose {
+    grid-template-columns: 1fr;
+  }
+  .gt-scope .sk-steps {
     grid-template-columns: 1fr;
   }
   .gt-scope .sk-room-code {

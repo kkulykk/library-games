@@ -212,6 +212,78 @@ const TINY_JPEG = Buffer.from(
   'base64'
 )
 
+type GlCounts = {
+  createProgram: number
+  deleteProgram: number
+  createTexture: number
+  deleteTexture: number
+  createBuffer: number
+  deleteBuffer: number
+}
+
+/**
+ * Count WebGL object churn, and optionally make the first few texture uploads
+ * fail the way a mobile driver does.
+ *
+ * The panorama viewer keeps one canvas — and therefore one context — for its
+ * whole life, rebuilding a program and a texture per round on top of it, so
+ * anything it allocates and never releases simply piles up on the GPU.
+ */
+async function instrumentWebGL(page: Page, failedUploads = 0): Promise<void> {
+  await page.addInitScript((failures: number) => {
+    const counts = {
+      createProgram: 0,
+      deleteProgram: 0,
+      createTexture: 0,
+      deleteTexture: 0,
+      createBuffer: 0,
+      deleteBuffer: 0,
+    }
+    const scope = window as unknown as {
+      __glCounts: typeof counts
+      __glContext?: WebGLRenderingContext
+    }
+    scope.__glCounts = counts
+
+    const original = HTMLCanvasElement.prototype.getContext
+    type Wrapped = WebGLRenderingContext & { __counted?: boolean }
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      ...args: unknown[]
+    ) {
+      const context = (original as (...a: unknown[]) => unknown).apply(this, args) as Wrapped | null
+      if (!context || !String(args[0]).includes('webgl') || context.__counted) return context
+      context.__counted = true
+      scope.__glContext = context
+
+      const spied = context as unknown as Record<string, (...a: unknown[]) => unknown>
+      for (const name of Object.keys(counts) as (keyof typeof counts)[]) {
+        const inner = spied[name].bind(context)
+        spied[name] = (...callArgs: unknown[]) => {
+          counts[name] += 1
+          return inner(...callArgs)
+        }
+      }
+
+      let remaining = failures
+      const upload = spied.texImage2D.bind(context)
+      spied.texImage2D = (...callArgs: unknown[]) => {
+        if (remaining > 0) {
+          remaining -= 1
+          // How Safari refuses an ImageBitmap its driver will not take.
+          throw new TypeError('simulated driver rejection')
+        }
+        return upload(...callArgs)
+      }
+      return context
+    } as typeof HTMLCanvasElement.prototype.getContext
+  }, failedUploads)
+}
+
+function readGlCounts(page: Page): Promise<GlCounts> {
+  return page.evaluate(() => (window as unknown as { __glCounts: GlCounts }).__glCounts)
+}
+
 test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
   /**
    * Commons double for the two-request pipeline: one `generator=categorymembers`
@@ -252,7 +324,9 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
             title,
             imageinfo: [
               {
-                thumburl: `https://upload.wikimedia.org/mock-${index}.jpg`,
+                // Shaped like a real Commons rendition: the client rewrites the
+                // `NNNpx-` segment to pick a size its screen can use.
+                thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Mock_pano_${index}.jpg/3840px-Mock_pano_${index}.jpg`,
                 extmetadata: {
                   Artist: { value: 'Mock Mapper' },
                   LicenseShortName: { value: 'CC BY-SA 4.0' },
@@ -328,6 +402,118 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     await expect(solo.soloButton).toBeVisible()
   })
 
+  test.describe('touch map navigation', () => {
+    test.use({ viewport: { width: 390, height: 664 }, hasTouch: true })
+
+    test('pinches to zoom, drags to pan, and only taps drop a pin', async ({ page }) => {
+      await mockCommons(page)
+
+      const solo = new GlobetrotterPage(page)
+      await solo.goto()
+      await solo.dismissPlayGate()
+      await solo.soloButton.click()
+      await expect(solo.pano).toBeVisible()
+      await solo.expandMap()
+      // The dock animates open; gestures need the settled element box.
+      await expect(solo.lockGuessButton).toBeDisabled()
+      await page.waitForTimeout(600)
+
+      const cdp = await page.context().newCDPSession(page)
+      const dispatch = (
+        type: 'touchStart' | 'touchMove' | 'touchEnd',
+        points: [number, number][]
+      ) =>
+        cdp.send('Input.dispatchTouchEvent', {
+          type,
+          touchPoints: points.map(([x, y], index) => ({ x, y, id: index + 1 })),
+        })
+
+      const box = (await solo.map.boundingBox())!
+      const cx = Math.round(box.x + box.width / 2)
+      const cy = Math.round(box.y + box.height / 2)
+      const viewWidth = async () => Number((await solo.map.getAttribute('viewBox'))!.split(' ')[2])
+      const viewX = async () => Number((await solo.map.getAttribute('viewBox'))!.split(' ')[0])
+      const pins = () => page.locator('.gt-map-pin').count()
+
+      // Spread two fingers: the map zooms in and drops nothing.
+      const worldWidth = await viewWidth()
+      await dispatch('touchStart', [
+        [cx - 30, cy],
+        [cx + 30, cy],
+      ])
+      for (let step = 1; step <= 8; step++) {
+        const spread = 30 + step * 15
+        await dispatch('touchMove', [
+          [cx - spread, cy],
+          [cx + spread, cy],
+        ])
+      }
+      await dispatch('touchEnd', [])
+      expect(await viewWidth()).toBeLessThan(worldWidth / 2)
+      expect(await pins()).toBe(0)
+
+      // One finger drags the map rather than dropping a pin.
+      const beforePan = await viewX()
+      await dispatch('touchStart', [[cx, cy]])
+      for (let step = 1; step <= 6; step++) await dispatch('touchMove', [[cx - step * 12, cy]])
+      await dispatch('touchEnd', [])
+      expect(await viewX()).toBeGreaterThan(beforePan)
+      expect(await pins()).toBe(0)
+
+      // Closing the fingers zooms back out.
+      const zoomedWidth = await viewWidth()
+      await dispatch('touchStart', [
+        [cx - 120, cy],
+        [cx + 120, cy],
+      ])
+      for (let step = 1; step <= 8; step++) {
+        const spread = 120 - step * 12
+        await dispatch('touchMove', [
+          [cx - spread, cy],
+          [cx + spread, cy],
+        ])
+      }
+      await dispatch('touchEnd', [])
+      expect(await viewWidth()).toBeGreaterThan(zoomedWidth)
+
+      // A plain tap is still how a pin gets placed.
+      await dispatch('touchStart', [[cx, cy]])
+      await dispatch('touchEnd', [])
+      await expect(solo.lockGuessButton).toBeEnabled()
+      expect(await pins()).toBe(1)
+    })
+  })
+
+  test('fits the whole board on a phone screen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 664 })
+    await mockCommons(page)
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+    await expect(solo.pano).toBeVisible()
+
+    const layout = await page.evaluate(() => {
+      const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect()
+      return {
+        innerHeight: window.innerHeight,
+        scrollHeight: document.documentElement.scrollHeight,
+        viewportHeight: rect('.gt-viewport').height,
+        panoHeight: rect('.gt-pano').height,
+        mapDockBottom: rect('.gt-mapdock').bottom,
+      }
+    })
+
+    // The photo fills the slot reserved for it. It used to collapse to the
+    // canvas' intrinsic size, leaving a band of dead space underneath.
+    expect(layout.panoHeight).toBeCloseTo(layout.viewportHeight, 0)
+    expect(layout.panoHeight).toBeGreaterThan(200)
+    // Everything — photo, minimap, field notes — sits inside one screenful.
+    expect(layout.scrollHeight).toBeLessThanOrEqual(layout.innerHeight + 1)
+    expect(layout.mapDockBottom).toBeLessThanOrEqual(layout.innerHeight)
+  })
+
   test('shows scouting progress while the deck is assembled', async ({ page }) => {
     await mockCommons(page)
     let release: () => void = () => {}
@@ -368,6 +554,136 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
 
     await solo.placeAndLockGuess(0.5, 0.5)
     await expect(solo.reveal).toBeVisible()
+  })
+
+  test('only ever asks Wikimedia for a rendition it will serve', async ({ page }) => {
+    // upload.wikimedia.org rejects any width off its standard ladder with a
+    // 400 ("Use thumbnail sizes listed on https://w.wiki/GHai"), so a phone
+    // asking for a convenient 2048px gets nothing at all.
+    const STANDARD = [20, 40, 60, 120, 250, 330, 500, 960, 1280, 1920, 3840]
+    const widths: number[] = []
+    await mockCommons(page)
+    // Registered after mockCommons so it wins over its blanket image route.
+    await page.route('https://upload.wikimedia.org/**', (route) => {
+      const width = Number(
+        route
+          .request()
+          .url()
+          .match(/\/(\d+)px-/)?.[1]
+      )
+      if (Number.isFinite(width)) widths.push(width)
+      return route.fulfill({
+        status: STANDARD.includes(width) ? 200 : 400,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'image/jpeg',
+        body: TINY_JPEG,
+      })
+    })
+    await page.setViewportSize({ width: 390, height: 664 })
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+    await expect(solo.pano).toBeVisible()
+    await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
+
+    expect(widths.length).toBeGreaterThan(0)
+    expect(widths.filter((width) => !STANDARD.includes(width))).toEqual([])
+    // A phone takes the small rendition, not the 1.2 MB one.
+    expect(widths[0]).toBe(1920)
+    await expect(page.getByTestId('globetrotter-pano-error')).toBeHidden()
+  })
+
+  test('hands back the GPU resources of the round it just left', async ({ page }) => {
+    await instrumentWebGL(page)
+    await mockCommons(page)
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+    await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
+
+    await solo.placeAndLockGuess(0.4, 0.4)
+    await expect(solo.reveal).toBeVisible()
+    await solo.advanceRound()
+    await solo.expectStatus('Round 2 of 5')
+    await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
+
+    const counts = await readGlCounts(page)
+    // Two rounds, two builds — otherwise the assertions below prove nothing.
+    expect(counts.createProgram).toBeGreaterThan(1)
+    // Only the round on screen is allowed to still hold anything. Every
+    // earlier round's texture is several megabytes of video memory, and a
+    // phone answers that pressure by taking the context away entirely.
+    expect(counts.createProgram - counts.deleteProgram).toBeLessThanOrEqual(1)
+    expect(counts.createTexture - counts.deleteTexture).toBeLessThanOrEqual(1)
+    expect(counts.createBuffer - counts.deleteBuffer).toBeLessThanOrEqual(1)
+  })
+
+  test('rebuilds itself when the browser takes the WebGL context away', async ({ page }) => {
+    await instrumentWebGL(page)
+    await mockCommons(page)
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+    await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
+    const before = (await readGlCounts(page)).createProgram
+
+    await page.evaluate(() => {
+      const context = (window as unknown as { __glContext: WebGLRenderingContext }).__glContext
+      const ext = context.getExtension('WEBGL_lose_context')!
+      ext.loseContext()
+      setTimeout(() => ext.restoreContext(), 50)
+    })
+
+    // The viewer comes back on its own — no Try again, no dead black box.
+    await expect
+      .poll(async () => (await readGlCounts(page)).createProgram, { timeout: 15000 })
+      .toBeGreaterThan(before)
+    await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
+    await expect(page.getByTestId('globetrotter-pano-error')).toBeHidden()
+  })
+
+  test('recovers when the driver refuses the first texture upload', async ({ page }) => {
+    // One rejection: enough to force the ladder's first rung, a 2D-canvas copy
+    // of the source, which is what gets a stubborn mobile driver to accept it.
+    await instrumentWebGL(page, 1)
+    await mockCommons(page)
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+
+    await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
+    await expect(page.getByTestId('globetrotter-pano-error')).toBeHidden()
+    // The compass only renders once a texture is live on the context.
+    await expect(page.locator('.gt-compass')).toBeVisible()
+  })
+
+  test('names the reason a photosphere would not load', async ({ page }) => {
+    await mockCommons(page)
+    await page.route('https://upload.wikimedia.org/**', (route) =>
+      route.fulfill({
+        status: 400,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'text/html',
+        body: 'Use thumbnail sizes listed on https://w.wiki/GHai',
+      })
+    )
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+
+    // An opaque "would not load" sends players to Try again forever; the
+    // status code says whether it is the archive, the network or the device.
+    await expect(page.getByTestId('globetrotter-pano-error-hint')).toContainText('400')
   })
 })
 

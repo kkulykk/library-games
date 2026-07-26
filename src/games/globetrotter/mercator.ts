@@ -100,6 +100,36 @@ export function zoomView(view: ViewBox, anchor: Point, factor: number, aspect: n
   )
 }
 
+/** A two-finger gesture, in fractions of the map element (0 = left/top, 1 = right/bottom). */
+export interface PinchGesture {
+  /** Where the midpoint between the fingers sat when the gesture began. */
+  from: Point
+  /** Where that midpoint sits now. */
+  to: Point
+  /** Current finger separation ÷ the separation the gesture began at. */
+  scale: number
+}
+
+/**
+ * Zoom and pan in one step, the way a pinch actually behaves: the piece of the
+ * world the fingers grabbed stays pinned under them, so spreading zooms in and
+ * sliding both fingers drags the map at the same time.
+ */
+export function pinchView(origin: ViewBox, gesture: PinchGesture, aspect: number): ViewBox {
+  const scale = gesture.scale > 0 && Number.isFinite(gesture.scale) ? gesture.scale : 1
+  const zoomed = clampView({ ...origin, w: origin.w / scale }, aspect)
+  const anchorX = origin.x + gesture.from.x * origin.w
+  const anchorY = origin.y + gesture.from.y * origin.h
+  return clampView(
+    {
+      ...zoomed,
+      x: anchorX - gesture.to.x * zoomed.w,
+      y: anchorY - gesture.to.y * zoomed.h,
+    },
+    aspect
+  )
+}
+
 /** Roughly 25 km across at the equator — close enough to read streets. */
 export const CLOSE_VIEW_WIDTH = (WORLD_SIZE * 25) / 40075
 

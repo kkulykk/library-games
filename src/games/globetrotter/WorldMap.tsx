@@ -11,6 +11,7 @@ import {
   clampView,
   easeInOut,
   lerpView,
+  pinchView,
   project,
   tileBox,
   tileKey,
@@ -19,6 +20,7 @@ import {
   unproject,
   visibleTiles,
   worldView,
+  zoomView,
   WORLD_SIZE,
   type Point,
   type Tile,
@@ -69,6 +71,9 @@ const TILE_ERROR_LIMIT = 6
 
 // Screen-pixel movement below this is a click (drop a pin), above it a pan.
 const CLICK_SLOP_PX = 5
+// A fingertip wobbles far more than a mouse, and it covers the point it is
+// aiming at — hold a tap open wider on touch or every pin drop reads as a pan.
+const TOUCH_CLICK_SLOP_PX = 12
 /** Wait for the camera to rest this long before asking for tiles. */
 const TILE_SETTLE_MS = 220
 /** Name a country only once it is this wide on screen, and never crowd the map. */
@@ -188,12 +193,21 @@ export function WorldMap({
   // Mirrors `view` so a fly-to can read the live camera without re-subscribing.
   const viewRef = useRef(view)
   viewRef.current = view
-  const dragRef = useRef<{
-    pointerId: number
+  // Every pointer currently on the map, so two fingers can pinch and a lifted
+  // finger can hand the gesture back to the one still down.
+  const pointersRef = useRef(new Map<number, Point>())
+  const gestureRef = useRef<{
+    /** One pointer drags the map; two zoom and drag it together. */
+    mode: 'pan' | 'pinch'
+    /** Camera the gesture started from — every frame is measured against it. */
+    origin: ViewBox
     startX: number
     startY: number
-    origin: ViewBox
+    startDistance: number
     moved: boolean
+    /** A second finger joined at some point, so this can never end as a tap. */
+    multi: boolean
+    slop: number
   } | null>(null)
 
   // Measure the element: the projection is square, so the viewBox height has to
@@ -374,18 +388,7 @@ export function WorldMap({
     const anchor = toWorldPoint(clientX, clientY)
     if (!anchor) return
     stopFlight()
-    setView((current) => {
-      const next = clampView({ ...current, w: current.w / factor }, aspect)
-      const ratio = next.w / current.w
-      return clampView(
-        {
-          ...next,
-          x: anchor.x - (anchor.x - current.x) * ratio,
-          y: anchor.y - (anchor.y - current.y) * ratio,
-        },
-        aspect
-      )
-    })
+    setView((current) => zoomView(current, anchor, factor, aspect))
   }
 
   function zoomCentered(factor: number) {
@@ -407,35 +410,93 @@ export function WorldMap({
     return () => svg.removeEventListener('wheel', onWheel)
   })
 
+  /** Midpoint and spread of whatever is currently touching the map. */
+  function pointerStats() {
+    const points = [...pointersRef.current.values()]
+    if (points.length === 0) return { count: 0, midX: 0, midY: 0, distance: 0 }
+    const midX = points.reduce((sum, point) => sum + point.x, 0) / points.length
+    const midY = points.reduce((sum, point) => sum + point.y, 0) / points.length
+    const distance =
+      points.length >= 2 ? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y) : 0
+    return { count: points.length, midX, midY, distance }
+  }
+
+  /**
+   * (Re)anchor the gesture on the pointers that are down right now. Called
+   * whenever a finger joins or leaves, so the map picks up from where it is
+   * instead of snapping back to where the gesture originally started.
+   */
+  function restartGesture(seed: { moved: boolean; multi: boolean; slop: number }) {
+    const stats = pointerStats()
+    if (stats.count === 0) {
+      gestureRef.current = null
+      return
+    }
+    gestureRef.current = {
+      mode: stats.count >= 2 ? 'pinch' : 'pan',
+      origin: viewRef.current,
+      startX: stats.midX,
+      startY: stats.midY,
+      startDistance: stats.distance,
+      ...seed,
+    }
+  }
+
   function handlePointerDown(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.button !== 0) return
     stopFlight()
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      origin: view,
-      moved: false,
-    }
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
     event.currentTarget.setPointerCapture(event.pointerId)
+    const previous = gestureRef.current
+    const multi = pointersRef.current.size > 1 || (previous?.multi ?? false)
+    restartGesture({
+      moved: multi || (previous?.moved ?? false),
+      multi,
+      slop: event.pointerType === 'mouse' ? CLICK_SLOP_PX : TOUCH_CLICK_SLOP_PX,
+    })
   }
 
   function handlePointerMove(event: ReactPointerEvent<SVGSVGElement>) {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
+    if (!pointersRef.current.has(event.pointerId)) return
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    const gesture = gestureRef.current
     const rect = svgRef.current?.getBoundingClientRect()
-    if (!rect || rect.width === 0) return
-    const dxPx = event.clientX - drag.startX
-    const dyPx = event.clientY - drag.startY
-    if (!drag.moved && Math.hypot(dxPx, dyPx) < CLICK_SLOP_PX) return
-    drag.moved = true
-    const unitsPerPx = drag.origin.w / rect.width
+    if (!gesture || !rect || rect.width === 0 || rect.height === 0) return
+    const stats = pointerStats()
+
+    if (gesture.mode === 'pinch' && stats.count >= 2 && gesture.startDistance > 0) {
+      gesture.moved = true
+      setView(
+        pinchView(
+          gesture.origin,
+          {
+            from: {
+              x: (gesture.startX - rect.left) / rect.width,
+              y: (gesture.startY - rect.top) / rect.height,
+            },
+            to: {
+              x: (stats.midX - rect.left) / rect.width,
+              y: (stats.midY - rect.top) / rect.height,
+            },
+            scale: stats.distance / gesture.startDistance,
+          },
+          aspect
+        )
+      )
+      return
+    }
+
+    const dxPx = stats.midX - gesture.startX
+    const dyPx = stats.midY - gesture.startY
+    if (!gesture.moved && Math.hypot(dxPx, dyPx) < gesture.slop) return
+    gesture.moved = true
+    const unitsPerPx = gesture.origin.w / rect.width
     setView(
       clampView(
         {
-          ...drag.origin,
-          x: drag.origin.x - dxPx * unitsPerPx,
-          y: drag.origin.y - dyPx * unitsPerPx,
+          ...gesture.origin,
+          x: gesture.origin.x - dxPx * unitsPerPx,
+          y: gesture.origin.y - dyPx * unitsPerPx,
         },
         aspect
       )
@@ -443,13 +504,29 @@ export function WorldMap({
   }
 
   function handlePointerUp(event: ReactPointerEvent<SVGSVGElement>) {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-    dragRef.current = null
-    if (drag.moved || !interactive || !onSelect) return
+    if (!pointersRef.current.delete(event.pointerId)) return
+    const gesture = gestureRef.current
+    if (pointersRef.current.size > 0) {
+      // One finger of a pinch lifted: carry on panning with what is left,
+      // still disqualified from dropping a pin when it finally comes up.
+      restartGesture({ moved: true, multi: true, slop: gesture?.slop ?? CLICK_SLOP_PX })
+      return
+    }
+    gestureRef.current = null
+    if (!gesture || gesture.moved || gesture.multi || !interactive || !onSelect) return
     const point = toWorldPoint(event.clientX, event.clientY)
     if (!point) return
     onSelect(unproject(point.x, point.y))
+  }
+
+  /** A cancelled pointer (browser took the gesture over) drops a pin nowhere. */
+  function handlePointerCancel(event: ReactPointerEvent<SVGSVGElement>) {
+    if (!pointersRef.current.delete(event.pointerId)) return
+    if (pointersRef.current.size > 0) {
+      restartGesture({ moved: true, multi: true, slop: gestureRef.current?.slop ?? CLICK_SLOP_PX })
+      return
+    }
+    gestureRef.current = null
   }
 
   const targetXY = target ? project(target.lat, target.lng) : null
@@ -468,6 +545,7 @@ export function WorldMap({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         className={cn('gt-map-svg', interactive && 'is-pickable', flying && 'is-flying')}
       >
         <defs>
