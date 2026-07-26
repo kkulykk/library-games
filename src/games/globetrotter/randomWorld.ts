@@ -6,12 +6,15 @@
 // a static site can query it directly from the browser.
 //
 // Commons rate-limits anonymous bursts (HTTP 429) and rendering a large
-// thumbnail is slow, so the pipeline is deliberately frugal: one cheap
-// `generator=categorymembers` request returns up to 50 candidates with their
-// coordinates and dimensions, and only the handful of files that actually make
-// the deck get a thumbnail rendered — in a single follow-up request. When
-// Commons is unreachable or too stingy, `buildRandomWorldDeck` tops the deck up
-// from the vendored reserve so the mode is always playable.
+// thumbnail is slow, so the pipeline is deliberately frugal: a cheap
+// `generator=categorymembers` request returns a wide window of candidates with
+// their coordinates and dimensions, and only the handful of files that actually
+// make the deck get a thumbnail rendered — in a single follow-up request. The
+// budget is spent on *wider* sweeps rather than more of them, because the limit
+// counts requests and a wide window is what lets a deck span several uploaders
+// instead of five frames of one photographer's series. When Commons is
+// unreachable or too stingy, `buildRandomWorldDeck` tops the deck up from the
+// vendored reserve so the mode is always playable.
 //
 // Pure async data module — no React. `fetch` and `random` are injectable so
 // the whole pipeline is unit-testable offline.
@@ -37,12 +40,37 @@ const ASPECT_TOLERANCE = 0.05
 // Files from one Mapillary drive are seconds apart; keep rounds genuinely
 // distinct by requiring pins at least this far apart.
 const MIN_SEPARATION_KM = 50
-/** Cheap candidate sweeps per deck — each is one request returning ~50 files. */
+/** Cheap candidate sweeps per deck — each is one request returning `BATCH_SIZE` files. */
 const MAX_BATCHES = 4
-const BATCH_SIZE = 50
+/**
+ * Category members per sweep.
+ *
+ * Commons rate-limits by request, not by result, so a wide window is the cheap
+ * way to see more of the category: 500 members is one request where ten sweeps
+ * of 50 would be ten, and a deck drawn from a 500-file slice spans many more
+ * uploaders than one drawn from a 50-file slice — which is usually a single
+ * photographer's series.
+ */
+const BATCH_SIZE = 500
 const REQUEST_TIMEOUT_MS = 12000
 /** Breather between sweeps; a burst of requests is what trips Commons' 429. */
 const BATCH_PAUSE_MS = 350
+/**
+ * Rounds one sweep may contribute before the deck moves to another window.
+ *
+ * A window is a contiguous run of the category, and contiguous runs are one
+ * photographer's series — a hundred burial mounds, one library's reading rooms.
+ * Those clear the separation rule (they are kilometres apart) while still
+ * handing the player five versions of the same photograph, so a deck that comes
+ * from one window is a deck that barely changes.
+ *
+ * Three per sweep costs a five-round deck a second window and leaves half the
+ * sweep budget spare for windows that come back thin or rate-limited. Tighter
+ * caps were measured and are worse: at two per sweep the deck needs three
+ * windows, which trips Commons' burst limit often enough to land back on the
+ * reserve — the very repetition the cap is here to prevent.
+ */
+const MAX_PER_BATCH = 3
 
 // Category members can be walked two ways. By sort key the corpus is dominated
 // by files named "Mapillary (<user>…", so most prefixes dive into street
@@ -224,6 +252,10 @@ async function collectCandidates(
   deps: RandomWorldDeps
 ): Promise<Candidate[]> {
   const picked: Candidate[] = []
+  // Usable finds the per-sweep cap turned away. A later sweep that comes back
+  // rate-limited would otherwise send the deck to the reserve while these sit
+  // unspent, so they finish it instead — at the cost of no extra request.
+  const spare: Candidate[] = []
   for (let batch = 0; batch < MAX_BATCHES && picked.length < count; batch++) {
     if (batch > 0) await pause(BATCH_PAUSE_MS)
     if (deps.signal?.aborted) break
@@ -240,6 +272,14 @@ async function collectCandidates(
           prop: 'imageinfo|coordinates',
           iiprop: 'size|mime|extmetadata',
           iiextmetadatafilter: 'Artist|LicenseShortName',
+          // The sweep's real bottleneck. `prop=coordinates` fills in only
+          // `colimit` pages per request and that defaults to *10*, so all but
+          // ten files of every window came back geotag-less and were dropped by
+          // `readCandidates` as if Commons had never geotagged them. That left
+          // too few usable finds to fill a deck, and the shortfall was topped
+          // up from the 25-photo offline reserve — the same panoramas, game
+          // after game.
+          colimit: 'max',
         },
         deps.signal
       )) as PagesResponse
@@ -247,12 +287,25 @@ async function collectCandidates(
       // A rate-limited or flaky sweep is not fatal — try the next window.
       continue
     }
+    let taken = 0
     for (const candidate of shuffle(readCandidates(response), random)) {
       if (picked.length >= count) break
       if (!farEnough(candidate, picked)) continue
+      if (taken >= MAX_PER_BATCH) {
+        spare.push(candidate)
+        continue
+      }
       picked.push(candidate)
+      taken += 1
       deps.onProgress?.(picked.length, count)
     }
+  }
+
+  for (const candidate of spare) {
+    if (picked.length >= count) break
+    if (!farEnough(candidate, picked)) continue
+    picked.push(candidate)
+    deps.onProgress?.(picked.length, count)
   }
   return picked
 }
