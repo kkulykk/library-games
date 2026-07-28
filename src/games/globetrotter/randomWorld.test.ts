@@ -11,6 +11,8 @@ interface DoubleOptions {
   perBatch?: number
   /** Fail every sweep with this status (429 = Commons rate limiting). */
   failStatus?: number
+  /** Serve this many sweeps normally before `failStatus` starts biting. */
+  failAfterBatch?: number
   /** Fail only the thumbnail-resolving request. */
   failThumbnails?: boolean
 }
@@ -22,13 +24,14 @@ function makeFetchDouble(options: DoubleOptions = {}) {
   const perBatch = options.perBatch ?? 3
   let batch = 0
   const calls: string[] = []
+  const windows = new Map<string, number>()
 
   const fetchFn = (async (input: RequestInfo | URL) => {
     const url = String(input)
     calls.push(url)
     const isSweep = url.includes('generator=categorymembers')
 
-    if (options.failStatus && isSweep) {
+    if (options.failStatus && isSweep && batch >= (options.failAfterBatch ?? 0)) {
       return { ok: false, status: options.failStatus } as Response
     }
     if (options.failThumbnails && !isSweep) {
@@ -38,15 +41,19 @@ function makeFetchDouble(options: DoubleOptions = {}) {
     let body: unknown
     if (isSweep) {
       batch++
+      const params = new URL(url).searchParams
+      const window = params.get('gcmstart') ?? params.get('gcmstartsortkeyprefix') ?? ''
+      const windowNumber = windows.get(window) ?? windows.size + 1
+      windows.set(window, windowNumber)
       const height = 2000
       const width = Math.round(height * (options.ratio ?? 2))
       const pages: Record<string, unknown> = {}
       for (let i = 0; i < perBatch; i++) {
         // ~5° apart: comfortably past the 50 km minimum separation.
-        const lat = 10 + batch * 5 + i * 5
-        const lng = 20 + batch * 5 + i * 5
+        const lat = 10 + windowNumber * 5 + i * 5
+        const lng = 20 + windowNumber * 5 + i * 5
         pages[String(i)] = {
-          title: `File:Pano ${batch}-${i}.jpg`,
+          title: `File:Pano ${windowNumber}-${i}.jpg`,
           imageinfo: [
             {
               width,
@@ -91,6 +98,13 @@ function makeFetchDouble(options: DoubleOptions = {}) {
 
 const fixedRandom = () => 0.5
 
+function seededRandom(seed: number): () => number {
+  return () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0
+    return seed / 2 ** 32
+  }
+}
+
 describe('fetchRandomWorldDeck', () => {
   it('assembles a deck of distinct, playable panorama locations', async () => {
     const { fetchFn } = makeFetchDouble()
@@ -113,13 +127,72 @@ describe('fetchRandomWorldDeck', () => {
     }
   })
 
-  it('needs only two requests for a full deck', async () => {
+  it('stays frugal: a full deck costs a sweep per few rounds plus one render', async () => {
     const { fetchFn, calls } = makeFetchDouble({ perBatch: 5 })
     await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
 
-    expect(calls).toHaveLength(2)
-    expect(calls[0]).toContain('generator=categorymembers')
-    expect(calls[1]).toContain('iiurlwidth=')
+    // Two sweeps (three rounds is the most any one window may contribute) and
+    // the single request that renders every thumbnail the deck needs.
+    expect(calls).toHaveLength(3)
+    expect(calls.filter((url) => url.includes('generator=categorymembers'))).toHaveLength(2)
+    expect(calls.filter((url) => url.includes('iiurlwidth='))).toHaveLength(1)
+  })
+
+  // The bug this guards: `prop=coordinates` fills in only `colimit` pages per
+  // request, defaulting to 10. Every file past the tenth came back geotag-less
+  // and was dropped, so sweeps almost never found five usable panoramas and the
+  // deck was topped up from the reserve — the same photos every game.
+  it('asks Commons for a wide window and geotags every file in it', async () => {
+    const { fetchFn, calls } = makeFetchDouble({ perBatch: 5 })
+    await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
+
+    for (const sweep of calls.filter((url) => url.includes('generator=categorymembers'))) {
+      expect(sweep).toContain('gcmlimit=500')
+      expect(sweep).toContain('colimit=max')
+    }
+  })
+
+  it('draws a deck from several windows instead of one photographer’s series', async () => {
+    // One window offers far more than a deck needs; a single sweep could fill
+    // it, and every round would come from the same contiguous run of uploads.
+    const { fetchFn, calls } = makeFetchDouble({ perBatch: 20 })
+    const deck = await fetchRandomWorldDeck(5, { fetchFn, random: seededRandom(181) })
+
+    const windows = calls
+      .filter((url) => url.includes('generator=categorymembers'))
+      .map((url) => {
+        const params = new URL(url).searchParams
+        return params.get('gcmstart') ?? params.get('gcmstartsortkeyprefix')
+      })
+    expect(new Set(windows).size).toBeGreaterThan(1)
+
+    // The double names files `Pano <sweep>-<index>`, so the sweep each round
+    // came from is readable straight off the panorama URL.
+    const sweeps = new Set(
+      deck.map((spot) => decodeURIComponent(spot.pano!.url).match(/Pano (\d+)-/)![1])
+    )
+    expect(sweeps.size).toBeGreaterThan(1)
+    for (const sweep of sweeps) {
+      const fromSweep = deck.filter((spot) =>
+        decodeURIComponent(spot.pano!.url).includes(`Pano ${sweep}-`)
+      )
+      expect(fromSweep.length).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it('finishes a deck with finds held back by an earlier sweep when the next one fails', async () => {
+    // Sweep 1 is rich but capped; sweep 2 is rate-limited. The finds turned
+    // away by the cap complete the deck immediately rather than letting it fall
+    // short or waiting for more failed sweeps.
+    const { fetchFn, calls } = makeFetchDouble({ perBatch: 20, failStatus: 429, failAfterBatch: 1 })
+    const deck = await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
+
+    expect(deck).toHaveLength(5)
+    expect(calls.filter((url) => url.includes('generator=categorymembers'))).toHaveLength(2)
+    const contributingWindows = new Set(
+      deck.map((spot) => decodeURIComponent(spot.pano!.url).match(/Pano (\d+)-/)![1])
+    )
+    expect(contributingWindows.size).toBe(1)
   })
 
   it('reports progress as the deck fills up', async () => {

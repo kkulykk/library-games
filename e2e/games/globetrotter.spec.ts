@@ -603,6 +603,10 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     await solo.goto()
     await solo.dismissPlayGate()
     await solo.soloButton.click()
+    // The board has to exist before "not loading" means anything — on the
+    // scouting screen there is no panorama, so the loading bar is absent and
+    // `toBeHidden` passes without a round having started.
+    await expect(solo.pano).toBeVisible()
     await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
 
     await solo.placeAndLockGuess(0.4, 0.4)
@@ -630,6 +634,9 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     await solo.goto()
     await solo.dismissPlayGate()
     await solo.soloButton.click()
+    // Scouting renders no panorama, so wait for the board itself — otherwise
+    // there is no context on `window.__glContext` to take away below.
+    await expect(solo.pano).toBeVisible()
     await expect(page.getByTestId('globetrotter-pano-loading')).toBeHidden()
     const before = (await readGlCounts(page)).createProgram
 
