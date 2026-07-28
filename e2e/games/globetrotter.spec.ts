@@ -284,7 +284,56 @@ function readGlCounts(page: Page): Promise<GlCounts> {
   return page.evaluate(() => (window as unknown as { __glCounts: GlCounts }).__glCounts)
 }
 
-test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
+test.describe('Globetrotter solo (Random World, mocked archives)', () => {
+  /** Panoramax host serving pictures in these tests — one of the CSP allowlist. */
+  const PANORAMAX_HOST = 'https://panoramax.openstreetmap.fr'
+
+  /**
+   * Panoramax double: one STAC `/api/search` per sweep, answering with
+   * spherical pictures inside whatever bounding box was asked for, so a deck
+   * always has a second archive to draw from. Registered by `mockArchives`;
+   * a test that wants Panoramax down routes over it afterwards.
+   */
+  async function mockPanoramax(page: Page): Promise<void> {
+    await page.route('https://api.panoramax.xyz/**', async (route) => {
+      const bbox = (new URL(route.request().url()).searchParams.get('bbox') ?? '')
+        .split(',')
+        .map(Number)
+      const features = [0, 1].map((i) => {
+        const id = `mock-pic-${bbox[0].toFixed(0)}-${i}`
+        return {
+          id,
+          geometry: { type: 'Point', coordinates: [bbox[0] + i, bbox[1] + i] },
+          assets: {
+            sd: { href: `${PANORAMAX_HOST}/derivates/${id}/sd.jpg`, type: 'image/jpeg' },
+          },
+          providers: [{ name: 'Mock Panoramaxer', roles: ['producer'] }],
+          properties: {
+            license: 'CC-BY-SA-4.0',
+            'pers:interior_orientation': {
+              field_of_view: 360,
+              sensor_array_dimensions: [5760, 2880],
+            },
+          },
+        }
+      })
+      await route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({ features }),
+      })
+    })
+    await page.route(`${PANORAMAX_HOST}/**`, (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'image/jpeg',
+        body: TINY_JPEG,
+      })
+    )
+  }
+
   /**
    * Commons double for the two-request pipeline: one `generator=categorymembers`
    * sweep listing geotagged photospheres, then one `titles=…&iiurlwidth=…`
@@ -364,8 +413,18 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     )
   }
 
-  test('scouts a deck, plays a round, reveals the country', async ({ page }) => {
+  /**
+   * Every archive a deck is drawn from. A deck is split between them, so a run
+   * that stubs only one still reaches the network for the other — which is
+   * exactly the nondeterminism e2e is here to keep out.
+   */
+  async function mockArchives(page: Page): Promise<void> {
     await mockCommons(page)
+    await mockPanoramax(page)
+  }
+
+  test('scouts a deck, plays a round, reveals the country', async ({ page }) => {
+    await mockArchives(page)
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()
@@ -406,7 +465,7 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     test.use({ viewport: { width: 390, height: 664 }, hasTouch: true })
 
     test('pinches to zoom, drags to pan, and only taps drop a pin', async ({ page }) => {
-      await mockCommons(page)
+      await mockArchives(page)
 
       const solo = new GlobetrotterPage(page)
       await solo.goto()
@@ -486,7 +545,7 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
 
   test('fits the whole board on a phone screen', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 664 })
-    await mockCommons(page)
+    await mockArchives(page)
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()
@@ -515,16 +574,19 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
   })
 
   test('shows scouting progress while the deck is assembled', async ({ page }) => {
-    await mockCommons(page)
+    await mockArchives(page)
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
-    // Hold the first sweep open so the scouting screen is observable.
-    await page.route('https://commons.wikimedia.org/**', async (route) => {
-      await held
-      await route.fallback()
-    })
+    // Hold both archives' first sweep open so the scouting screen is
+    // observable — one archive still answering would fill the counter.
+    for (const archive of ['https://commons.wikimedia.org/**', 'https://api.panoramax.xyz/**']) {
+      await page.route(archive, async (route) => {
+        await held
+        await route.fallback()
+      })
+    }
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()
@@ -537,9 +599,11 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     await expect(solo.pano).toBeVisible()
   })
 
-  test('falls back to the offline reserve when Commons is unreachable', async ({ page }) => {
+  test('falls back to the offline reserve when every archive is unreachable', async ({ page }) => {
     await page.route('https://commons.wikimedia.org/**', (route) => route.abort())
     await page.route('https://upload.wikimedia.org/**', (route) => route.abort())
+    await page.route('https://api.panoramax.xyz/**', (route) => route.abort())
+    await page.route(`${PANORAMAX_HOST}/**`, (route) => route.abort())
     await page.route('https://nominatim.openstreetmap.org/**', (route) => route.abort())
 
     const solo = new GlobetrotterPage(page)
@@ -556,14 +620,36 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     await expect(solo.reveal).toBeVisible()
   })
 
+  test('plays a Panoramax round and credits it to Panoramax', async ({ page }) => {
+    // Commons down, Panoramax up: the second archive is not decoration, it is
+    // what keeps a deck live when the first one is rate-limited.
+    await mockArchives(page)
+    await page.route('https://commons.wikimedia.org/**', (route) => route.abort())
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+    await solo.soloButton.click()
+
+    await solo.expectStatus('Round 1 of 5')
+    await expect(page.getByTestId('globetrotter-deck-source')).toBeHidden()
+    await expect(solo.pano).toBeVisible()
+    await expect(page.getByTestId('globetrotter-pano-error')).toBeHidden()
+
+    const credit = page.locator('.gt-pano-watermark')
+    await expect(credit).toContainText('Panoramax')
+    await expect(credit).toContainText('Mock Panoramaxer')
+    await expect(credit).toHaveAttribute('href', /api\.panoramax\.xyz\/#focus=pic/)
+  })
+
   test('only ever asks Wikimedia for a rendition it will serve', async ({ page }) => {
     // upload.wikimedia.org rejects any width off its standard ladder with a
     // 400 ("Use thumbnail sizes listed on https://w.wiki/GHai"), so a phone
     // asking for a convenient 2048px gets nothing at all.
     const STANDARD = [20, 40, 60, 120, 250, 330, 500, 960, 1280, 1920, 3840]
     const widths: number[] = []
-    await mockCommons(page)
-    // Registered after mockCommons so it wins over its blanket image route.
+    await mockArchives(page)
+    // Registered after mockArchives so it wins over its blanket image route.
     await page.route('https://upload.wikimedia.org/**', (route) => {
       const width = Number(
         route
@@ -597,7 +683,7 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
 
   test('hands back the GPU resources of the round it just left', async ({ page }) => {
     await instrumentWebGL(page)
-    await mockCommons(page)
+    await mockArchives(page)
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()
@@ -628,7 +714,7 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
 
   test('rebuilds itself when the browser takes the WebGL context away', async ({ page }) => {
     await instrumentWebGL(page)
-    await mockCommons(page)
+    await mockArchives(page)
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()
@@ -659,7 +745,7 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
     // One rejection: enough to force the ladder's first rung, a 2D-canvas copy
     // of the source, which is what gets a stubborn mobile driver to accept it.
     await instrumentWebGL(page, 1)
-    await mockCommons(page)
+    await mockArchives(page)
 
     const solo = new GlobetrotterPage(page)
     await solo.goto()
@@ -673,7 +759,7 @@ test.describe('Globetrotter solo (Random World, mocked Commons)', () => {
   })
 
   test('names the reason a photosphere would not load', async ({ page }) => {
-    await mockCommons(page)
+    await mockArchives(page)
     await page.route('https://upload.wikimedia.org/**', (route) =>
       route.fulfill({
         status: 400,

@@ -19,6 +19,8 @@ const PanoSchema = z.object({
   page: z.string(),
   author: z.string(),
   license: z.string(),
+  /** Optional: the curated pool predates multi-archive decks and omits it. */
+  source: z.string().max(60).optional(),
 })
 
 /**

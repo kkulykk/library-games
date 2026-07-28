@@ -1,85 +1,42 @@
-// Random World mode: sample random geotagged 360° panoramas from Wikimedia
-// Commons at play time. Commons' "Category:360° panoramas" holds over a
-// million equirectangular photospheres (mostly Mapillary street imagery —
-// suburbs, roadsides, random towns — plus landmark panoramas), each with a
-// camera geotag. The API is free, keyless, and CORS-enabled (`origin=*`), so
-// a static site can query it directly from the browser.
+// Random World mode: sample random geotagged 360° panoramas from the open web
+// at play time.
 //
-// Commons rate-limits anonymous bursts (HTTP 429) and rendering a large
-// thumbnail is slow, so the pipeline is deliberately frugal: a cheap
-// `generator=categorymembers` request returns a wide window of candidates with
-// their coordinates and dimensions, and only the handful of files that actually
-// make the deck get a thumbnail rendered — in a single follow-up request. The
-// budget is spent on *wider* sweeps rather than more of them, because the limit
-// counts requests and a wide window is what lets a deck span several uploaders
-// instead of five frames of one photographer's series. When Commons is
-// unreachable or too stingy, `buildRandomWorldDeck` tops the deck up from the
-// vendored reserve so the mode is always playable.
+// Two archives feed a deck, both free, keyless and CORS-enabled, so a static
+// site can query them straight from the browser:
 //
-// Pure async data module — no React. `fetch` and `random` are injectable so
-// the whole pipeline is unit-testable offline.
-import { haversineKm, isValidGuess, shuffle, type GeoLocation } from './logic'
+//   * **Wikimedia Commons** — "Category:360° panoramas", over a million
+//     equirectangular photospheres with camera geotags. Landmarks, interiors,
+//     aerials, and a large seam of donated Mapillary street imagery.
+//   * **Panoramax** — the open, federated Street View alternative (IGN,
+//     OSM-France and independent instances), ~114M geotagged pictures under
+//     CC-BY-SA and equivalents. Ordinary streets in ordinary towns.
+//
+// Neither can be relied on alone: Commons rate-limits anonymous bursts (HTTP
+// 429) and Panoramax's coverage, while worldwide, is patchy. Splitting a deck
+// between them means a bad day at one archive costs a share of a deck rather
+// than the whole game — and a deck that mixes a landmark photosphere with
+// somebody's street corner is simply a better round of guessing. When both come
+// up short, `buildRandomWorldDeck` tops the deck up from the vendored reserve,
+// so the mode is always playable.
+//
+// Other archives were considered and rejected: Mapillary needs a Meta access
+// token on every request (a key a static site cannot keep), KartaView's current
+// API answers "Restricted access!" without auth and its open legacy endpoint is
+// almost entirely flat imagery, and 360Cities and Google Street View are paid,
+// contract-gated, or built around a viewer that never hands over the pixels.
+//
+// Pure async data module — no React. `fetch` and `random` are injectable so the
+// whole pipeline is unit-testable offline.
+import { haversineKm, shuffle, type GeoLocation } from './logic'
 import { countryAt } from './countries'
 import { RESERVE_PANORAMAS, type ReservePanorama } from './randomWorldReserve'
+import { commonsSource, COMMONS_LABEL } from './sources/commons'
+import { panoramaxSource } from './sources/panoramax'
+import { farEnough, MIN_SEPARATION_KM } from './sources/spread'
+import type { PanoFind, PanoSource } from './sources/types'
 
-const API = 'https://commons.wikimedia.org/w/api.php'
-const CATEGORY = 'Category:360° panoramas'
-/**
- * Deck URLs are asked for at Wikimedia's widest standard rendition, and each
- * player's browser snaps that down to what its own screen can use
- * (`panoTexture.ts`). Asking for anything off the standard ladder is pointless
- * here — the API silently rounds *up* to the next standard width, so this used
- * to read 2560 while every deck was served 3840 anyway.
- *
- * @see https://www.mediawiki.org/wiki/Common_thumbnail_sizes
- */
-const TEXTURE_WIDTH = 3840
-const MIN_SOURCE_WIDTH = 2048
-/** Equirectangular photospheres are 2:1; allow a little slack for odd crops. */
-const ASPECT_TOLERANCE = 0.05
-// Files from one Mapillary drive are seconds apart; keep rounds genuinely
-// distinct by requiring pins at least this far apart.
-const MIN_SEPARATION_KM = 50
-/** Cheap candidate sweeps per deck — each is one request returning `BATCH_SIZE` files. */
-const MAX_BATCHES = 4
-/**
- * Category members per sweep.
- *
- * Commons rate-limits by request, not by result, so a wide window is the cheap
- * way to see more of the category: 500 members is one request where ten sweeps
- * of 50 would be ten, and a deck drawn from a 500-file slice spans many more
- * uploaders than one drawn from a 50-file slice — which is usually a single
- * photographer's series.
- */
-const BATCH_SIZE = 500
-const REQUEST_TIMEOUT_MS = 12000
-/** Breather between sweeps; a burst of requests is what trips Commons' 429. */
-const BATCH_PAUSE_MS = 350
-/**
- * Rounds one sweep may contribute before the deck moves to another window.
- *
- * A window is a contiguous run of the category, and contiguous runs are one
- * photographer's series — a hundred burial mounds, one library's reading rooms.
- * Those clear the separation rule (they are kilometres apart) while still
- * handing the player five versions of the same photograph, so a deck that comes
- * from one window is a deck that barely changes.
- *
- * Three per sweep costs a five-round deck a second window and leaves half the
- * sweep budget spare for windows that come back thin or rate-limited. Tighter
- * caps were measured and are worse: at two per sweep the deck needs three
- * windows, which trips Commons' burst limit often enough to land back on the
- * reserve — the very repetition the cap is here to prevent.
- */
-const MAX_PER_BATCH = 3
-
-// Category members can be walked two ways. By sort key the corpus is dominated
-// by files named "Mapillary (<user>…", so most prefixes dive into street
-// imagery at a random uploader and plain letters surface everything else
-// (landmark panoramas, aerials). By timestamp a random date lands on whatever
-// was categorized that week. Mixing both keeps decks varied.
-const MAPILLARY_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
-const PLAIN_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-const FIRST_YEAR = 2013
+/** The archives a deck is drawn from, in the order they are credited. */
+export const PANO_SOURCES: readonly PanoSource[] = [commonsSource, panoramaxSource]
 
 export interface RandomWorldDeps {
   fetchFn?: typeof fetch
@@ -87,6 +44,8 @@ export interface RandomWorldDeps {
   /** Called as the deck fills up, for the scouting progress readout. */
   onProgress?: (found: number, total: number) => void
   signal?: AbortSignal
+  /** Injectable for tests; production always uses `PANO_SOURCES`. */
+  sources?: readonly PanoSource[]
 }
 
 export type DeckSource = 'live' | 'mixed' | 'reserve'
@@ -96,81 +55,6 @@ export interface RandomWorldDeck {
   source: DeckSource
 }
 
-/** A random slice of the category — either by sort key or by categorization date. */
-function randomWindow(random: () => number): Record<string, string> {
-  if (random() < 0.45) {
-    const year = FIRST_YEAR + Math.floor(random() * (new Date().getUTCFullYear() - FIRST_YEAR + 1))
-    const month = 1 + Math.floor(random() * 12)
-    const day = 1 + Math.floor(random() * 28)
-    return {
-      gcmsort: 'timestamp',
-      gcmdir: 'newer',
-      gcmstart: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`,
-    }
-  }
-  const prefix =
-    random() < 0.7
-      ? 'Mapillary (' + MAPILLARY_CHARS[Math.floor(random() * MAPILLARY_CHARS.length)]
-      : PLAIN_CHARS[Math.floor(random() * PLAIN_CHARS.length)]
-  return { gcmstartsortkeyprefix: prefix }
-}
-
-async function commonsApi(
-  fetchFn: typeof fetch,
-  params: Record<string, string>,
-  signal?: AbortSignal
-): Promise<unknown> {
-  const query = new URLSearchParams({ action: 'query', format: 'json', origin: '*', ...params })
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-  const onAbort = () => controller.abort()
-  signal?.addEventListener('abort', onAbort)
-  try {
-    const response = await fetchFn(`${API}?${query}`, { signal: controller.signal })
-    if (!response.ok) throw new Error(`Commons API ${response.status}`)
-    return await response.json()
-  } finally {
-    clearTimeout(timer)
-    signal?.removeEventListener('abort', onAbort)
-  }
-}
-
-interface CommonsPage {
-  title?: string
-  imageinfo?: Array<{
-    width?: number
-    height?: number
-    mime?: string
-    thumburl?: string
-    extmetadata?: Record<string, { value?: string }>
-  }>
-  coordinates?: Array<{ lat?: number; lon?: number }>
-}
-
-interface PagesResponse {
-  query?: { pages?: Record<string, CommonsPage> }
-}
-
-function stripHtml(value: string): string {
-  let text = value
-  let previous: string
-
-  do {
-    previous = text
-    text = text.replace(/<[^<>]*>/g, '')
-  } while (text !== previous)
-
-  return text.replace(/[<>]/g, '').trim()
-}
-
-/** Commons file page for a title, keeping the readable "File:" namespace colon. */
-function commonsPageUrl(title: string): string {
-  return (
-    'https://commons.wikimedia.org/wiki/' +
-    encodeURIComponent(title.replace(/ /g, '_')).replace(/%3A/g, ':')
-  )
-}
-
 function formatCoords(lat: number, lng: number): string {
   const ns = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'}`
   const ew = `${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'W'}`
@@ -178,212 +62,124 @@ function formatCoords(lat: number, lng: number): string {
 }
 
 /** Shape a geotagged panorama into the location the game rounds consume. */
-export function toGeoLocation(
-  lat: number,
-  lng: number,
-  pano: { url: string; page: string; author: string; license: string }
-): GeoLocation {
+export function toGeoLocation(find: PanoFind): GeoLocation {
   return {
-    name: countryAt(lat, lng) ?? 'Uncharted territory',
-    country: formatCoords(lat, lng),
-    lat,
-    lng,
+    name: countryAt(find.lat, find.lng) ?? 'Uncharted territory',
+    country: formatCoords(find.lat, find.lng),
+    lat: find.lat,
+    lng: find.lng,
     emoji: '🌐',
     clues: [],
-    pano,
+    pano: find.pano,
   }
-}
-
-interface Candidate {
-  title: string
-  lat: number
-  lng: number
-  author: string
-  license: string
-}
-
-function readCandidates(response: PagesResponse): Candidate[] {
-  const candidates: Candidate[] = []
-  for (const page of Object.values(response.query?.pages ?? {})) {
-    const info = page.imageinfo?.[0]
-    const coord = page.coordinates?.[0]
-    if (!info || !page.title) continue
-    if (typeof coord?.lat !== 'number' || typeof coord?.lon !== 'number') continue
-    const { width = 0, height = 1, mime } = info
-    if (mime !== 'image/jpeg') continue
-    if (width < MIN_SOURCE_WIDTH || Math.abs(width / height - 2) > ASPECT_TOLERANCE) continue
-    if (!isValidGuess(coord.lat, coord.lon)) continue
-    const md = info.extmetadata ?? {}
-    candidates.push({
-      title: page.title,
-      lat: coord.lat,
-      lng: coord.lon,
-      author:
-        stripHtml(md.Artist?.value ?? 'Unknown')
-          .split('\n')[0]
-          .slice(0, 60) || 'Unknown',
-      license: stripHtml(md.LicenseShortName?.value ?? 'See file page'),
-    })
-  }
-  return candidates
-}
-
-function farEnough(candidate: Candidate, taken: Candidate[]): boolean {
-  return !taken.some(
-    (t) =>
-      haversineKm({ lat: candidate.lat, lng: candidate.lng }, { lat: t.lat, lng: t.lng }) <
-      MIN_SEPARATION_KM
-  )
-}
-
-function sparesCanComplete(picked: Candidate[], spare: Candidate[], count: number): boolean {
-  const trial = [...picked]
-  for (const candidate of spare) {
-    if (trial.length >= count) return true
-    if (farEnough(candidate, trial)) trial.push(candidate)
-  }
-  return trial.length >= count
-}
-
-function pause(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
- * Sweep the category until `count` well-separated geotagged photospheres are
- * in hand (or the sweep budget runs out). Returns whatever it found — the
- * caller decides whether that is enough.
+ * Split `count` rounds between the sources by weight, giving every source at
+ * least one round so a deck always has more than one archive in it.
  */
-async function collectCandidates(
-  count: number,
-  fetchFn: typeof fetch,
-  random: () => number,
-  deps: RandomWorldDeps
-): Promise<Candidate[]> {
-  const picked: Candidate[] = []
-  // Usable finds the per-sweep cap turned away. A later sweep that comes back
-  // rate-limited would otherwise send the deck to the reserve while these sit
-  // unspent, so they finish it instead — at the cost of no extra request.
-  const spare: Candidate[] = []
-  for (let batch = 0; batch < MAX_BATCHES && picked.length < count; batch++) {
-    if (batch > 0) await pause(BATCH_PAUSE_MS)
-    if (deps.signal?.aborted) break
-    let response: PagesResponse
-    try {
-      response = (await commonsApi(
-        fetchFn,
-        {
-          generator: 'categorymembers',
-          gcmtitle: CATEGORY,
-          gcmtype: 'file',
-          gcmlimit: String(BATCH_SIZE),
-          ...randomWindow(random),
-          prop: 'imageinfo|coordinates',
-          iiprop: 'size|mime|extmetadata',
-          iiextmetadatafilter: 'Artist|LicenseShortName',
-          // The sweep's real bottleneck. `prop=coordinates` fills in only
-          // `colimit` pages per request and that defaults to *10*, so all but
-          // ten files of every window came back geotag-less and were dropped by
-          // `readCandidates` as if Commons had never geotagged them. That left
-          // too few usable finds to fill a deck, and the shortfall was topped
-          // up from the 25-photo offline reserve — the same panoramas, game
-          // after game.
-          colimit: 'max',
-        },
-        deps.signal
-      )) as PagesResponse
-    } catch {
-      // A rate-limited or flaky sweep is not fatal. If earlier windows already
-      // left enough usable finds behind the diversity cap, use them now instead
-      // of waiting through the rest of the request budget.
-      if (sparesCanComplete(picked, spare, count)) break
-      continue
-    }
-    let taken = 0
-    for (const candidate of shuffle(readCandidates(response), random)) {
-      if (picked.length >= count) break
-      if (!farEnough(candidate, picked)) continue
-      if (taken >= MAX_PER_BATCH) {
-        spare.push(candidate)
-        continue
-      }
-      picked.push(candidate)
-      taken += 1
-      deps.onProgress?.(picked.length, count)
-    }
+export function shareOut(count: number, sources: readonly PanoSource[]): number[] {
+  if (sources.length === 0) return []
+  if (count <= sources.length) return sources.map(() => 1)
+  const total = sources.reduce((sum, source) => sum + source.weight, 0)
+  const shares = sources.map((source) => Math.max(1, Math.floor((count * source.weight) / total)))
+  // Flooring leaves a remainder; hand it to the heaviest source.
+  let spare = count - shares.reduce((sum, share) => sum + share, 0)
+  const order = sources
+    .map((_, index) => index)
+    .sort((a, b) => sources[b].weight - sources[a].weight)
+  for (let i = 0; spare > 0; i = (i + 1) % order.length) {
+    shares[order[i]] += 1
+    spare -= 1
   }
-
-  for (const candidate of spare) {
-    if (picked.length >= count) break
-    if (!farEnough(candidate, picked)) continue
-    picked.push(candidate)
-    deps.onProgress?.(picked.length, count)
-  }
-  return picked
+  return shares
 }
 
-/** One request renders every thumbnail the deck actually needs. */
-async function resolveThumbnails(
-  candidates: Candidate[],
-  fetchFn: typeof fetch,
-  deps: RandomWorldDeps
-): Promise<GeoLocation[]> {
-  if (candidates.length === 0) return []
-  const response = (await commonsApi(
-    fetchFn,
-    {
-      titles: candidates.map((c) => c.title).join('|'),
-      prop: 'imageinfo',
-      iiprop: 'url|extmetadata',
-      iiurlwidth: String(TEXTURE_WIDTH),
-      iiextmetadatafilter: 'Artist|LicenseShortName',
-    },
-    deps.signal
-  )) as PagesResponse
-
-  const byTitle = new Map(candidates.map((c) => [c.title, c]))
-  const located: GeoLocation[] = []
-  for (const page of Object.values(response.query?.pages ?? {})) {
-    const thumb = page.imageinfo?.[0]?.thumburl
-    const candidate = page.title ? byTitle.get(page.title) : undefined
-    if (!thumb || !candidate) continue
-    located.push(
-      toGeoLocation(candidate.lat, candidate.lng, {
-        url: thumb,
-        page: commonsPageUrl(candidate.title),
-        author: candidate.author,
-        license: candidate.license,
-      })
-    )
+/** Merge finds into an existing deck, keeping rounds apart. */
+function absorb(deck: PanoFind[], finds: readonly PanoFind[], count: number): PanoFind[] {
+  for (const find of finds) {
+    if (deck.length >= count) break
+    if (!farEnough(find, deck)) continue
+    deck.push(find)
   }
-  return located
+  return deck
 }
 
 /**
- * Assemble a deck of `count` random panorama locations straight from Commons.
- * Throws when Commons is unreachable or too few usable files were found —
- * `buildRandomWorldDeck` is the forgiving wrapper most callers want.
+ * Ask every source for its share in parallel, then let whoever still has
+ * something to give cover what the others missed.
+ *
+ * Progress is reported off a single running counter rather than per source, so
+ * the scouting readout climbs once from 0 to `count` no matter how many
+ * archives are answering at the same time.
+ */
+async function collectLive(count: number, deps: RandomWorldDeps): Promise<PanoFind[]> {
+  const sources = deps.sources ?? PANO_SOURCES
+  // Bound, and reached through `globalThis`: a source that calls it as
+  // `deps.fetchFn(…)` would otherwise hand the browser's `fetch` a receiver it
+  // rejects outright, and naming the bare identifier would break the jsdom
+  // tests, which have no `fetch` at all and never need one.
+  const fetchFn = deps.fetchFn ?? globalThis.fetch?.bind(globalThis)
+  const random = deps.random ?? Math.random
+  let reported = 0
+  const onFind = () => {
+    if (reported >= count) return
+    reported += 1
+    deps.onProgress?.(reported, count)
+  }
+  const sourceDeps = { fetchFn, random, signal: deps.signal, onFind }
+  const ask = (source: PanoSource, want: number) =>
+    want <= 0 ? Promise.resolve<PanoFind[]>([]) : source.collect(want, sourceDeps).catch(() => [])
+
+  const shares = shareOut(count, sources)
+  const harvest = await Promise.all(sources.map((source, index) => ask(source, shares[index])))
+
+  const deck: PanoFind[] = []
+  for (const finds of harvest) absorb(deck, shuffle(finds, random), count)
+  if (deck.length >= count) return deck
+
+  // Second pass: a source that filled its share is the one most likely to have
+  // more, so the shortfall goes to whoever yielded most first.
+  const byYield = sources
+    .map((source, index) => ({ source, yielded: harvest[index].length }))
+    .sort((a, b) => b.yielded - a.yielded)
+  for (const { source, yielded } of byYield) {
+    if (deck.length >= count) break
+    if (yielded === 0) continue
+    absorb(deck, shuffle(await ask(source, count - deck.length), random), count)
+  }
+  return deck
+}
+
+/**
+ * Assemble a deck of `count` random panorama locations straight from the live
+ * archives. Throws when they are unreachable or too few usable files were found
+ * — `buildRandomWorldDeck` is the forgiving wrapper most callers want.
  */
 export async function fetchRandomWorldDeck(
   count: number,
   deps: RandomWorldDeps = {}
 ): Promise<GeoLocation[]> {
-  const fetchFn = deps.fetchFn ?? fetch
-  const random = deps.random ?? Math.random
-  const candidates = await collectCandidates(count, fetchFn, random, deps)
-  const deck = await resolveThumbnails(candidates.slice(0, count), fetchFn, deps)
-  if (deck.length < count) {
-    throw new Error(`Only found ${deck.length} of ${count} random panoramas`)
+  const finds = await collectLive(count, deps)
+  if (finds.length < count) {
+    throw new Error(`Only found ${finds.length} of ${count} random panoramas`)
   }
-  return deck
+  return finds.slice(0, count).map(toGeoLocation)
 }
 
 function reserveToLocation(entry: ReservePanorama): GeoLocation {
-  return toGeoLocation(entry.lat, entry.lng, {
-    url: entry.url,
-    page: entry.page,
-    author: entry.author,
-    license: entry.license,
+  return toGeoLocation({
+    lat: entry.lat,
+    lng: entry.lng,
+    pano: {
+      url: entry.url,
+      page: entry.page,
+      author: entry.author,
+      license: entry.license,
+      // Every vendored entry is a Commons file; the generator script only
+      // knows how to fetch from there.
+      source: COMMONS_LABEL,
+    },
   })
 }
 
@@ -403,20 +199,18 @@ export function reserveDeck(count: number, random: () => number = Math.random): 
 }
 
 /**
- * The deck the game actually starts with: live Commons finds first, topped up
- * from the vendored reserve whenever Commons is rate-limited, offline, or just
+ * The deck the game actually starts with: live finds first, topped up from the
+ * vendored reserve whenever the archives are rate-limited, offline, or just
  * short of usable files. Never throws — Random World always has somewhere to go.
  */
 export async function buildRandomWorldDeck(
   count: number,
   deps: RandomWorldDeps = {}
 ): Promise<RandomWorldDeck> {
-  const fetchFn = deps.fetchFn ?? fetch
   const random = deps.random ?? Math.random
   let live: GeoLocation[] = []
   try {
-    const candidates = await collectCandidates(count, fetchFn, random, deps)
-    live = await resolveThumbnails(candidates.slice(0, count), fetchFn, deps)
+    live = (await collectLive(count, deps)).slice(0, count).map(toGeoLocation)
   } catch {
     live = []
   }

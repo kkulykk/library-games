@@ -1,259 +1,216 @@
-import { buildRandomWorldDeck, fetchRandomWorldDeck, reserveDeck } from './randomWorld'
+import {
+  buildRandomWorldDeck,
+  fetchRandomWorldDeck,
+  PANO_SOURCES,
+  reserveDeck,
+  shareOut,
+  toGeoLocation,
+} from './randomWorld'
 import { RESERVE_PANORAMAS } from './randomWorldReserve'
 import { countryAt } from './countries'
 import { haversineKm } from './logic'
-
-interface DoubleOptions {
-  dropCoordinates?: boolean
-  ratio?: number
-  artist?: string
-  /** Usable files served per sweep. */
-  perBatch?: number
-  /** Fail every sweep with this status (429 = Commons rate limiting). */
-  failStatus?: number
-  /** Serve this many sweeps normally before `failStatus` starts biting. */
-  failAfterBatch?: number
-  /** Fail only the thumbnail-resolving request. */
-  failThumbnails?: boolean
-}
-
-// Commons API double for the two-step pipeline: one cheap `generator=
-// categorymembers` sweep listing candidates with coordinates, then one
-// `titles=…&iiurlwidth=…` request that renders thumbnails for the keepers.
-function makeFetchDouble(options: DoubleOptions = {}) {
-  const perBatch = options.perBatch ?? 3
-  let batch = 0
-  const calls: string[] = []
-  const windows = new Map<string, number>()
-
-  const fetchFn = (async (input: RequestInfo | URL) => {
-    const url = String(input)
-    calls.push(url)
-    const isSweep = url.includes('generator=categorymembers')
-
-    if (options.failStatus && isSweep && batch >= (options.failAfterBatch ?? 0)) {
-      return { ok: false, status: options.failStatus } as Response
-    }
-    if (options.failThumbnails && !isSweep) {
-      return { ok: false, status: 500 } as Response
-    }
-
-    let body: unknown
-    if (isSweep) {
-      batch++
-      const params = new URL(url).searchParams
-      const window = params.get('gcmstart') ?? params.get('gcmstartsortkeyprefix') ?? ''
-      const windowNumber = windows.get(window) ?? windows.size + 1
-      windows.set(window, windowNumber)
-      const height = 2000
-      const width = Math.round(height * (options.ratio ?? 2))
-      const pages: Record<string, unknown> = {}
-      for (let i = 0; i < perBatch; i++) {
-        // ~5° apart: comfortably past the 50 km minimum separation.
-        const lat = 10 + windowNumber * 5 + i * 5
-        const lng = 20 + windowNumber * 5 + i * 5
-        pages[String(i)] = {
-          title: `File:Pano ${windowNumber}-${i}.jpg`,
-          imageinfo: [
-            {
-              width,
-              height,
-              mime: 'image/jpeg',
-              extmetadata: {
-                Artist: { value: options.artist ?? '<a href="#">Jane Mapper</a>' },
-                LicenseShortName: { value: 'CC BY-SA 4.0' },
-              },
-            },
-          ],
-          coordinates: options.dropCoordinates ? undefined : [{ lat, lon: lng }],
-        }
-      }
-      body = { query: { pages } }
-    } else {
-      // Echo a thumbnail for every requested title.
-      const titles = (new URL(url).searchParams.get('titles') ?? '').split('|')
-      const pages: Record<string, unknown> = {}
-      titles.forEach((title, index) => {
-        pages[String(index)] = {
-          title,
-          imageinfo: [
-            {
-              thumburl: `https://upload.wikimedia.org/thumb/${encodeURIComponent(title)}.jpg`,
-              extmetadata: {
-                Artist: { value: options.artist ?? '<a href="#">Jane Mapper</a>' },
-                LicenseShortName: { value: 'CC BY-SA 4.0' },
-              },
-            },
-          ],
-        }
-      })
-      body = { query: { pages } }
-    }
-
-    return { ok: true, status: 200, json: async () => body } as Response
-  }) as typeof fetch
-
-  return { fetchFn, calls }
-}
+import { MIN_SEPARATION_KM } from './sources/spread'
+import type { PanoFind, PanoSource, PanoSourceDeps } from './sources/types'
 
 const fixedRandom = () => 0.5
 
-function seededRandom(seed: number): () => number {
-  return () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0
-    return seed / 2 ** 32
+/**
+ * Every stub find gets its own corner of the planet, degrees from the last, so
+ * the separation rule never quietly swallows one and hides a bug in the merge.
+ */
+let spotSeq = 0
+function nextSpot(): { lat: number; lng: number } {
+  const i = spotSeq++
+  return { lat: -55 + ((i * 9) % 110), lng: -175 + ((i * 53) % 350) }
+}
+
+beforeEach(() => {
+  spotSeq = 0
+})
+
+/**
+ * A source that hands back up to `available` finds across all the times it is
+ * asked. `fail` makes it throw the way an unreachable archive would.
+ */
+function stubSource(
+  id: string,
+  options: { available?: number; weight?: number; fail?: boolean; delayMs?: number } = {}
+): PanoSource & { asked: number[] } {
+  let remaining = options.available ?? 10
+  const asked: number[] = []
+  return {
+    id,
+    label: id,
+    weight: options.weight ?? 1,
+    asked,
+    async collect(count: number, deps: PanoSourceDeps): Promise<PanoFind[]> {
+      asked.push(count)
+      if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs))
+      if (options.fail) throw new Error(`${id} is down`)
+      const finds: PanoFind[] = []
+      while (finds.length < count && remaining > 0) {
+        remaining -= 1
+        const spot = nextSpot()
+        finds.push({
+          ...spot,
+          pano: {
+            url: `https://example.test/${id}/${spotSeq}.jpg`,
+            page: `https://example.test/${id}/${spotSeq}`,
+            author: `${id} photographer`,
+            license: 'CC BY-SA 4.0',
+            source: id,
+          },
+        })
+        deps.onFind?.()
+      }
+      return finds
+    },
   }
 }
 
-describe('fetchRandomWorldDeck', () => {
-  it('assembles a deck of distinct, playable panorama locations', async () => {
-    const { fetchFn } = makeFetchDouble()
-    const deck = await fetchRandomWorldDeck(3, { fetchFn, random: fixedRandom })
+describe('PANO_SOURCES', () => {
+  it('ships Commons and Panoramax, both weighted', () => {
+    expect(PANO_SOURCES.map((source) => source.id)).toEqual(['commons', 'panoramax'])
+    for (const source of PANO_SOURCES) {
+      expect(source.weight).toBeGreaterThan(0)
+      expect(source.label.length).toBeGreaterThan(0)
+    }
+  })
+})
 
-    expect(deck).toHaveLength(3)
-    for (const location of deck) {
-      expect(location.pano?.url).toContain('upload.wikimedia.org')
-      expect(location.pano?.author).toBe('Jane Mapper')
-      expect(location.pano?.license).toBe('CC BY-SA 4.0')
-      expect(location.pano?.page).toContain('commons.wikimedia.org/wiki/File:')
-      expect(location.clues).toEqual([])
-      expect(location.emoji).toBe('🌐')
-      expect(location.country).toMatch(/°[NS], .*°[EW]$/)
+describe('shareOut', () => {
+  it('splits a deck by weight and spends every round', () => {
+    const sources = [stubSource('a', { weight: 3 }), stubSource('b', { weight: 2 })]
+    expect(shareOut(5, sources)).toEqual([3, 2])
+    expect(shareOut(10, sources)).toEqual([6, 4])
+    for (const count of [4, 7, 9, 11]) {
+      const shares = shareOut(count, sources)
+      expect(shares.reduce((sum, share) => sum + share, 0)).toBe(count)
+    }
+  })
+
+  it('gives every source a round, so a deck is never one archive by default', () => {
+    const sources = [stubSource('a', { weight: 9 }), stubSource('b', { weight: 1 })]
+    expect(shareOut(5, sources).every((share) => share >= 1)).toBe(true)
+    // Fewer rounds than sources: everyone still gets asked, and the merge
+    // trims the deck back to size.
+    expect(shareOut(1, sources)).toEqual([1, 1])
+  })
+})
+
+describe('fetchRandomWorldDeck', () => {
+  it('mixes the archives and keeps rounds apart', async () => {
+    const sources = [stubSource('alpha', { weight: 3 }), stubSource('beta', { weight: 2 })]
+    const deck = await fetchRandomWorldDeck(5, { sources, random: fixedRandom })
+
+    expect(deck).toHaveLength(5)
+    expect(new Set(deck.map((spot) => spot.pano!.source))).toEqual(new Set(['alpha', 'beta']))
+    for (const spot of deck) {
+      expect(spot.clues).toEqual([])
+      expect(spot.emoji).toBe('🌐')
+      expect(spot.country).toMatch(/°[NS], .*°[EW]$/)
     }
     for (let i = 0; i < deck.length; i++) {
       for (let j = i + 1; j < deck.length; j++) {
-        expect(haversineKm(deck[i], deck[j])).toBeGreaterThanOrEqual(50)
+        expect(haversineKm(deck[i], deck[j])).toBeGreaterThanOrEqual(MIN_SEPARATION_KM)
       }
     }
   })
 
-  it('stays frugal: a full deck costs a sweep per few rounds plus one render', async () => {
-    const { fetchFn, calls } = makeFetchDouble({ perBatch: 5 })
-    await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
-
-    // Two sweeps (three rounds is the most any one window may contribute) and
-    // the single request that renders every thumbnail the deck needs.
-    expect(calls).toHaveLength(3)
-    expect(calls.filter((url) => url.includes('generator=categorymembers'))).toHaveLength(2)
-    expect(calls.filter((url) => url.includes('iiurlwidth='))).toHaveLength(1)
-  })
-
-  // The bug this guards: `prop=coordinates` fills in only `colimit` pages per
-  // request, defaulting to 10. Every file past the tenth came back geotag-less
-  // and was dropped, so sweeps almost never found five usable panoramas and the
-  // deck was topped up from the reserve — the same photos every game.
-  it('asks Commons for a wide window and geotags every file in it', async () => {
-    const { fetchFn, calls } = makeFetchDouble({ perBatch: 5 })
-    await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
-
-    for (const sweep of calls.filter((url) => url.includes('generator=categorymembers'))) {
-      expect(sweep).toContain('gcmlimit=500')
-      expect(sweep).toContain('colimit=max')
-    }
-  })
-
-  it('draws a deck from several windows instead of one photographer’s series', async () => {
-    // One window offers far more than a deck needs; a single sweep could fill
-    // it, and every round would come from the same contiguous run of uploads.
-    const { fetchFn, calls } = makeFetchDouble({ perBatch: 20 })
-    const deck = await fetchRandomWorldDeck(5, { fetchFn, random: seededRandom(181) })
-
-    const windows = calls
-      .filter((url) => url.includes('generator=categorymembers'))
-      .map((url) => {
-        const params = new URL(url).searchParams
-        return params.get('gcmstart') ?? params.get('gcmstartsortkeyprefix')
-      })
-    expect(new Set(windows).size).toBeGreaterThan(1)
-
-    // The double names files `Pano <sweep>-<index>`, so the sweep each round
-    // came from is readable straight off the panorama URL.
-    const sweeps = new Set(
-      deck.map((spot) => decodeURIComponent(spot.pano!.url).match(/Pano (\d+)-/)![1])
-    )
-    expect(sweeps.size).toBeGreaterThan(1)
-    for (const sweep of sweeps) {
-      const fromSweep = deck.filter((spot) =>
-        decodeURIComponent(spot.pano!.url).includes(`Pano ${sweep}-`)
-      )
-      expect(fromSweep.length).toBeLessThanOrEqual(3)
-    }
-  })
-
-  it('finishes a deck with finds held back by an earlier sweep when the next one fails', async () => {
-    // Sweep 1 is rich but capped; sweep 2 is rate-limited. The finds turned
-    // away by the cap complete the deck immediately rather than letting it fall
-    // short or waiting for more failed sweeps.
-    const { fetchFn, calls } = makeFetchDouble({ perBatch: 20, failStatus: 429, failAfterBatch: 1 })
-    const deck = await fetchRandomWorldDeck(5, { fetchFn, random: fixedRandom })
+  it('lets one archive cover what another could not find', async () => {
+    const thin = stubSource('thin', { weight: 3, available: 1 })
+    const deep = stubSource('deep', { weight: 2 })
+    const deck = await fetchRandomWorldDeck(5, { sources: [thin, deep], random: fixedRandom })
 
     expect(deck).toHaveLength(5)
-    expect(calls.filter((url) => url.includes('generator=categorymembers'))).toHaveLength(2)
-    const contributingWindows = new Set(
-      deck.map((spot) => decodeURIComponent(spot.pano!.url).match(/Pano (\d+)-/)![1])
-    )
-    expect(contributingWindows.size).toBe(1)
+    // The second pass asks the source that actually yielded, not the thin one.
+    expect(deep.asked).toEqual([2, 2])
+    expect(thin.asked).toEqual([3])
   })
 
-  it('reports progress as the deck fills up', async () => {
-    const { fetchFn } = makeFetchDouble({ perBatch: 3 })
+  it('keeps going when an archive is unreachable', async () => {
+    const down = stubSource('down', { weight: 3, fail: true })
+    const up = stubSource('up', { weight: 2 })
+    const deck = await fetchRandomWorldDeck(5, { sources: [down, up], random: fixedRandom })
+
+    expect(deck).toHaveLength(5)
+    expect(deck.every((spot) => spot.pano!.source === 'up')).toBe(true)
+  })
+
+  it('throws when every archive comes up short', async () => {
+    const sources = [stubSource('a', { fail: true }), stubSource('b', { fail: true })]
+    await expect(fetchRandomWorldDeck(3, { sources, random: fixedRandom })).rejects.toThrow(
+      /Only found 0 of 3/
+    )
+  })
+
+  it('reports progress once, monotonically, however many archives answer', async () => {
+    const sources = [stubSource('a', { weight: 1 }), stubSource('b', { weight: 1 })]
     const seen: number[] = []
-    await fetchRandomWorldDeck(3, {
-      fetchFn,
+    await fetchRandomWorldDeck(4, {
+      sources,
       random: fixedRandom,
-      onProgress: (found) => seen.push(found),
+      onProgress: (found, total) => {
+        expect(total).toBe(4)
+        seen.push(found)
+      },
     })
-    expect(seen).toEqual([1, 2, 3])
+    expect(seen).toEqual([1, 2, 3, 4])
   })
 
-  it('names locations by country when the geotag lands inside one', async () => {
-    const { fetchFn } = makeFetchDouble({ perBatch: 1 })
-    const parisFetch = (async (input: RequestInfo | URL) => {
-      const response = await fetchFn(input)
-      const body = (await response.json()) as {
-        query?: { pages?: Record<string, { coordinates?: unknown }> }
-      }
-      const page = body.query?.pages?.['0']
-      if (page && 'coordinates' in page) page.coordinates = [{ lat: 48.85, lon: 2.35 }]
-      return { ok: true, status: 200, json: async () => body } as Response
-    }) as typeof fetch
-    const deck = await fetchRandomWorldDeck(1, { fetchFn: parisFetch, random: fixedRandom })
-    expect(deck[0].name).toBe('France')
+  // The bug this guards: sources were handed the browser's own `fetch`
+  // unbound. A source that called it as `deps.fetchFn(…)` passed its deps
+  // object as the receiver, which `fetch` rejects with "Illegal invocation" —
+  // and since a failed sweep is swallowed on purpose, the archive simply went
+  // quiet and every deck came from the offline reserve.
+  it('hands sources a fetch they can call as a method', async () => {
+    const receivers: unknown[] = []
+    const original = globalThis.fetch
+    globalThis.fetch = function (this: unknown) {
+      receivers.push(this)
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response)
+    } as typeof fetch
+    const caller: PanoSource = {
+      id: 'caller',
+      label: 'caller',
+      weight: 1,
+      async collect(_count, sourceDeps) {
+        await sourceDeps.fetchFn('https://example.test/search')
+        return []
+      },
+    }
+    try {
+      await buildRandomWorldDeck(1, { sources: [caller], random: fixedRandom })
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(receivers).toEqual([globalThis])
   })
 
-  it('removes nested or malformed markup from Commons attribution', async () => {
-    const { fetchFn } = makeFetchDouble({ artist: '<scr<script>ipt>Jane <b>Mapper</b>' })
-    const deck = await fetchRandomWorldDeck(1, { fetchFn, random: fixedRandom })
-
-    expect(deck[0].pano?.author).toBe('Jane Mapper')
-    expect(deck[0].pano?.author).not.toContain('<')
-    expect(deck[0].pano?.author).not.toContain('>')
+  it('queries the archives at the same time rather than one after another', async () => {
+    const sources = [
+      stubSource('a', { weight: 1, delayMs: 60 }),
+      stubSource('b', { weight: 1, delayMs: 60 }),
+    ]
+    const started = Date.now()
+    await fetchRandomWorldDeck(2, { sources, random: fixedRandom })
+    expect(Date.now() - started).toBeLessThan(120)
   })
+})
 
-  it('rejects files without coordinates and gives up with an error', async () => {
-    const { fetchFn } = makeFetchDouble({ dropCoordinates: true })
-    await expect(fetchRandomWorldDeck(2, { fetchFn, random: fixedRandom })).rejects.toThrow(
-      /Only found 0 of 2/
-    )
-  })
-
-  it('rejects non-equirectangular files', async () => {
-    const { fetchFn } = makeFetchDouble({ ratio: 1.5 })
-    await expect(fetchRandomWorldDeck(1, { fetchFn, random: fixedRandom })).rejects.toThrow()
-  })
-
-  it('survives rate-limited sweeps instead of throwing mid-flight', async () => {
-    const { fetchFn } = makeFetchDouble({ failStatus: 429 })
-    await expect(fetchRandomWorldDeck(1, { fetchFn, random: fixedRandom })).rejects.toThrow(
-      /Only found 0 of 1/
-    )
-  })
-
-  it('propagates a failed thumbnail request', async () => {
-    const { fetchFn } = makeFetchDouble({ failThumbnails: true })
-    await expect(fetchRandomWorldDeck(1, { fetchFn, random: fixedRandom })).rejects.toThrow(
-      /Commons API 500/
-    )
+describe('toGeoLocation', () => {
+  it('names the country the geotag lands in, and falls back to open water', () => {
+    const pano = {
+      url: 'u',
+      page: 'p',
+      author: 'a',
+      license: 'l',
+      source: 'Panoramax',
+    }
+    expect(toGeoLocation({ lat: 48.85, lng: 2.35, pano }).name).toBe('France')
+    expect(toGeoLocation({ lat: 0, lng: -30, pano }).name).toBe('Uncharted territory')
+    expect(toGeoLocation({ lat: 48.85, lng: 2.35, pano }).country).toBe('48.85°N, 2.35°E')
+    expect(toGeoLocation({ lat: -33.87, lng: -70.6, pano }).country).toBe('33.87°S, 70.60°W')
   })
 })
 
@@ -265,27 +222,51 @@ describe('reserveDeck', () => {
     for (const spot of deck) {
       expect(spot.pano?.url).toMatch(/^https:\/\/upload\.wikimedia\.org\//)
       expect(spot.pano?.license).not.toBe('')
+      expect(spot.pano?.source).toBe('Wikimedia Commons')
       expect(spot.clues).toEqual([])
     }
     for (let i = 0; i < deck.length; i++) {
       for (let j = i + 1; j < deck.length; j++) {
-        expect(haversineKm(deck[i], deck[j])).toBeGreaterThanOrEqual(50)
+        expect(haversineKm(deck[i], deck[j])).toBeGreaterThanOrEqual(MIN_SEPARATION_KM)
       }
     }
   })
 })
 
 describe('buildRandomWorldDeck', () => {
-  it('uses live Commons results when they are plentiful', async () => {
-    const { fetchFn } = makeFetchDouble({ perBatch: 5 })
-    const { deck, source } = await buildRandomWorldDeck(5, { fetchFn, random: fixedRandom })
+  it('uses live results when the archives are generous', async () => {
+    const sources = [stubSource('a', { weight: 3 }), stubSource('b', { weight: 2 })]
+    const { deck, source } = await buildRandomWorldDeck(5, { sources, random: fixedRandom })
 
     expect(source).toBe('live')
     expect(deck).toHaveLength(5)
-    expect(deck.every((spot) => spot.pano?.url.includes('/thumb/'))).toBe(true)
   })
 
-  it('falls back to the reserve when Commons is unreachable', async () => {
+  it('falls back to the reserve when every archive is unreachable', async () => {
+    const sources = [stubSource('a', { fail: true }), stubSource('b', { fail: true })]
+    const { deck, source } = await buildRandomWorldDeck(5, { sources, random: fixedRandom })
+
+    expect(source).toBe('reserve')
+    expect(deck).toHaveLength(5)
+  })
+
+  it('tops a short live deck up from the reserve', async () => {
+    const sources = [
+      stubSource('a', { weight: 3, available: 1 }),
+      stubSource('b', { weight: 2, available: 0 }),
+    ]
+    const { deck, source } = await buildRandomWorldDeck(5, { sources, random: fixedRandom })
+
+    expect(source).toBe('mixed')
+    expect(deck).toHaveLength(5)
+    for (let i = 0; i < deck.length; i++) {
+      for (let j = i + 1; j < deck.length; j++) {
+        expect(haversineKm(deck[i], deck[j])).toBeGreaterThanOrEqual(MIN_SEPARATION_KM)
+      }
+    }
+  })
+
+  it('defaults to the shipped archives when no sources are injected', async () => {
     const failingFetch = (async () => {
       throw new Error('network down')
     }) as unknown as typeof fetch
@@ -296,27 +277,6 @@ describe('buildRandomWorldDeck', () => {
 
     expect(source).toBe('reserve')
     expect(deck).toHaveLength(5)
-  })
-
-  it('falls back to the reserve when Commons keeps answering 429', async () => {
-    const { fetchFn } = makeFetchDouble({ failStatus: 429 })
-    const { deck, source } = await buildRandomWorldDeck(5, { fetchFn, random: fixedRandom })
-
-    expect(source).toBe('reserve')
-    expect(deck).toHaveLength(5)
-  })
-
-  it('tops a short live deck up from the reserve', async () => {
-    const { fetchFn } = makeFetchDouble({ perBatch: 1 })
-    const { deck, source } = await buildRandomWorldDeck(5, { fetchFn, random: fixedRandom })
-
-    expect(source).toBe('mixed')
-    expect(deck).toHaveLength(5)
-    for (let i = 0; i < deck.length; i++) {
-      for (let j = i + 1; j < deck.length; j++) {
-        expect(haversineKm(deck[i], deck[j])).toBeGreaterThanOrEqual(50)
-      }
-    }
   })
 })
 

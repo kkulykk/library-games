@@ -150,14 +150,23 @@ async function loadPanorama(
  * Turn a failure into something a player can act on. "It broke" sends people
  * to the Try again button forever; naming the cause tells them whether it is
  * their network, their browser or the archive.
+ *
+ * Rounds come from several archives, so the host is read off the image URL
+ * rather than assumed — a hint naming the wrong service is worse than none.
  */
-function failureHint(error: unknown): string {
+function failureHint(error: unknown, url: string): string {
+  let host = 'The image host'
+  try {
+    host = new URL(url).host
+  } catch {
+    // A malformed URL is its own bug; the generic wording still reads fine.
+  }
   const status = error instanceof Error ? error.message.match(/^HTTP (\d+)$/)?.[1] : undefined
-  if (status) return `Wikimedia answered ${status} for this image.`
+  if (status) return `${host} answered ${status} for this image.`
   // No status at all means the request never got a reply: this site's own
   // content-security-policy refusing the origin looks identical to a content
   // blocker or a network that cannot route there.
-  return 'upload.wikimedia.org could not be reached — a blocked origin, content blocker or offline network.'
+  return `${host} could not be reached — a blocked origin, content blocker or offline network.`
 }
 
 function decodeViaImage(src: string, revoke: boolean): Promise<HTMLImageElement> {
@@ -388,7 +397,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
       })
       .catch((error: unknown) => {
         if (disposed) return
-        setHint(failureHint(error))
+        setHint(failureHint(error, pano.url))
         setStatus('error')
       })
 
@@ -573,7 +582,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
         </div>
       )}
       <a className="gt-pano-watermark mono" href={pano.page} target="_blank" rel="noreferrer">
-        © {pano.author} · {pano.license} · Wikimedia Commons
+        © {pano.author} · {pano.license} · {pano.source ?? 'Wikimedia Commons'}
       </a>
     </div>
   )
