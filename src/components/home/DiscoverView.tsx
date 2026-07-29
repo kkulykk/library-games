@@ -17,6 +17,13 @@ const FEATURED_ORDER = [
 
 const HERO_INTERVAL_MS = 6000
 
+/**
+ * Editorial picks that head the trending rail whatever the play counts say.
+ * Everything after them is still ordered by plays.
+ */
+const TRENDING_PICKS = ['globetrotter']
+const TRENDING_LENGTH = 8
+
 function parsePlays(s: string): number {
   if (s === '—') return 0
   const n = parseFloat(s)
@@ -177,15 +184,16 @@ export function DiscoverView({ games, onOpenLibrary }: DiscoverViewProps) {
 
   const [i, progress, go] = useAutoplay(featured.length, HERO_INTERVAL_MS, false)
 
-  const trending = useMemo(
-    () =>
-      games
-        .filter((g) => g.status === 'live')
-        .slice()
-        .sort((a, b) => parsePlays(b.plays) - parsePlays(a.plays))
-        .slice(0, 8),
-    [games]
-  )
+  const trending = useMemo(() => {
+    const live = games.filter((g) => g.status === 'live')
+    const picks = TRENDING_PICKS.map((slug) => live.find((g) => g.slug === slug)).filter(
+      (g): g is GameMeta => Boolean(g)
+    )
+    const rest = live
+      .filter((g) => !picks.includes(g))
+      .sort((a, b) => parsePlays(b.plays) - parsePlays(a.plays))
+    return [...picks, ...rest].slice(0, TRENDING_LENGTH)
+  }, [games])
   const quick = useMemo(() => games.filter((g) => g.status === 'live' && g.minutes <= 8), [games])
   const multi = useMemo(
     () => games.filter((g) => g.category === 'online-multiplayer' && g.status === 'live'),

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { cn } from '@/lib/utils'
 import type { GeoPano } from './locations'
+import { wheelZoomFactor } from './mercator'
 import { panoCandidates } from './panoTexture'
 
 const COMPASS_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
@@ -54,6 +55,17 @@ void main() {
 
 const MIN_FOV = 30
 const MAX_FOV = 100
+/**
+ * How much of the "drag the pixels under the cursor" rate a drag actually
+ * turns the camera.
+ *
+ * Pinning the pixels to the pointer is the faithful mapping and the wrong feel:
+ * one flick of a wrist spins the sphere past the horizon and the player has no
+ * idea which way they are facing any more. Turning a little slower than the hand
+ * is what every street-level viewer does, and it makes reading a scene for clues
+ * — the whole game — possible.
+ */
+const DRAG_GAIN = 0.6
 /** Below this the shrink-and-retry ladder gives up — a 512px sphere is unusable anyway. */
 const MIN_TEXTURE_WIDTH = 512
 
@@ -144,6 +156,29 @@ async function loadPanorama(
     }
   }
   throw last instanceof Error ? last : new Error('Panorama failed to load')
+}
+
+/** Panoramas already handed to the browser to fetch — warming twice is waste. */
+const warmed = new Set<string>()
+
+/**
+ * Pull a panorama into the HTTP cache ahead of the round that needs it.
+ *
+ * A photosphere is the one genuinely heavy thing a round loads, and "Developing
+ * film" is dead time. Nothing is done with the pixels here: the point is that
+ * the `fetch` the viewer runs later finds them cached. Uses the same rendition
+ * `PanoViewer` will ask for, or the warm-up is a second download rather than a
+ * head start.
+ */
+export function warmPanorama(url: string): void {
+  if (typeof window === 'undefined' || typeof Image !== 'function') return
+  const [first] = panoCandidates(url, window.innerWidth)
+  if (!first || warmed.has(first)) return
+  warmed.add(first)
+  const image = new Image()
+  image.crossOrigin = 'anonymous'
+  image.decoding = 'async'
+  image.src = first
 }
 
 /**
@@ -489,7 +524,7 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     const camera = cameraRef.current
     const rect = event.currentTarget.getBoundingClientRect()
     // Drag sensitivity scales with fov so zoomed-in panning feels natural.
-    const radPerPx = (camera.fov * Math.PI) / 180 / Math.max(1, rect.height)
+    const radPerPx = (DRAG_GAIN * camera.fov * Math.PI) / 180 / Math.max(1, rect.height)
     camera.yaw += (next.x - previous.x) * radPerPx
     camera.pitch += (next.y - previous.y) * radPerPx
     camera.pitch = Math.max(-1.45, Math.min(1.45, camera.pitch))
@@ -510,10 +545,10 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
       const camera = cameraRef.current
-      camera.fov = Math.max(
-        MIN_FOV,
-        Math.min(MAX_FOV, camera.fov * (event.deltaY > 0 ? 1.1 : 1 / 1.1))
-      )
+      // Same delta-based zoom the world map uses: zooming in narrows the fov,
+      // so the factor divides rather than multiplies.
+      const next = camera.fov / wheelZoomFactor(event.deltaY, event.deltaMode)
+      camera.fov = Math.max(MIN_FOV, Math.min(MAX_FOV, next))
       renderRef.current?.()
     }
     canvas.addEventListener('wheel', onWheel, { passive: false })

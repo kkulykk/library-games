@@ -599,6 +599,29 @@ test.describe('Globetrotter solo (Random World, mocked archives)', () => {
     await expect(solo.pano).toBeVisible()
   })
 
+  test('scouts the deck while the player is still choosing how to play', async ({ page }) => {
+    await mockArchives(page)
+    let sweeps = 0
+    // Registered after mockArchives so it sees the request first, then hands it
+    // back for the mock to answer.
+    await page.route('https://commons.wikimedia.org/**', async (route) => {
+      sweeps += 1
+      await route.fallback()
+    })
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+
+    // The archives are already being swept, before Solo has been pressed —
+    // that head start is what the scouting screen used to be spent on.
+    await expect.poll(() => sweeps).toBeGreaterThan(0)
+
+    await solo.soloButton.click()
+    await expect(solo.pano).toBeVisible()
+    await solo.expectStatus('Round 1 of 5')
+  })
+
   test('falls back to the offline reserve when every archive is unreachable', async ({ page }) => {
     await page.route('https://commons.wikimedia.org/**', (route) => route.abort())
     await page.route('https://upload.wikimedia.org/**', (route) => route.abort())
@@ -848,6 +871,72 @@ test.describe('Globetrotter gameplay smoke', () => {
       expect(finalRoom.state.phase).toBe('finished')
     } finally {
       await closePlayers([guest])
+    }
+  })
+})
+
+test.describe('Globetrotter dropped players', () => {
+  test('drops a player who vanished mid-round and reveals without them', async ({
+    page,
+    browser,
+  }) => {
+    const hostPage = new GlobetrotterPage(page)
+    const staying = await createPlayer(browser, 'Staying Globe')
+    const stayingPage = new GlobetrotterPage(staying.page)
+    const leaving = await createPlayer(browser, 'Leaving Globe')
+    const leavingPage = new GlobetrotterPage(leaving.page)
+
+    try {
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom('Host Globe')
+      await stayingPage.goto()
+      await stayingPage.joinRoom(roomCode, staying.name)
+      await leavingPage.goto()
+      await leavingPage.joinRoom(roomCode, leaving.name)
+      await hostPage.page.getByTestId('globetrotter-mode-landmarks').click()
+      await hostPage.startGame()
+
+      const started = await readGlobetrotterRoom(roomCode)
+      await updateGlobetrotterRoom(roomCode, started, seededGuessingState(started.state.players))
+
+      await hostPage.expectStatus('Pins locked: 0 of 3')
+      await hostPage.placeAndLockGuess(0.5, 0.25)
+      await stayingPage.placeAndLockGuess(0.52, 0.24)
+      await hostPage.expectStatus('Pins locked: 2 of 3')
+
+      // Nobody is on offer while every player is still answering presence.
+      await expect(hostPage.page.getByTestId('globetrotter-drop-player')).toHaveCount(0)
+
+      // The third player's browser goes away without leaving the room — the
+      // same teardown a backgrounded phone or a closed laptop performs.
+      await leaving.page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+
+      const dropButton = hostPage.page.getByRole('button', {
+        name: 'Drop Leaving Globe from the expedition',
+      })
+      await expect(dropButton).toBeVisible({ timeout: 15_000 })
+      await dropButton.click()
+
+      // The round settles on the two players still in the room.
+      await expect(hostPage.reveal).toContainText('Eiffel Tower')
+      await expect(stayingPage.reveal).toContainText('Eiffel Tower')
+
+      const room = await readGlobetrotterRoom(roomCode)
+      expect(room.state.players.map((player) => player.name)).toEqual([
+        'Host Globe',
+        'Staying Globe',
+      ])
+      expect(room.state.currentRound?.phase).toBe('reveal')
+      expect(room.state.log.some((line) => line.includes('Leaving Globe was dropped'))).toBe(true)
+
+      // And the expedition carries on without them.
+      await hostPage.advanceRound()
+      await hostPage.expectStatus('Pins locked: 0 of 2')
+    } finally {
+      await closePlayers([staying, leaving])
     }
   })
 })

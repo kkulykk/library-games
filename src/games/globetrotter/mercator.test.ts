@@ -17,6 +17,8 @@ import {
   TRAVEL_MS,
   unproject,
   visibleTiles,
+  WHEEL_ZOOM_DISTANCE_PX,
+  wheelZoomFactor,
   worldView,
   WORLD_SIZE,
   ZOOM_OUT_MS,
@@ -141,6 +143,61 @@ describe('pinchView', () => {
       origin.w,
       6
     )
+  })
+})
+
+describe('wheelZoomFactor', () => {
+  it('zooms in scrolling up and out scrolling down, by the same amount', () => {
+    const inward = wheelZoomFactor(-100)
+    const outward = wheelZoomFactor(100)
+    expect(inward).toBeGreaterThan(1)
+    expect(outward).toBeLessThan(1)
+    expect(inward * outward).toBeCloseTo(1, 6)
+  })
+
+  it('doubles the scale over the nominal scroll distance', () => {
+    // Scrolled the way a wheel or a trackpad actually delivers it: in steps
+    // inside the per-event cap, which multiply out to the full distance.
+    const step = WHEEL_ZOOM_DISTANCE_PX / 3
+    const zoomIn = Array.from({ length: 3 }, () => wheelZoomFactor(-step)).reduce(
+      (a, b) => a * b,
+      1
+    )
+    expect(zoomIn).toBeCloseTo(2, 6)
+    const zoomOut = Array.from({ length: 3 }, () => wheelZoomFactor(step)).reduce(
+      (a, b) => a * b,
+      1
+    )
+    expect(zoomOut).toBeCloseTo(0.5, 6)
+  })
+
+  it('keeps a single mouse notch to a gentle step', () => {
+    // The old per-event 1.4× is what made one flick of a trackpad — a dozen
+    // events — dive straight to street level.
+    expect(wheelZoomFactor(-100)).toBeLessThan(1.4)
+    expect(wheelZoomFactor(-100)).toBeGreaterThan(1.1)
+  })
+
+  it('adds up: many small trackpad deltas equal one big one', () => {
+    const oneGo = wheelZoomFactor(-60)
+    const inSteps = Array.from({ length: 6 }, () => wheelZoomFactor(-10)).reduce((a, b) => a * b, 1)
+    expect(inSteps).toBeCloseTo(oneGo, 6)
+  })
+
+  it('reads line and page deltas as scroll distance, not as pixels', () => {
+    expect(wheelZoomFactor(-3, 1)).toBeGreaterThan(wheelZoomFactor(-3, 0))
+    expect(wheelZoomFactor(-1, 2)).toBeGreaterThan(wheelZoomFactor(-1, 1))
+  })
+
+  it('caps one enormous event so a notch cannot cross zoom levels', () => {
+    expect(wheelZoomFactor(-100000)).toBeLessThanOrEqual(wheelZoomFactor(-180))
+    expect(wheelZoomFactor(100000)).toBeGreaterThanOrEqual(wheelZoomFactor(180))
+  })
+
+  it('treats a zero or non-finite delta as no zoom', () => {
+    expect(wheelZoomFactor(0)).toBe(1)
+    expect(wheelZoomFactor(Number.NaN)).toBe(1)
+    expect(wheelZoomFactor(Number.POSITIVE_INFINITY)).toBe(1)
   })
 })
 

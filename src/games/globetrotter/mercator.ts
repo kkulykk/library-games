@@ -100,6 +100,38 @@ export function zoomView(view: ViewBox, anchor: Point, factor: number, aspect: n
   )
 }
 
+/**
+ * Scroll distance that doubles (or halves) the zoom.
+ *
+ * A wheel notch is ~100 px of delta and a trackpad swipe arrives as a stream of
+ * small ones, so a per-*event* zoom factor makes the two behave nothing alike:
+ * one notch used to jump 1.4× while a single flick of a trackpad fired a dozen
+ * events and shot straight to street level. Zooming by delta instead means one
+ * notch is a gentle 1.26× step and a trackpad moves at the speed of the finger.
+ */
+export const WHEEL_ZOOM_DISTANCE_PX = 300
+/**
+ * Biggest delta a single event may contribute. Firefox reports scrolls in lines
+ * and some mice send one enormous delta per notch; without a cap either lands
+ * several zoom levels away from where the hand thought it was going.
+ */
+const MAX_WHEEL_DELTA_PX = 180
+/** Rough px equivalents for the non-pixel `deltaMode`s of a wheel event. */
+const LINE_HEIGHT_PX = 16
+const PAGE_HEIGHT_PX = 400
+
+/**
+ * Zoom factor for one wheel event: > 1 zooms in, < 1 zooms out. Normalising
+ * `deltaY` (and its unit) rather than counting events is what keeps a mouse, a
+ * trackpad and a "smooth scrolling" browser at the same speed.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
+  if (!Number.isFinite(deltaY) || deltaY === 0) return 1
+  const scale = deltaMode === 1 ? LINE_HEIGHT_PX : deltaMode === 2 ? PAGE_HEIGHT_PX : 1
+  const px = clamp(deltaY * scale, -MAX_WHEEL_DELTA_PX, MAX_WHEEL_DELTA_PX)
+  return 2 ** (-px / WHEEL_ZOOM_DISTANCE_PX)
+}
+
 /** A two-finger gesture, in fractions of the map element (0 = left/top, 1 = right/bottom). */
 export interface PinchGesture {
   /** Where the midpoint between the fingers sat when the gesture began. */

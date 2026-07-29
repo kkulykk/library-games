@@ -617,6 +617,27 @@
   color: oklch(0.4 0.18 145);
   border-color: oklch(0.4 0.18 145);
 }
+/* Presence lost this player a while ago — the room can carry on without them. */
+.gt-scope .sk-player-tag.away {
+  color: oklch(0.52 0.15 40);
+  border-color: oklch(0.52 0.15 40);
+}
+.gt-scope button.sk-player-tag.drop {
+  background: none;
+  cursor: pointer;
+  color: oklch(0.5 0.19 25);
+  border-color: oklch(0.5 0.19 25);
+  font-weight: 700;
+  transition: all 0.15s;
+}
+.gt-scope button.sk-player-tag.drop:hover {
+  background: oklch(0.5 0.19 25);
+  color: var(--bg);
+}
+.gt-scope .sk-player-row.is-away {
+  border-style: dashed;
+  opacity: 0.75;
+}
 .gt-scope .sk-score-pts {
   font-family: var(--font-mono);
   font-weight: 700;
@@ -1628,6 +1649,10 @@ a.gt-pano-watermark:hover {
 }
 .gt-scope .gt-reveal-row.you {
   background: color-mix(in oklch, var(--acid) 12%, transparent);
+}
+/* Dropped mid-reveal: the distance column carries the Drop button instead. */
+.gt-scope .gt-reveal-row.is-away {
+  opacity: 0.75;
 }
 .gt-scope .gt-reveal-rank {
   font-family: var(--font-mono);

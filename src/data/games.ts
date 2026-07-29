@@ -439,6 +439,7 @@ export const games: GameMeta[] = [
       'Random World mode drops you at any of a million+ real 360° spots on Earth — endless, clue-free rounds',
       'Scroll to zoom the world map, then click to place your pin and lock in your guess',
       'In online games nobody sees your pin until everyone has locked in',
+      'If somebody loses connection, anyone can drop them from the roster so the expedition carries on',
       'Scoring is by distance: a bullseye earns 5,000 points, half a world away earns 0',
       'Play 5 rounds — highest total score wins the expedition',
     ],
