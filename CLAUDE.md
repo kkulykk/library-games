@@ -24,6 +24,7 @@ pnpm test -- src/games/wordle/logic.test.ts
 # Occasional, network-dependent data jobs (never wired into CI):
 pnpm generate:worldmap   # rebuild Globetrotter land/country polygons
 pnpm generate:reserve    # widen Globetrotter's offline Random World deck
+pnpm generate:panoramax  # re-probe where Panoramax has 360° coverage
 ```
 
 ## Architecture
@@ -48,7 +49,9 @@ pnpm generate:reserve    # widen Globetrotter's offline Random World deck
 - `src/games/<slug>/<Name>Game.tsx` — `'use client'` React component
 - `src/games/<slug>/schema.ts` — Zod schema for serialized state (online games)
 - `src/games/<slug>/use<Name>Room.ts` — per-game room adapter (online games)
+- `src/games/globetrotter/sources/` — Random World panorama archives (`commons.ts`, `panoramax.ts`) behind one `PanoSource` interface; `randomWorld.ts` splits a deck between them and falls back to the vendored reserve
 - `src/hooks/useGameRoom.ts` — generic multiplayer room engine (lifecycle, realtime, presence, version CAS)
+- `src/lib/csp.ts` — the Content-Security-Policy allowlist; reaching a new external origin means adding it here in the same change
 - `src/lib/supabase.ts` — Supabase client, or in-memory fake client when `NEXT_PUBLIC_E2E_FAKE_SUPABASE=1`
 - `src/lib/utils.ts` — `cn()` helper (clsx + tailwind-merge)
 

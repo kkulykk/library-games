@@ -1101,8 +1101,8 @@ function useHostPlaceLookup(
 
 const DECK_NOTES: Record<DeckSource, string | null> = {
   live: null,
-  mixed: 'Commons was stingy — some rounds come from the offline reserve.',
-  reserve: 'Commons was unreachable — playing the offline reserve deck.',
+  mixed: 'The photo archives were stingy — some rounds come from the offline reserve.',
+  reserve: 'The photo archives were unreachable — playing the offline reserve deck.',
 }
 
 export function GlobetrotterGame() {

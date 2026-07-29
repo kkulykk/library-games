@@ -11,6 +11,7 @@
     "generate:schema": "node scripts/generate-schema.mjs",
     "check:schema": "node scripts/generate-schema.mjs --check",
     "generate:reserve": "node scripts/generate-random-world-reserve.mjs",
+    "generate:panoramax": "node scripts/generate-panoramax-coverage.mjs",
     "generate:worldmap": "node scripts/generate-worldmap.mjs",
     "check:worldmap": "node scripts/generate-worldmap.mjs --check",
     "lint": "eslint . && prettier --check .",

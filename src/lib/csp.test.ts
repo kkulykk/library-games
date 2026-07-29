@@ -1,4 +1,9 @@
-import { CONNECT_ORIGINS, contentSecurityPolicy, IMAGE_ORIGINS } from './csp'
+import {
+  CONNECT_ORIGINS,
+  contentSecurityPolicy,
+  IMAGE_ORIGINS,
+  PANORAMAX_IMAGE_ORIGINS,
+} from './csp'
 
 const SUPABASE = 'https://project.supabase.co'
 
@@ -44,6 +49,7 @@ describe('contentSecurityPolicy', () => {
     expect(CONNECT_ORIGINS).toContain('https://commons.wikimedia.org')
     expect(CONNECT_ORIGINS).toContain('https://upload.wikimedia.org')
     expect(CONNECT_ORIGINS).toContain('https://nominatim.openstreetmap.org')
+    expect(CONNECT_ORIGINS).toContain('https://api.panoramax.xyz')
   })
 
   it('allows every origin the games load images from', () => {
@@ -52,6 +58,19 @@ describe('contentSecurityPolicy', () => {
     // The panorama's <img> decode fallback and the raster basemap.
     expect(IMAGE_ORIGINS).toContain('https://upload.wikimedia.org')
     expect(IMAGE_ORIGINS).toContain('https://tile.openstreetmap.org')
+  })
+
+  // Panoramax is federated: the catalog is central but the pixels come from
+  // whichever instance holds them, and the viewer streams a panorama with
+  // `fetch` before falling back to an <img>. An instance listed for one and not
+  // the other is a round that loads on some browsers and not others.
+  it('allows Panoramax instances to be both fetched and decoded', () => {
+    expect(PANORAMAX_IMAGE_ORIGINS.length).toBeGreaterThan(0)
+    for (const origin of PANORAMAX_IMAGE_ORIGINS) {
+      expect(CONNECT_ORIGINS).toContain(origin)
+      expect(IMAGE_ORIGINS).toContain(origin)
+      expect(origin).toMatch(/^https:\/\/[\w.-]+$/)
+    }
   })
 
   it('keeps the blob and data sources the viewer decodes through', () => {

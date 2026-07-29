@@ -17,25 +17,58 @@
  * Reaching a new external service means adding it here in the same change.
  */
 const ORIGINS = {
-  /** Globetrotter — Random World deck sweeps. `randomWorld.ts` */
+  /** Globetrotter — Random World deck sweeps. `sources/commons.ts` */
   commonsApi: 'https://commons.wikimedia.org',
   /** Globetrotter — photosphere downloads, fetched *and* decoded via <img>. `PanoViewer.tsx` */
   wikimediaUploads: 'https://upload.wikimedia.org',
+  /** Globetrotter — Panoramax STAC search for the same deck. `sources/panoramax.ts` */
+  panoramaxApi: 'https://api.panoramax.xyz',
   /** Globetrotter — reverse-geocoding the drop point for the reveal. `placeName.ts` */
   nominatim: 'https://nominatim.openstreetmap.org',
   /** Globetrotter — OpenStreetMap raster basemap. `WorldMap.tsx` */
   osmTiles: 'https://tile.openstreetmap.org',
 } as const
 
-/** Origins reached with `fetch`. */
+/**
+ * Panoramax instances whose photospheres Random World will play.
+ *
+ * Panoramax is federated: the catalog at `api.panoramax.xyz` is shared, but the
+ * pixels live on whichever instance the contributor uploaded to, and the API
+ * hands out (or redirects to) that instance's own hostname. A policy cannot
+ * name a federation, so this is the set of instances the deck accepts —
+ * `sources/panoramax.ts` drops every find hosted anywhere else, which keeps the
+ * two lists honest: a picture the policy would block never reaches a round.
+ *
+ * These three carry effectively all of the federation's spherical imagery
+ * today. Adding an instance means adding it here, in the same change.
+ */
+export const PANORAMAX_IMAGE_ORIGINS: readonly string[] = [
+  'https://panoramax.openstreetmap.fr',
+  'https://panoramax-storage-public-fast.s3.gra.perf.cloud.ovh.net',
+  'https://panoramax.osm.tw',
+]
+
+/**
+ * Origins reached with `fetch`.
+ *
+ * Photosphere hosts are here as well as in `IMAGE_ORIGINS` because the viewer
+ * streams the image with `fetch` to draw a progress bar and only falls back to
+ * an `<img>` load when streaming fails.
+ */
 export const CONNECT_ORIGINS: readonly string[] = [
   ORIGINS.commonsApi,
   ORIGINS.wikimediaUploads,
+  ORIGINS.panoramaxApi,
+  ...PANORAMAX_IMAGE_ORIGINS,
   ORIGINS.nominatim,
 ]
 
 /** Origins loaded as images, including `new Image()` from script. */
-export const IMAGE_ORIGINS: readonly string[] = [ORIGINS.wikimediaUploads, ORIGINS.osmTiles]
+export const IMAGE_ORIGINS: readonly string[] = [
+  ORIGINS.wikimediaUploads,
+  ...PANORAMAX_IMAGE_ORIGINS,
+  ORIGINS.osmTiles,
+]
 
 export interface CspEnv {
   /** `process.env.NODE_ENV` — no policy is emitted outside production. */

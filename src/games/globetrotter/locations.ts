@@ -3,16 +3,23 @@
 // 25 km bullseye radius, which is all the scoring needs).
 
 /**
- * A 360° equirectangular panorama of the location, hand-curated from
- * Wikimedia Commons (freely licensed, CORS-enabled, hotlinking permitted).
- * `url` is a Commons thumbnail rendition sized for WebGL textures; `page` is
- * the Commons file page used for attribution.
+ * A 360° equirectangular panorama of the location. The curated pool below is
+ * hand-picked from Wikimedia Commons (freely licensed, CORS-enabled,
+ * hotlinking permitted); Random World rounds also come from Panoramax. `url`
+ * is a rendition sized for WebGL textures, `page` the archive's own page for
+ * the picture, used for attribution.
  */
 export interface GeoPano {
   url: string
   page: string
   author: string
   license: string
+  /**
+   * Archive the panorama came from, credited alongside the photographer.
+   * Absent on the curated pool and the offline reserve, which are Commons
+   * throughout.
+   */
+  source?: string
 }
 
 /** Reverse-geocoded settlement, filled in for Random World rounds. */
