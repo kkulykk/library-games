@@ -509,8 +509,7 @@ function getRpcHeader() {
 
 function cleanupJob() {
   const deletes = GAMES.map(
-    (g) =>
-      `  delete from public.${g.table} where updated_at < now() - interval '24 hours';`
+    (g) => `  delete from public.${g.table} where updated_at < now() - interval '24 hours';`
   ).join('\n')
   return `-- ─── Scheduled room cleanup (pg_cron) ────────────────────────────────────────
 -- Rooms are never deleted by clients (there is no DELETE policy). Two mechanisms
