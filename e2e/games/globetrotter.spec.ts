@@ -284,155 +284,155 @@ function readGlCounts(page: Page): Promise<GlCounts> {
   return page.evaluate(() => (window as unknown as { __glCounts: GlCounts }).__glCounts)
 }
 
-test.describe('Globetrotter solo (Random World, mocked archives)', () => {
-  /** Panoramax host serving pictures in these tests — one of the CSP allowlist. */
-  const PANORAMAX_HOST = 'https://panoramax.openstreetmap.fr'
+/** Panoramax host serving pictures in these tests — one of the CSP allowlist. */
+const PANORAMAX_HOST = 'https://panoramax.openstreetmap.fr'
 
-  /**
-   * Panoramax double: one STAC `/api/search` per sweep, answering with
-   * spherical pictures inside whatever bounding box was asked for, so a deck
-   * always has a second archive to draw from. Registered by `mockArchives`;
-   * a test that wants Panoramax down routes over it afterwards.
-   */
-  async function mockPanoramax(page: Page): Promise<void> {
-    // Sweeps aim at randomly chosen coverage cells, so answering with the box's
-    // own corner made two sweeps that landed near each other yield pictures the
-    // separation rule then threw away — and a deck that came up short every so
-    // often. Walking the answers around the globe per sweep instead keeps the
-    // double's job ("this archive has usable spherical pictures") deterministic.
-    let sweep = 0
-    await page.route('https://api.panoramax.xyz/**', async (route) => {
-      const spot = sweep++
-      const features = [0, 1].map((i) => {
-        const step = spot * 2 + i
-        const id = `mock-pic-${step}`
-        return {
-          id,
-          // Every answer lands at least 20° of longitude from every other, so
-          // the 50 km separation rule never has cause to drop one.
-          geometry: {
-            type: 'Point',
-            coordinates: [-170 + ((step * 37) % 340), -55 + ((step * 23) % 110)],
+/**
+ * Panoramax double: one STAC `/api/search` per sweep, answering with
+ * spherical pictures inside whatever bounding box was asked for, so a deck
+ * always has a second archive to draw from. Registered by `mockArchives`;
+ * a test that wants Panoramax down routes over it afterwards.
+ */
+async function mockPanoramax(page: Page): Promise<void> {
+  // Sweeps aim at randomly chosen coverage cells, so answering with the box's
+  // own corner made two sweeps that landed near each other yield pictures the
+  // separation rule then threw away — and a deck that came up short every so
+  // often. Walking the answers around the globe per sweep instead keeps the
+  // double's job ("this archive has usable spherical pictures") deterministic.
+  let sweep = 0
+  await page.route('https://api.panoramax.xyz/**', async (route) => {
+    const spot = sweep++
+    const features = [0, 1].map((i) => {
+      const step = spot * 2 + i
+      const id = `mock-pic-${step}`
+      return {
+        id,
+        // Every answer lands at least 20° of longitude from every other, so
+        // the 50 km separation rule never has cause to drop one.
+        geometry: {
+          type: 'Point',
+          coordinates: [-170 + ((step * 37) % 340), -55 + ((step * 23) % 110)],
+        },
+        assets: {
+          sd: { href: `${PANORAMAX_HOST}/derivates/${id}/sd.jpg`, type: 'image/jpeg' },
+        },
+        providers: [{ name: 'Mock Panoramaxer', roles: ['producer'] }],
+        properties: {
+          license: 'CC-BY-SA-4.0',
+          'pers:interior_orientation': {
+            field_of_view: 360,
+            sensor_array_dimensions: [5760, 2880],
           },
-          assets: {
-            sd: { href: `${PANORAMAX_HOST}/derivates/${id}/sd.jpg`, type: 'image/jpeg' },
-          },
-          providers: [{ name: 'Mock Panoramaxer', roles: ['producer'] }],
-          properties: {
-            license: 'CC-BY-SA-4.0',
-            'pers:interior_orientation': {
-              field_of_view: 360,
-              sensor_array_dimensions: [5760, 2880],
-            },
-          },
-        }
-      })
-      await route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'application/json',
-        body: JSON.stringify({ features }),
-      })
-    })
-    await page.route(`${PANORAMAX_HOST}/**`, (route) =>
-      route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'image/jpeg',
-        body: TINY_JPEG,
-      })
-    )
-  }
-
-  /**
-   * Commons double for the two-request pipeline: one `generator=categorymembers`
-   * sweep listing geotagged photospheres, then one `titles=…&iiurlwidth=…`
-   * request rendering their thumbnails.
-   */
-  async function mockCommons(page: Page): Promise<void> {
-    await page.route('https://commons.wikimedia.org/**', async (route) => {
-      const url = new URL(route.request().url())
-      let body: unknown
-      if (url.searchParams.get('generator') === 'categorymembers') {
-        const pages: Record<string, unknown> = {}
-        for (let i = 0; i < 5; i++) {
-          // Spread across the US so the min-separation rule passes and every
-          // reveal names the same country.
-          pages[String(i)] = {
-            title: `File:Mock pano ${i}.jpg`,
-            imageinfo: [
-              {
-                width: 4096,
-                height: 2048,
-                mime: 'image/jpeg',
-                extmetadata: {
-                  Artist: { value: 'Mock Mapper' },
-                  LicenseShortName: { value: 'CC BY-SA 4.0' },
-                },
-              },
-            ],
-            coordinates: [{ lat: 39 + i * 2, lon: -100 + i * 3 }],
-          }
-        }
-        body = { query: { pages } }
-      } else {
-        const titles = (url.searchParams.get('titles') ?? '').split('|')
-        const pages: Record<string, unknown> = {}
-        titles.forEach((title, index) => {
-          pages[String(index)] = {
-            title,
-            imageinfo: [
-              {
-                // Shaped like a real Commons rendition: the client rewrites the
-                // `NNNpx-` segment to pick a size its screen can use.
-                thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Mock_pano_${index}.jpg/3840px-Mock_pano_${index}.jpg`,
-                extmetadata: {
-                  Artist: { value: 'Mock Mapper' },
-                  LicenseShortName: { value: 'CC BY-SA 4.0' },
-                },
-              },
-            ],
-          }
-        })
-        body = { query: { pages } }
+        },
       }
-      await route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'application/json',
-        body: JSON.stringify(body),
-      })
     })
-    await page.route('https://upload.wikimedia.org/**', (route) =>
-      route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'image/jpeg',
-        body: TINY_JPEG,
-      })
-    )
-    await page.route('https://nominatim.openstreetmap.org/**', (route) =>
-      route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'application/json',
-        body: JSON.stringify({
-          address: { town: 'Dodge City', county: 'Ford County', country: 'United States' },
-        }),
-      })
-    )
-  }
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify({ features }),
+    })
+  })
+  await page.route(`${PANORAMAX_HOST}/**`, (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'image/jpeg',
+      body: TINY_JPEG,
+    })
+  )
+}
 
-  /**
-   * Every archive a deck is drawn from. A deck is split between them, so a run
-   * that stubs only one still reaches the network for the other — which is
-   * exactly the nondeterminism e2e is here to keep out.
-   */
-  async function mockArchives(page: Page): Promise<void> {
-    await mockCommons(page)
-    await mockPanoramax(page)
-  }
+/**
+ * Commons double for the two-request pipeline: one `generator=categorymembers`
+ * sweep listing geotagged photospheres, then one `titles=…&iiurlwidth=…`
+ * request rendering their thumbnails.
+ */
+async function mockCommons(page: Page): Promise<void> {
+  await page.route('https://commons.wikimedia.org/**', async (route) => {
+    const url = new URL(route.request().url())
+    let body: unknown
+    if (url.searchParams.get('generator') === 'categorymembers') {
+      const pages: Record<string, unknown> = {}
+      for (let i = 0; i < 5; i++) {
+        // Spread across the US so the min-separation rule passes and every
+        // reveal names the same country.
+        pages[String(i)] = {
+          title: `File:Mock pano ${i}.jpg`,
+          imageinfo: [
+            {
+              width: 4096,
+              height: 2048,
+              mime: 'image/jpeg',
+              extmetadata: {
+                Artist: { value: 'Mock Mapper' },
+                LicenseShortName: { value: 'CC BY-SA 4.0' },
+              },
+            },
+          ],
+          coordinates: [{ lat: 39 + i * 2, lon: -100 + i * 3 }],
+        }
+      }
+      body = { query: { pages } }
+    } else {
+      const titles = (url.searchParams.get('titles') ?? '').split('|')
+      const pages: Record<string, unknown> = {}
+      titles.forEach((title, index) => {
+        pages[String(index)] = {
+          title,
+          imageinfo: [
+            {
+              // Shaped like a real Commons rendition: the client rewrites the
+              // `NNNpx-` segment to pick a size its screen can use.
+              thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Mock_pano_${index}.jpg/3840px-Mock_pano_${index}.jpg`,
+              extmetadata: {
+                Artist: { value: 'Mock Mapper' },
+                LicenseShortName: { value: 'CC BY-SA 4.0' },
+              },
+            },
+          ],
+        }
+      })
+      body = { query: { pages } }
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    })
+  })
+  await page.route('https://upload.wikimedia.org/**', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'image/jpeg',
+      body: TINY_JPEG,
+    })
+  )
+  await page.route('https://nominatim.openstreetmap.org/**', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify({
+        address: { town: 'Dodge City', county: 'Ford County', country: 'United States' },
+      }),
+    })
+  )
+}
 
+/**
+ * Every archive a deck is drawn from. A deck is split between them, so a run
+ * that stubs only one still reaches the network for the other — which is
+ * exactly the nondeterminism e2e is here to keep out.
+ */
+async function mockArchives(page: Page): Promise<void> {
+  await mockCommons(page)
+  await mockPanoramax(page)
+}
+
+test.describe('Globetrotter solo (Random World, mocked archives)', () => {
   test('scouts a deck, plays a round, reveals the country', async ({ page }) => {
     await mockArchives(page)
 
@@ -888,6 +888,62 @@ test.describe('Globetrotter gameplay smoke', () => {
       const finalRoom = await readGlobetrotterRoom(roomCode)
       expect(finalRoom.state.phase).toBe('finished')
     } finally {
+      await closePlayers([guest])
+    }
+  })
+})
+
+test.describe('Globetrotter room scouting', () => {
+  test('shows every player the deck being scouted, not an idle lobby', async ({
+    page,
+    browser,
+  }) => {
+    const hostPage = new GlobetrotterPage(page)
+    const guest = await createPlayer(browser, 'Guest Globe')
+    const guestPage = new GlobetrotterPage(guest.page)
+
+    // Hold the archives open on the host's side so the scout is observable —
+    // this is the several seconds the room used to spend looking at nothing.
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+
+    try {
+      await mockArchives(page)
+      await mockArchives(guest.page)
+      for (const archive of ['https://commons.wikimedia.org/**', 'https://api.panoramax.xyz/**']) {
+        await page.route(archive, async (route) => {
+          await held
+          await route.fallback()
+        })
+      }
+
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom('Host Globe')
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
+
+      // Random World is the default expedition; starting it scouts a deck.
+      await hostPage.startGame()
+
+      // Both browsers watch the same trip being assembled.
+      await expect(hostPage.scouting).toBeVisible()
+      await expect(guestPage.scouting).toBeVisible()
+      await expect(guestPage.scouting).toContainText('0 of 5 locations locked')
+      // Only the browser doing the work can call it off.
+      await expect(hostPage.page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+      await expect(guestPage.page.getByRole('button', { name: 'Cancel' })).toBeHidden()
+
+      release()
+
+      // And the round arrives for both.
+      await expect(hostPage.pano).toBeVisible()
+      await expect(guestPage.pano).toBeVisible()
+      await hostPage.expectStatus('Round 1 of 5')
+      await expect(guestPage.scouting).toBeHidden()
+    } finally {
+      release()
       await closePlayers([guest])
     }
   })

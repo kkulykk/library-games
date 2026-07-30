@@ -241,7 +241,18 @@ function HowToScreen({ onStart }: { onStart: () => void }) {
 
 // ─── Scouting (deck fetch progress) ──────────────────────────────────────────
 
-function ScoutingScreen({ progress, onCancel }: { progress: ScoutProgress; onCancel: () => void }) {
+/**
+ * @param onCancel Only the browser doing the scouting can call it off, so a
+ *   room's other players get the same screen without the button — the point is
+ *   that they can see the trip being assembled rather than an idle lobby.
+ */
+function ScoutingScreen({
+  progress,
+  onCancel,
+}: {
+  progress: ScoutProgress
+  onCancel?: () => void
+}) {
   const pct = Math.round((progress.found / Math.max(1, progress.total)) * 100)
   return (
     <Stage>
@@ -273,9 +284,13 @@ function ScoutingScreen({ progress, onCancel }: { progress: ScoutProgress; onCan
         <span className="mono gt-scout-count" data-testid="globetrotter-scout-count">
           {progress.found} of {progress.total} locations locked
         </span>
-        <button className="sk-btn sk-btn-ghost sk-btn-sm" onClick={onCancel}>
-          Cancel
-        </button>
+        {onCancel ? (
+          <button className="sk-btn sk-btn-ghost sk-btn-sm" onClick={onCancel}>
+            Cancel
+          </button>
+        ) : (
+          <span className="mono gt-scout-wait">Your host is picking the places</span>
+        )}
       </div>
     </Stage>
   )
@@ -457,7 +472,7 @@ interface LobbyScreenProps {
   playerId: string
   roomCode: string
   drop: DropControls
-  onStart: (deck?: GeoLocation[]) => void
+  onStart: (mode: ExpeditionMode) => void
   onLeave: () => void
 }
 
@@ -466,26 +481,12 @@ function LobbyScreen({ gameState, playerId, roomCode, drop, onStart, onLeave }: 
   const ready = gameState.players.length >= MIN_PLAYERS
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const [mode, setMode] = useState<ExpeditionMode>('random')
-  const [scouting, setScouting] = useState<ScoutProgress | null>(null)
 
   function copy(text: string, key: 'code' | 'link') {
     copyText(text).then(() => {
       setCopied(key)
       setTimeout(() => setCopied(null), 1800)
     })
-  }
-
-  async function handleStart() {
-    if (mode === 'landmarks') {
-      onStart()
-      return
-    }
-    setScouting({ found: 0, total: TOTAL_ROUNDS })
-    const { deck } = await buildRandomWorldDeck(TOTAL_ROUNDS, {
-      onProgress: (found, total) => setScouting({ found, total }),
-    })
-    setScouting(null)
-    onStart(deck)
   }
 
   return (
@@ -581,14 +582,6 @@ function LobbyScreen({ gameState, playerId, roomCode, drop, onStart, onLeave }: 
                 {TOTAL_ROUNDS} · distance scored
               </span>
             </div>
-            {scouting && (
-              <div className="sk-settings-row">
-                <label>Scouting</label>
-                <span className="mono" style={{ color: 'var(--ink-dim)' }}>
-                  {scouting.found} of {scouting.total} found
-                </span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -612,10 +605,10 @@ function LobbyScreen({ gameState, playerId, roomCode, drop, onStart, onLeave }: 
               <button
                 className="sk-btn"
                 data-testid="start-game-button"
-                disabled={!ready || scouting !== null}
-                onClick={() => void handleStart()}
+                disabled={!ready}
+                onClick={() => onStart(mode)}
               >
-                {scouting ? 'Scouting the planet…' : 'Start trip →'}
+                Start trip →
               </button>
             )}
           </div>
@@ -1200,6 +1193,15 @@ interface DeckScout {
   cancelled: boolean
 }
 
+/**
+ * How long a relayed scout is believed after its last progress message.
+ *
+ * Long enough to cover a slow archive sweep between two finds, short enough
+ * that a host who closed the tab does not leave the room watching a bar that
+ * will never move.
+ */
+const SCOUT_SILENCE_MS = 20_000
+
 const DECK_NOTES: Record<DeckSource, string | null> = {
   live: null,
   mixed: 'The photo archives were stingy — some rounds come from the offline reserve.',
@@ -1214,6 +1216,12 @@ export function GlobetrotterGame() {
   const [scouting, setScouting] = useState<ScoutProgress | null>(null)
   const [soloError, setSoloError] = useState<string | null>(null)
   const scoutRef = useRef<DeckScout | null>(null)
+  // The host's scouting progress, as reported to everybody else in the room.
+  const [roomScout, setRoomScout] = useState<ScoutProgress | null>(null)
+  // Set for as long as a scout is worth telling the room about — the entry
+  // screen's background scout deliberately is not, or joining a room mid-scout
+  // would show the others a trip nobody has started.
+  const announceRef = useRef<((progress: ScoutProgress) => void) | null>(null)
 
   const {
     gameState,
@@ -1229,6 +1237,8 @@ export function GlobetrotterGame() {
     restoreSession,
     dispatch,
     leaveRoom,
+    broadcast,
+    onBroadcast: onBroadcastRef,
   } = useGlobetrotterRoom()
 
   // One reverse-geocode per round for the whole room, run by the host.
@@ -1271,6 +1281,7 @@ export function GlobetrotterGame() {
           // Only moves a bar that is actually on screen; a background scout has
           // nobody watching it.
           setScouting((current) => (current ? { found, total } : current))
+          announceRef.current?.({ found, total })
         },
       }),
     }
@@ -1306,6 +1317,41 @@ export function GlobetrotterGame() {
     }
     scoutRef.current = null
     setScouting(null)
+    if (announceRef.current) {
+      announceRef.current = null
+      broadcast({ type: 'scouting_done' })
+    }
+  }
+
+  /**
+   * Host: start the trip. A Random World room has to scout a deck first, which
+   * is several seconds of archive requests during which there is no game to
+   * write — so the room is told what is happening rather than left staring at
+   * an unchanged lobby. The deck may well be scouted already, in which case
+   * this is instant and nobody sees a thing.
+   */
+  async function startRoom(mode: ExpeditionMode) {
+    if (!playerId) return
+    if (mode === 'landmarks') {
+      void dispatch({ type: 'START_GAME', playerId })
+      return
+    }
+    const scout = scoutDeck()
+    if (!scout.result) {
+      setScouting(scout.progress)
+      announceRef.current = (progress) => broadcast({ type: 'scouting', ...progress })
+      // Say so at once: the players waiting have no other way to know the host
+      // pressed the button.
+      broadcast({ type: 'scouting', ...scout.progress })
+    }
+    const { deck } = await scout.promise
+    announceRef.current = null
+    if (scout.cancelled) return
+    scoutRef.current = null
+    setScouting(null)
+    // START_GAME lands as a state change, which is what clears the other
+    // players' screens; a deck that came up short falls back to the landmarks.
+    void dispatch({ type: 'START_GAME', playerId, deck })
   }
 
   // Scout a deck the moment the player is one click away from using it. Reading
@@ -1315,6 +1361,32 @@ export function GlobetrotterGame() {
   useEffect(() => {
     if (onEntryScreen) scoutDeck()
   }, [onEntryScreen, scoutDeck])
+
+  // Watch the host scout. Progress is chatter, so it is only ever believed for
+  // as long as it keeps coming: a host who closes the tab mid-scout stops
+  // sending, and the screen falls away on its own rather than stranding the
+  // room in a trip that will never start.
+  const roomPhase = gameState?.phase ?? null
+  useEffect(() => {
+    onBroadcastRef.current = (message) => {
+      if (message.type === 'scouting_done') setRoomScout(null)
+      else setRoomScout({ found: message.found, total: message.total })
+    }
+    return () => {
+      onBroadcastRef.current = null
+    }
+  }, [onBroadcastRef])
+
+  useEffect(() => {
+    if (!roomScout) return
+    const timer = setTimeout(() => setRoomScout(null), SCOUT_SILENCE_MS)
+    return () => clearTimeout(timer)
+  }, [roomScout])
+
+  useEffect(() => {
+    // The game starting (or the room going away) is the definitive answer.
+    if (roomPhase !== 'lobby') setRoomScout(null)
+  }, [roomPhase])
 
   // The next photosphere downloads while the player reads this round's reveal,
   // so "Developing film" is over before they press Next round.
@@ -1326,11 +1398,15 @@ export function GlobetrotterGame() {
 
   const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
 
-  // ── Scouting a solo deck ───────────────────────────────────────────────────
-  if (scouting && !soloGame) {
+  // ── Scouting a deck: your own, or the host's ───────────────────────────────
+  // `scouting` is this browser doing the work (a solo trip, or hosting one);
+  // `roomScout` is somebody else's, relayed. Either way the whole room watches
+  // the same five dots fill in instead of an idle lobby.
+  const watchedScout = scouting ?? (roomPhase === 'lobby' ? roomScout : null)
+  if (watchedScout && !soloGame) {
     return (
-      <Shell crumb="Scouting">
-        <ScoutingScreen progress={scouting} onCancel={cancelScouting} />
+      <Shell crumb="Scouting" roomCode={roomCode}>
+        <ScoutingScreen progress={watchedScout} onCancel={scouting ? cancelScouting : undefined} />
       </Shell>
     )
   }
@@ -1512,7 +1588,7 @@ export function GlobetrotterGame() {
           playerId={playerId}
           roomCode={roomCode}
           drop={drop}
-          onStart={(deck) => dispatch({ type: 'START_GAME', playerId, deck })}
+          onStart={(mode) => void startRoom(mode)}
           onLeave={leaveRoom}
         />
       </Shell>
