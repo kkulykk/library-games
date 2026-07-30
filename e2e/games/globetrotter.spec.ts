@@ -948,11 +948,26 @@ test.describe('Globetrotter dropped players', () => {
         'Staying Globe',
       ])
       expect(room.state.currentRound?.phase).toBe('reveal')
-      expect(room.state.log.some((line) => line.includes('Leaving Globe was dropped'))).toBe(true)
+      // The log names who did it — dropping somebody is not an anonymous act.
+      expect(
+        room.state.log.some((line) => line === 'Leaving Globe was dropped by Host Globe.')
+      ).toBe(true)
 
       // And the expedition carries on without them.
       await hostPage.advanceRound()
       await hostPage.expectStatus('Pins locked: 0 of 2')
+
+      // The dropped player comes back — presence goes quiet for a backgrounded
+      // phone as readily as for a closed laptop — and is told what happened
+      // instead of being shown a room they are no longer on the roster of.
+      await leaving.page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      const dropped = leaving.page.getByTestId('globetrotter-dropped')
+      await expect(dropped).toContainText('You were dropped from this expedition')
+      await leaving.page.getByTestId('globetrotter-dropped-exit').click()
+      await expect(leavingPage.soloButton).toBeVisible()
     } finally {
       await closePlayers([staying, leaving])
     }

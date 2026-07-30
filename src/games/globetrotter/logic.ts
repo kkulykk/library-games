@@ -331,11 +331,16 @@ function withHost(players: Player[]): Player[] {
   return players.map((p, index) => (index === 0 ? { ...p, isHost: true } : p))
 }
 
-export function removePlayer(state: GameState, playerId: string, kicked = false): GameState {
+/**
+ * @param droppedBy Name of the player who removed them, when it was not their
+ *   own doing. It goes in the room log: dropping somebody is the one action a
+ *   player takes on another's behalf, so the room gets to see who did it.
+ */
+export function removePlayer(state: GameState, playerId: string, droppedBy?: string): GameState {
   const player = state.players.find((p) => p.id === playerId)
   if (!player) return state
   const players = withHost(state.players.filter((p) => p.id !== playerId))
-  const departed = kicked ? 'was dropped from the expedition' : 'left the expedition'
+  const departed = droppedBy ? `was dropped by ${droppedBy}` : 'left the expedition'
 
   if (state.phase === 'lobby' || !state.currentRound) {
     return { ...state, players }
@@ -398,9 +403,10 @@ export function kickPlayer(state: GameState, playerId: string, targetId: string)
   // A finished room is a scoreboard; dropping somebody would rewrite the result.
   if (state.phase === 'finished') return state
   if (playerId === targetId) return state
-  if (!state.players.some((p) => p.id === playerId)) return state
+  const actor = state.players.find((p) => p.id === playerId)
+  if (!actor) return state
   if (!state.players.some((p) => p.id === targetId)) return state
-  return removePlayer(state, targetId, true)
+  return removePlayer(state, targetId, actor.name)
 }
 
 /**

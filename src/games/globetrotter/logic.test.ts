@@ -383,7 +383,15 @@ describe('KICK_PLAYER', () => {
     state = kick(state, host.id, third.id)
     expect(state.players.map((p) => p.id)).toEqual([host.id, guest.id])
     expect(state.phase).toBe('playing')
-    expect(state.log.at(-1)).toContain('dropped')
+    // Named both ways round: dropping somebody is the one thing a player does
+    // on another's behalf, so the room log says who did it.
+    expect(state.log.at(-1)).toBe(`${third.name} was dropped by ${host.name}.`)
+  })
+
+  it('tells a leaver apart from somebody who was dropped', () => {
+    let state = playingState([host, guest, third])
+    state = applyAction(state, { type: 'REMOVE_PLAYER', playerId: third.id })
+    expect(state.log.at(-1)).toBe(`${third.name} left the expedition.`)
   })
 
   it('reveals the round when the dropped player was the last hold-out', () => {

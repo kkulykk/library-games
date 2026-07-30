@@ -1469,6 +1469,39 @@ export function GlobetrotterGame() {
   }
 
   // ── Online flow ────────────────────────────────────────────────────────────
+
+  // Dropped while you were away. Presence goes quiet for a backgrounded phone
+  // as readily as for a closed laptop, so coming back to find the room has
+  // moved on without you is a real ending, not an edge case — and a roster you
+  // are not on renders a board with nobody's score on it. Say what happened.
+  if (!gameState.players.some((player) => player.id === playerId)) {
+    return (
+      <Shell crumb="Dropped" roomCode={roomCode}>
+        <Stage>
+          <div className="sk-entry" data-testid="globetrotter-dropped">
+            <div className="sk-entry-head">
+              <h2>You were dropped from this expedition</h2>
+              <p>
+                The room lost you for long enough that the others carried on without you. Room{' '}
+                {roomCode} is still running — ask them for the code to rejoin, or start a trip of
+                your own.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button
+                className="sk-btn"
+                data-testid="globetrotter-dropped-exit"
+                onClick={leaveRoom}
+              >
+                Back to menu →
+              </button>
+            </div>
+          </div>
+        </Stage>
+      </Shell>
+    )
+  }
+
   const redacted = redactForPlayer(gameState, playerId)
 
   if (redacted.phase === 'lobby') {
