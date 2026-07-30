@@ -284,9 +284,12 @@ alter table public.globetrotter_rooms add column if not exists room_token uuid n
 -- realtime.send() INSERTs its payload into realtime.messages, shipping the state
 -- meant every update wrote the whole blob to Postgres a second time for nothing:
 -- with N players in a room, one action cost 1 state write + 1 state insert + N
--- state reads. Sending only the version keeps that insert tiny and lets clients
--- skip the refetch entirely when the signalled version is not ahead of what they
--- already hold. Do NOT put `state` back in here.
+-- state reads. Sending only the version drops that second write to a few bytes.
+-- Do NOT put `state` back in here.
+--
+-- The version is carried for observability only — clients must NOT use it to skip
+-- the refetch, since their local version is advanced optimistically and can match
+-- a version whose authoritative state differs. See the note in useGameRoom.
 
 create or replace function public.broadcast_room_state()
 returns trigger

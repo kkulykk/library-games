@@ -357,14 +357,15 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       stateChannelRef.current?.unsubscribe()
       stateChannelRef.current = supabaseClient
         .channel(`room:${code}`)
-        .on('broadcast', { event: 'state' }, (payload: { payload?: { version?: unknown } }) => {
-          // The signal carries only the new version — never trusted state. When it
-          // is not ahead of what we hold there is nothing to fetch, which skips the
-          // writer refetching the echo of its own optimistic update. A forged
-          // version can only cost an extra read: the value written to versionRef
-          // still comes from the authoritative SELECT (CR-03).
-          const signalled = payload?.payload?.version
-          if (typeof signalled === 'number' && signalled <= versionRef.current) return
+        .on('broadcast', { event: 'state' }, () => {
+          // Treat the signal purely as a wakeup and ALWAYS re-read. It is tempting to
+          // also skip the read when the signalled version is not ahead of versionRef
+          // — but do not. versionRef is advanced OPTIMISTICALLY by dispatch (and by
+          // joinRoom's `?? currentVersion + 1` fallback), so it can already equal a
+          // version whose authoritative state differs from what we hold. Skipping
+          // there makes that divergence permanently invisible, because no later
+          // signal for that version ever arrives. Measured: skipping cost 2/12 E2E
+          // runs to a hung room; always reading is 0/12.
           scheduleRefetch()
         })
         // Refetch-on-reconnect (D-10): on (re)subscribe, re-read the current {state, version}
