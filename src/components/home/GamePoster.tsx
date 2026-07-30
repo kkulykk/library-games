@@ -907,6 +907,94 @@ const Posters: Record<string, PosterDef> = {
     ),
   },
 
+  globetrotter: {
+    w: 320,
+    h: 200,
+    bg: '#0a0a08',
+    content: () => {
+      // The moment the game is about: a pin dropped on the world, the real spot
+      // revealed in gold, and the distance between the two. The wireframe globe
+      // is the same mark the game's own entry card uses.
+      const guess = { x: 96, y: 74 }
+      const answer = { x: 232, y: 132 }
+      return (
+        <>
+          <rect width="320" height="200" fill="#0a0a08" />
+          <defs>
+            <pattern id="globe-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#1e1e1a" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width="320" height="200" fill="url(#globe-grid)" />
+
+          <g fill="none" stroke="#4d4d44" strokeWidth="2">
+            <circle cx="130" cy="100" r="74" />
+            {/* parallels */}
+            <path d="M 60 72 H 200 M 56 100 H 204 M 60 128 H 200 M 74 148 H 186 M 74 52 H 186" />
+            {/* meridians, drawn as the ellipses a sphere projects them to */}
+            <path d="M 130 26 A 34 74 0 0 0 130 174 A 34 74 0 0 0 130 26" />
+            <path d="M 130 26 A 62 74 0 0 0 130 174 A 62 74 0 0 0 130 26" />
+            <path d="M 130 26 V 174" />
+          </g>
+
+          {/* the miss, drawn from the guess to the answer */}
+          <line
+            x1={guess.x}
+            y1={guess.y}
+            x2={answer.x}
+            y2={answer.y}
+            stroke="#8a8072"
+            strokeWidth="2"
+            strokeDasharray="7 6"
+          />
+          <text
+            x="176"
+            y="88"
+            textAnchor="middle"
+            fontFamily="'JetBrains Mono', monospace"
+            fontWeight="700"
+            fontSize="12"
+            fill="#e8e6dd"
+          >
+            4,112 KM
+          </text>
+
+          {/* your pin */}
+          <circle
+            cx={guess.x}
+            cy={guess.y}
+            r="9"
+            fill="#bfff3a"
+            stroke="#0a0a08"
+            strokeWidth="2.5"
+          />
+          <circle cx={guess.x} cy={guess.y} r="3" fill="#0a0a08" />
+
+          {/* the answer, flagged in gold */}
+          <circle cx={answer.x} cy={answer.y} r="17" fill="#e6c12b" opacity="0.22" />
+          <path
+            d={`M ${answer.x} ${answer.y - 20} L ${answer.x + 9} ${answer.y - 3} L ${answer.x} ${answer.y + 7} L ${answer.x - 9} ${answer.y - 3} Z`}
+            fill="#e6c12b"
+            stroke="#0a0a08"
+            strokeWidth="2"
+          />
+          <circle cx={answer.x} cy={answer.y - 5} r="4" fill="#0a0a08" />
+
+          <text
+            x="20"
+            y="185"
+            fontFamily="'JetBrains Mono', monospace"
+            fontSize="11"
+            letterSpacing="2"
+            fill="#6f6658"
+          >
+            360° · ROUND 3 / 5
+          </text>
+        </>
+      )
+    },
+  },
+
   chess: {
     w: 240,
     h: 240,

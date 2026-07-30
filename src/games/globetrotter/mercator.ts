@@ -100,6 +100,38 @@ export function zoomView(view: ViewBox, anchor: Point, factor: number, aspect: n
   )
 }
 
+/**
+ * Scroll distance that doubles (or halves) the zoom.
+ *
+ * A wheel notch is ~100 px of delta and a trackpad swipe arrives as a stream of
+ * small ones, so a per-*event* zoom factor makes the two behave nothing alike:
+ * one notch used to jump 1.4× while a single flick of a trackpad fired a dozen
+ * events and shot straight to street level. Zooming by delta instead means one
+ * notch is a gentle 1.26× step and a trackpad moves at the speed of the finger.
+ */
+export const WHEEL_ZOOM_DISTANCE_PX = 300
+/**
+ * Biggest delta a single event may contribute. Firefox reports scrolls in lines
+ * and some mice send one enormous delta per notch; without a cap either lands
+ * several zoom levels away from where the hand thought it was going.
+ */
+const MAX_WHEEL_DELTA_PX = 180
+/** Rough px equivalents for the non-pixel `deltaMode`s of a wheel event. */
+const LINE_HEIGHT_PX = 16
+const PAGE_HEIGHT_PX = 400
+
+/**
+ * Zoom factor for one wheel event: > 1 zooms in, < 1 zooms out. Normalising
+ * `deltaY` (and its unit) rather than counting events is what keeps a mouse, a
+ * trackpad and a "smooth scrolling" browser at the same speed.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
+  if (!Number.isFinite(deltaY) || deltaY === 0) return 1
+  const scale = deltaMode === 1 ? LINE_HEIGHT_PX : deltaMode === 2 ? PAGE_HEIGHT_PX : 1
+  const px = clamp(deltaY * scale, -MAX_WHEEL_DELTA_PX, MAX_WHEEL_DELTA_PX)
+  return 2 ** (-px / WHEEL_ZOOM_DISTANCE_PX)
+}
+
 /** A two-finger gesture, in fractions of the map element (0 = left/top, 1 = right/bottom). */
 export interface PinchGesture {
   /** Where the midpoint between the fingers sat when the gesture began. */
@@ -244,6 +276,28 @@ export function tileZoom(view: ViewBox, viewportWidthPx: number, maxZoom = 12): 
   return clamp(Math.round(Math.log2(scale)), 0, maxZoom)
 }
 
+/**
+ * Deepest tile level that covers `view` in no more than `maxTiles` tiles.
+ *
+ * The reveal tour has no single level that suits it — it opens 25 km across and
+ * ends up showing a continent — and asking for the right one at every step is
+ * what made the map flicker. A tile *budget* gives every frame of the flight a
+ * level it can afford: near-native detail over a close-up (a handful of tiles
+ * cover 25 km) and a coarse world underneath a continental sweep. Blurry where
+ * the camera is moving fastest, but a map rather than a coloured rectangle.
+ */
+export function budgetZoom(view: ViewBox, maxZoom = 12, maxTiles = 8): number {
+  let best = 0
+  for (let z = 1; z <= maxZoom; z++) {
+    const size = WORLD_SIZE / 2 ** z
+    const across = Math.ceil(view.w / size) + 1
+    const down = Math.ceil(view.h / size) + 1
+    if (across * down > maxTiles) break
+    best = z
+  }
+  return best
+}
+
 /** Every tile of `z` intersecting the view, in draw order. */
 export function visibleTiles(view: ViewBox, z: number): Tile[] {
   const count = 2 ** z
@@ -257,6 +311,30 @@ export function visibleTiles(view: ViewBox, z: number): Tile[] {
     for (let x = minX; x <= maxX; x++) tiles.push({ z, x, y })
   }
   return tiles
+}
+
+/**
+ * One affordable tile set for a whole camera tour, coarse levels first.
+ *
+ * Each destination gets the deepest level its budget allows, so the close-ups
+ * arrive near native detail while the wide legs fall back to a coarse world —
+ * and because the tour's last stop frames every other one, its tiles double as
+ * a backdrop for the frames *between* destinations. Ordering matters: the SVG
+ * paints in array order, so shallow tiles go down first and detail lands on
+ * top of them.
+ */
+export function tourTiles(views: readonly ViewBox[], maxZoom = 12, maxTiles = 8): Tile[] {
+  const seen = new Set<string>()
+  const collected: Tile[] = []
+  for (const view of views) {
+    for (const tile of visibleTiles(view, budgetZoom(view, maxZoom, maxTiles))) {
+      const key = tileKey(tile)
+      if (seen.has(key)) continue
+      seen.add(key)
+      collected.push(tile)
+    }
+  }
+  return collected.sort((a, b) => a.z - b.z)
 }
 
 /** World-coordinate box a tile occupies. */

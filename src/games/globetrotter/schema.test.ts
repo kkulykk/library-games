@@ -1,4 +1,4 @@
-import { GameStateSchema } from './schema'
+import { BroadcastMessageSchema, GameStateSchema } from './schema'
 
 const validLocation = {
   name: 'Eiffel Tower',
@@ -188,5 +188,33 @@ describe('globetrotter GameStateSchema', () => {
     delete noClues.clues
     const state = { ...playing, deck: [noClues] }
     expect(GameStateSchema.safeParse(state).success).toBe(false)
+  })
+})
+
+describe('BroadcastMessageSchema', () => {
+  it('accepts scouting progress and the end of a scout', () => {
+    expect(BroadcastMessageSchema.safeParse({ type: 'scouting', found: 0, total: 5 }).success).toBe(
+      true
+    )
+    expect(BroadcastMessageSchema.safeParse({ type: 'scouting', found: 5, total: 5 }).success).toBe(
+      true
+    )
+    expect(BroadcastMessageSchema.safeParse({ type: 'scouting_done' }).success).toBe(true)
+  })
+
+  it('rejects anything else the public channel might carry', () => {
+    for (const message of [
+      { type: 'scouting', found: -1, total: 5 },
+      { type: 'scouting', found: 1.5, total: 5 },
+      { type: 'scouting', found: 0, total: 0 },
+      { type: 'scouting', found: 0, total: 5000 },
+      { type: 'scouting', found: '2', total: 5 },
+      { type: 'scouting' },
+      { type: 'start_game' },
+      'scouting',
+      null,
+    ]) {
+      expect(BroadcastMessageSchema.safeParse(message).success).toBe(false)
+    }
   })
 })

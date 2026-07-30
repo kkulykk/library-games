@@ -64,3 +64,25 @@ export const GameStateSchema = z.object({
 })
 
 export type GameState = z.infer<typeof GameStateSchema>
+
+/**
+ * Ephemeral room chatter, sent on the broadcast channel rather than written to
+ * the room row.
+ *
+ * Scouting a Random World deck takes the host's browser several seconds of
+ * archive requests before there is any game to write, and until now the rest of
+ * the room sat looking at an unchanged lobby. Progress is the definition of
+ * throwaway — safe to miss, meaningless a second later, and never something to
+ * trust — so it travels as a message instead of as state. The channel is public,
+ * so it is parsed like everything else that crosses the network.
+ */
+export const BroadcastMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('scouting'),
+    found: z.number().int().min(0).max(50),
+    total: z.number().int().min(1).max(50),
+  }),
+  z.object({ type: z.literal('scouting_done') }),
+])
+
+export type BroadcastMessage = z.infer<typeof BroadcastMessageSchema>

@@ -35,6 +35,8 @@ export type GameAction =
   | { type: 'NEXT_ROUND'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
   | { type: 'REMOVE_PLAYER'; playerId: string }
+  /** `playerId` asks for `targetId` to be dropped — see `kickPlayer`. */
+  | { type: 'KICK_PLAYER'; playerId: string; targetId: string }
   | { type: 'SET_PLACE'; playerId: string; roundNumber: number; place: GeoPlace }
 
 export const MIN_PLAYERS = 2
@@ -316,10 +318,29 @@ function playAgain(state: GameState, playerId: string): GameState {
   }
 }
 
-export function removePlayer(state: GameState, playerId: string): GameState {
+/**
+ * Hand the host badge on when the host is the one leaving.
+ *
+ * Only the host can start a game, advance a round or restart, so a room whose
+ * host closed their laptop is a room nobody can move. The longest-standing
+ * player left takes over — which is also what makes kicking a dropped host
+ * useful rather than terminal.
+ */
+function withHost(players: Player[]): Player[] {
+  if (players.length === 0 || players.some((p) => p.isHost)) return players
+  return players.map((p, index) => (index === 0 ? { ...p, isHost: true } : p))
+}
+
+/**
+ * @param droppedBy Name of the player who removed them, when it was not their
+ *   own doing. It goes in the room log: dropping somebody is the one action a
+ *   player takes on another's behalf, so the room gets to see who did it.
+ */
+export function removePlayer(state: GameState, playerId: string, droppedBy?: string): GameState {
   const player = state.players.find((p) => p.id === playerId)
   if (!player) return state
-  const players = state.players.filter((p) => p.id !== playerId)
+  const players = withHost(state.players.filter((p) => p.id !== playerId))
+  const departed = droppedBy ? `was dropped by ${droppedBy}` : 'left the expedition'
 
   if (state.phase === 'lobby' || !state.currentRound) {
     return { ...state, players }
@@ -331,11 +352,11 @@ export function removePlayer(state: GameState, playerId: string): GameState {
       players,
       phase: 'finished',
       currentRound: null,
-      log: [...state.log, `${player.name} left — not enough players to continue.`],
+      log: [...state.log, `${player.name} ${departed} — not enough players to continue.`],
     }
   }
 
-  const log = [...state.log, `${player.name} left the expedition.`]
+  const log = [...state.log, `${player.name} ${departed}.`]
 
   if (state.currentRound.phase === 'reveal') {
     const roundScores = { ...state.currentRound.roundScores }
@@ -365,6 +386,27 @@ export function removePlayer(state: GameState, playerId: string): GameState {
   }
 
   return { ...state, players: remaining, currentRound: round, log }
+}
+
+/**
+ * Drop somebody else from the room — the escape hatch for a player who closed
+ * their tab mid-round and left everyone else waiting on a guess that will never
+ * come.
+ *
+ * Any member may do it, not only the host: the host is exactly the player whose
+ * disappearance freezes a room hardest, and the UI only offers the button for a
+ * player presence has reported missing for a while. The room is already a closed
+ * set — a 6-character code plus a per-room write token — so the trust boundary
+ * is the room, not who inside it presses the button.
+ */
+export function kickPlayer(state: GameState, playerId: string, targetId: string): GameState {
+  // A finished room is a scoreboard; dropping somebody would rewrite the result.
+  if (state.phase === 'finished') return state
+  if (playerId === targetId) return state
+  const actor = state.players.find((p) => p.id === playerId)
+  if (!actor) return state
+  if (!state.players.some((p) => p.id === targetId)) return state
+  return removePlayer(state, targetId, actor.name)
 }
 
 /**
@@ -408,6 +450,8 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       return playAgain(state, action.playerId)
     case 'REMOVE_PLAYER':
       return removePlayer(state, action.playerId)
+    case 'KICK_PLAYER':
+      return kickPlayer(state, action.playerId, action.targetId)
     case 'SET_PLACE':
       return setPlace(state, action.playerId, action.roundNumber, action.place)
     default:

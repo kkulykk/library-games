@@ -373,6 +373,90 @@ describe('REMOVE_PLAYER', () => {
   })
 })
 
+describe('KICK_PLAYER', () => {
+  const kick = (state: GameState, playerId: string, targetId: string) =>
+    applyAction(state, { type: 'KICK_PLAYER', playerId, targetId })
+
+  it('drops a player who stopped answering and carries on', () => {
+    let state = playingState([host, guest, third])
+    state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: host.id, lat: 0, lng: 0 })
+    state = kick(state, host.id, third.id)
+    expect(state.players.map((p) => p.id)).toEqual([host.id, guest.id])
+    expect(state.phase).toBe('playing')
+    // Named both ways round: dropping somebody is the one thing a player does
+    // on another's behalf, so the room log says who did it.
+    expect(state.log.at(-1)).toBe(`${third.name} was dropped by ${host.name}.`)
+  })
+
+  it('tells a leaver apart from somebody who was dropped', () => {
+    let state = playingState([host, guest, third])
+    state = applyAction(state, { type: 'REMOVE_PLAYER', playerId: third.id })
+    expect(state.log.at(-1)).toBe(`${third.name} left the expedition.`)
+  })
+
+  it('reveals the round when the dropped player was the last hold-out', () => {
+    let state = playingState([host, guest, third])
+    state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: host.id, lat: 0, lng: 0 })
+    state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: guest.id, lat: 4, lng: 4 })
+    state = kick(state, guest.id, third.id)
+    expect(state.currentRound?.phase).toBe('reveal')
+  })
+
+  it('lets a stranded room drop the host and hands the badge on', () => {
+    let state = playingState([host, guest, third])
+    state = kick(state, guest.id, host.id)
+    expect(state.players.find((p) => p.id === guest.id)?.isHost).toBe(true)
+    expect(state.players.some((p) => p.id === host.id)).toBe(false)
+  })
+
+  it('promotes a new host when the host simply leaves too', () => {
+    let state = playingState([host, guest, third])
+    state = applyAction(state, { type: 'REMOVE_PLAYER', playerId: host.id })
+    expect(state.players.filter((p) => p.isHost)).toHaveLength(1)
+    expect(state.players[0].isHost).toBe(true)
+  })
+
+  it('keeps the existing host when somebody else goes', () => {
+    let state = playingState([host, guest, third])
+    state = kick(state, host.id, third.id)
+    expect(state.players.find((p) => p.id === host.id)?.isHost).toBe(true)
+    expect(state.players.filter((p) => p.isHost)).toHaveLength(1)
+  })
+
+  it('works in the lobby as well as mid-round', () => {
+    let state = createLobbyState(host)
+    state = addPlayer(state, guest)
+    state = kick(state, host.id, guest.id)
+    expect(state.players).toHaveLength(1)
+    expect(state.phase).toBe('lobby')
+  })
+
+  it('refuses kicks from strangers, kicks of strangers, and self-kicks', () => {
+    const state = playingState([host, guest, third])
+    expect(kick(state, 'nobody', guest.id)).toBe(state)
+    expect(kick(state, host.id, 'nobody')).toBe(state)
+    expect(kick(state, host.id, host.id)).toBe(state)
+  })
+
+  it('leaves a finished scoreboard alone', () => {
+    let state = playingState([host, guest])
+    for (let round = 1; round <= TOTAL_ROUNDS; round++) {
+      state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: host.id, lat: 0, lng: 0 })
+      state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: guest.id, lat: 8, lng: 8 })
+      state = applyAction(state, { type: 'NEXT_ROUND', playerId: host.id })
+    }
+    expect(state.phase).toBe('finished')
+    expect(kick(state, host.id, guest.id)).toBe(state)
+  })
+
+  it('ends the expedition when a kick leaves too few players', () => {
+    let state = playingState([host, guest])
+    state = kick(state, host.id, guest.id)
+    expect(state.phase).toBe('finished')
+    expect(state.log.at(-1)).toContain('not enough players')
+  })
+})
+
 describe('leaderboard & redaction', () => {
   it('sorts the leaderboard and finds winners (including ties)', () => {
     const state: GameState = {

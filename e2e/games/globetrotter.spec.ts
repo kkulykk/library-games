@@ -284,145 +284,155 @@ function readGlCounts(page: Page): Promise<GlCounts> {
   return page.evaluate(() => (window as unknown as { __glCounts: GlCounts }).__glCounts)
 }
 
-test.describe('Globetrotter solo (Random World, mocked archives)', () => {
-  /** Panoramax host serving pictures in these tests — one of the CSP allowlist. */
-  const PANORAMAX_HOST = 'https://panoramax.openstreetmap.fr'
+/** Panoramax host serving pictures in these tests — one of the CSP allowlist. */
+const PANORAMAX_HOST = 'https://panoramax.openstreetmap.fr'
 
-  /**
-   * Panoramax double: one STAC `/api/search` per sweep, answering with
-   * spherical pictures inside whatever bounding box was asked for, so a deck
-   * always has a second archive to draw from. Registered by `mockArchives`;
-   * a test that wants Panoramax down routes over it afterwards.
-   */
-  async function mockPanoramax(page: Page): Promise<void> {
-    await page.route('https://api.panoramax.xyz/**', async (route) => {
-      const bbox = (new URL(route.request().url()).searchParams.get('bbox') ?? '')
-        .split(',')
-        .map(Number)
-      const features = [0, 1].map((i) => {
-        const id = `mock-pic-${bbox[0].toFixed(0)}-${i}`
-        return {
-          id,
-          geometry: { type: 'Point', coordinates: [bbox[0] + i, bbox[1] + i] },
-          assets: {
-            sd: { href: `${PANORAMAX_HOST}/derivates/${id}/sd.jpg`, type: 'image/jpeg' },
+/**
+ * Panoramax double: one STAC `/api/search` per sweep, answering with
+ * spherical pictures inside whatever bounding box was asked for, so a deck
+ * always has a second archive to draw from. Registered by `mockArchives`;
+ * a test that wants Panoramax down routes over it afterwards.
+ */
+async function mockPanoramax(page: Page): Promise<void> {
+  // Sweeps aim at randomly chosen coverage cells, so answering with the box's
+  // own corner made two sweeps that landed near each other yield pictures the
+  // separation rule then threw away — and a deck that came up short every so
+  // often. Walking the answers around the globe per sweep instead keeps the
+  // double's job ("this archive has usable spherical pictures") deterministic.
+  let sweep = 0
+  await page.route('https://api.panoramax.xyz/**', async (route) => {
+    const spot = sweep++
+    const features = [0, 1].map((i) => {
+      const step = spot * 2 + i
+      const id = `mock-pic-${step}`
+      return {
+        id,
+        // Every answer lands at least 20° of longitude from every other, so
+        // the 50 km separation rule never has cause to drop one.
+        geometry: {
+          type: 'Point',
+          coordinates: [-170 + ((step * 37) % 340), -55 + ((step * 23) % 110)],
+        },
+        assets: {
+          sd: { href: `${PANORAMAX_HOST}/derivates/${id}/sd.jpg`, type: 'image/jpeg' },
+        },
+        providers: [{ name: 'Mock Panoramaxer', roles: ['producer'] }],
+        properties: {
+          license: 'CC-BY-SA-4.0',
+          'pers:interior_orientation': {
+            field_of_view: 360,
+            sensor_array_dimensions: [5760, 2880],
           },
-          providers: [{ name: 'Mock Panoramaxer', roles: ['producer'] }],
-          properties: {
-            license: 'CC-BY-SA-4.0',
-            'pers:interior_orientation': {
-              field_of_view: 360,
-              sensor_array_dimensions: [5760, 2880],
-            },
-          },
-        }
-      })
-      await route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'application/json',
-        body: JSON.stringify({ features }),
-      })
-    })
-    await page.route(`${PANORAMAX_HOST}/**`, (route) =>
-      route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'image/jpeg',
-        body: TINY_JPEG,
-      })
-    )
-  }
-
-  /**
-   * Commons double for the two-request pipeline: one `generator=categorymembers`
-   * sweep listing geotagged photospheres, then one `titles=…&iiurlwidth=…`
-   * request rendering their thumbnails.
-   */
-  async function mockCommons(page: Page): Promise<void> {
-    await page.route('https://commons.wikimedia.org/**', async (route) => {
-      const url = new URL(route.request().url())
-      let body: unknown
-      if (url.searchParams.get('generator') === 'categorymembers') {
-        const pages: Record<string, unknown> = {}
-        for (let i = 0; i < 5; i++) {
-          // Spread across the US so the min-separation rule passes and every
-          // reveal names the same country.
-          pages[String(i)] = {
-            title: `File:Mock pano ${i}.jpg`,
-            imageinfo: [
-              {
-                width: 4096,
-                height: 2048,
-                mime: 'image/jpeg',
-                extmetadata: {
-                  Artist: { value: 'Mock Mapper' },
-                  LicenseShortName: { value: 'CC BY-SA 4.0' },
-                },
-              },
-            ],
-            coordinates: [{ lat: 39 + i * 2, lon: -100 + i * 3 }],
-          }
-        }
-        body = { query: { pages } }
-      } else {
-        const titles = (url.searchParams.get('titles') ?? '').split('|')
-        const pages: Record<string, unknown> = {}
-        titles.forEach((title, index) => {
-          pages[String(index)] = {
-            title,
-            imageinfo: [
-              {
-                // Shaped like a real Commons rendition: the client rewrites the
-                // `NNNpx-` segment to pick a size its screen can use.
-                thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Mock_pano_${index}.jpg/3840px-Mock_pano_${index}.jpg`,
-                extmetadata: {
-                  Artist: { value: 'Mock Mapper' },
-                  LicenseShortName: { value: 'CC BY-SA 4.0' },
-                },
-              },
-            ],
-          }
-        })
-        body = { query: { pages } }
+        },
       }
-      await route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'application/json',
-        body: JSON.stringify(body),
-      })
     })
-    await page.route('https://upload.wikimedia.org/**', (route) =>
-      route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'image/jpeg',
-        body: TINY_JPEG,
-      })
-    )
-    await page.route('https://nominatim.openstreetmap.org/**', (route) =>
-      route.fulfill({
-        status: 200,
-        headers: { 'access-control-allow-origin': '*' },
-        contentType: 'application/json',
-        body: JSON.stringify({
-          address: { town: 'Dodge City', county: 'Ford County', country: 'United States' },
-        }),
-      })
-    )
-  }
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify({ features }),
+    })
+  })
+  await page.route(`${PANORAMAX_HOST}/**`, (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'image/jpeg',
+      body: TINY_JPEG,
+    })
+  )
+}
 
-  /**
-   * Every archive a deck is drawn from. A deck is split between them, so a run
-   * that stubs only one still reaches the network for the other — which is
-   * exactly the nondeterminism e2e is here to keep out.
-   */
-  async function mockArchives(page: Page): Promise<void> {
-    await mockCommons(page)
-    await mockPanoramax(page)
-  }
+/**
+ * Commons double for the two-request pipeline: one `generator=categorymembers`
+ * sweep listing geotagged photospheres, then one `titles=…&iiurlwidth=…`
+ * request rendering their thumbnails.
+ */
+async function mockCommons(page: Page): Promise<void> {
+  await page.route('https://commons.wikimedia.org/**', async (route) => {
+    const url = new URL(route.request().url())
+    let body: unknown
+    if (url.searchParams.get('generator') === 'categorymembers') {
+      const pages: Record<string, unknown> = {}
+      for (let i = 0; i < 5; i++) {
+        // Spread across the US so the min-separation rule passes and every
+        // reveal names the same country.
+        pages[String(i)] = {
+          title: `File:Mock pano ${i}.jpg`,
+          imageinfo: [
+            {
+              width: 4096,
+              height: 2048,
+              mime: 'image/jpeg',
+              extmetadata: {
+                Artist: { value: 'Mock Mapper' },
+                LicenseShortName: { value: 'CC BY-SA 4.0' },
+              },
+            },
+          ],
+          coordinates: [{ lat: 39 + i * 2, lon: -100 + i * 3 }],
+        }
+      }
+      body = { query: { pages } }
+    } else {
+      const titles = (url.searchParams.get('titles') ?? '').split('|')
+      const pages: Record<string, unknown> = {}
+      titles.forEach((title, index) => {
+        pages[String(index)] = {
+          title,
+          imageinfo: [
+            {
+              // Shaped like a real Commons rendition: the client rewrites the
+              // `NNNpx-` segment to pick a size its screen can use.
+              thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Mock_pano_${index}.jpg/3840px-Mock_pano_${index}.jpg`,
+              extmetadata: {
+                Artist: { value: 'Mock Mapper' },
+                LicenseShortName: { value: 'CC BY-SA 4.0' },
+              },
+            },
+          ],
+        }
+      })
+      body = { query: { pages } }
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    })
+  })
+  await page.route('https://upload.wikimedia.org/**', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'image/jpeg',
+      body: TINY_JPEG,
+    })
+  )
+  await page.route('https://nominatim.openstreetmap.org/**', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify({
+        address: { town: 'Dodge City', county: 'Ford County', country: 'United States' },
+      }),
+    })
+  )
+}
 
+/**
+ * Every archive a deck is drawn from. A deck is split between them, so a run
+ * that stubs only one still reaches the network for the other — which is
+ * exactly the nondeterminism e2e is here to keep out.
+ */
+async function mockArchives(page: Page): Promise<void> {
+  await mockCommons(page)
+  await mockPanoramax(page)
+}
+
+test.describe('Globetrotter solo (Random World, mocked archives)', () => {
   test('scouts a deck, plays a round, reveals the country', async ({ page }) => {
     await mockArchives(page)
 
@@ -599,6 +609,29 @@ test.describe('Globetrotter solo (Random World, mocked archives)', () => {
     await expect(solo.pano).toBeVisible()
   })
 
+  test('scouts the deck while the player is still choosing how to play', async ({ page }) => {
+    await mockArchives(page)
+    let sweeps = 0
+    // Registered after mockArchives so it sees the request first, then hands it
+    // back for the mock to answer.
+    await page.route('https://commons.wikimedia.org/**', async (route) => {
+      sweeps += 1
+      await route.fallback()
+    })
+
+    const solo = new GlobetrotterPage(page)
+    await solo.goto()
+    await solo.dismissPlayGate()
+
+    // The archives are already being swept, before Solo has been pressed —
+    // that head start is what the scouting screen used to be spent on.
+    await expect.poll(() => sweeps).toBeGreaterThan(0)
+
+    await solo.soloButton.click()
+    await expect(solo.pano).toBeVisible()
+    await solo.expectStatus('Round 1 of 5')
+  })
+
   test('falls back to the offline reserve when every archive is unreachable', async ({ page }) => {
     await page.route('https://commons.wikimedia.org/**', (route) => route.abort())
     await page.route('https://upload.wikimedia.org/**', (route) => route.abort())
@@ -639,7 +672,15 @@ test.describe('Globetrotter solo (Random World, mocked archives)', () => {
     const credit = page.locator('.gt-pano-watermark')
     await expect(credit).toContainText('Panoramax')
     await expect(credit).toContainText('Mock Panoramaxer')
-    await expect(credit).toHaveAttribute('href', /api\.panoramax\.xyz\/#focus=pic/)
+    // The credit is text, not a link: the archive page names the location, so
+    // one click on it during the round would hand over the answer.
+    expect(await credit.evaluate((node) => node.tagName)).toBe('SPAN')
+
+    // The source link turns up at the reveal, once there is nothing to spoil.
+    await solo.placeAndLockGuess(0.5, 0.5)
+    const revealCredit = page.getByTestId('globetrotter-photo-credit')
+    await expect(revealCredit).toContainText('Mock Panoramaxer')
+    await expect(revealCredit).toHaveAttribute('href', /api\.panoramax\.xyz\/#focus=pic/)
   })
 
   test('only ever asks Wikimedia for a rendition it will serve', async ({ page }) => {
@@ -848,6 +889,143 @@ test.describe('Globetrotter gameplay smoke', () => {
       expect(finalRoom.state.phase).toBe('finished')
     } finally {
       await closePlayers([guest])
+    }
+  })
+})
+
+test.describe('Globetrotter room scouting', () => {
+  test('shows every player the deck being scouted, not an idle lobby', async ({
+    page,
+    browser,
+  }) => {
+    const hostPage = new GlobetrotterPage(page)
+    const guest = await createPlayer(browser, 'Guest Globe')
+    const guestPage = new GlobetrotterPage(guest.page)
+
+    // Hold the archives open on the host's side so the scout is observable —
+    // this is the several seconds the room used to spend looking at nothing.
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+
+    try {
+      await mockArchives(page)
+      await mockArchives(guest.page)
+      for (const archive of ['https://commons.wikimedia.org/**', 'https://api.panoramax.xyz/**']) {
+        await page.route(archive, async (route) => {
+          await held
+          await route.fallback()
+        })
+      }
+
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom('Host Globe')
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
+
+      // Random World is the default expedition; starting it scouts a deck.
+      await hostPage.startGame()
+
+      // Both browsers watch the same trip being assembled.
+      await expect(hostPage.scouting).toBeVisible()
+      await expect(guestPage.scouting).toBeVisible()
+      await expect(guestPage.scouting).toContainText('0 of 5 locations locked')
+      // Only the browser doing the work can call it off.
+      await expect(hostPage.page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+      await expect(guestPage.page.getByRole('button', { name: 'Cancel' })).toBeHidden()
+
+      release()
+
+      // And the round arrives for both.
+      await expect(hostPage.pano).toBeVisible()
+      await expect(guestPage.pano).toBeVisible()
+      await hostPage.expectStatus('Round 1 of 5')
+      await expect(guestPage.scouting).toBeHidden()
+    } finally {
+      release()
+      await closePlayers([guest])
+    }
+  })
+})
+
+test.describe('Globetrotter dropped players', () => {
+  test('drops a player who vanished mid-round and reveals without them', async ({
+    page,
+    browser,
+  }) => {
+    const hostPage = new GlobetrotterPage(page)
+    const staying = await createPlayer(browser, 'Staying Globe')
+    const stayingPage = new GlobetrotterPage(staying.page)
+    const leaving = await createPlayer(browser, 'Leaving Globe')
+    const leavingPage = new GlobetrotterPage(leaving.page)
+
+    try {
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom('Host Globe')
+      await stayingPage.goto()
+      await stayingPage.joinRoom(roomCode, staying.name)
+      await leavingPage.goto()
+      await leavingPage.joinRoom(roomCode, leaving.name)
+      await hostPage.page.getByTestId('globetrotter-mode-landmarks').click()
+      await hostPage.startGame()
+
+      const started = await readGlobetrotterRoom(roomCode)
+      await updateGlobetrotterRoom(roomCode, started, seededGuessingState(started.state.players))
+
+      await hostPage.expectStatus('Pins locked: 0 of 3')
+      await hostPage.placeAndLockGuess(0.5, 0.25)
+      await stayingPage.placeAndLockGuess(0.52, 0.24)
+      await hostPage.expectStatus('Pins locked: 2 of 3')
+
+      // Nobody is on offer while every player is still answering presence.
+      await expect(hostPage.page.getByTestId('globetrotter-drop-player')).toHaveCount(0)
+
+      // The third player's browser goes away without leaving the room — the
+      // same teardown a backgrounded phone or a closed laptop performs.
+      await leaving.page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+
+      const dropButton = hostPage.page.getByRole('button', {
+        name: 'Drop Leaving Globe from the expedition',
+      })
+      await expect(dropButton).toBeVisible({ timeout: 15_000 })
+      await dropButton.click()
+
+      // The round settles on the two players still in the room.
+      await expect(hostPage.reveal).toContainText('Eiffel Tower')
+      await expect(stayingPage.reveal).toContainText('Eiffel Tower')
+
+      const room = await readGlobetrotterRoom(roomCode)
+      expect(room.state.players.map((player) => player.name)).toEqual([
+        'Host Globe',
+        'Staying Globe',
+      ])
+      expect(room.state.currentRound?.phase).toBe('reveal')
+      // The log names who did it — dropping somebody is not an anonymous act.
+      expect(
+        room.state.log.some((line) => line === 'Leaving Globe was dropped by Host Globe.')
+      ).toBe(true)
+
+      // And the expedition carries on without them.
+      await hostPage.advanceRound()
+      await hostPage.expectStatus('Pins locked: 0 of 2')
+
+      // The dropped player comes back — presence goes quiet for a backgrounded
+      // phone as readily as for a closed laptop — and is told what happened
+      // instead of being shown a room they are no longer on the roster of.
+      await leaving.page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      const dropped = leaving.page.getByTestId('globetrotter-dropped')
+      await expect(dropped).toContainText('You were dropped from this expedition')
+      await leaving.page.getByTestId('globetrotter-dropped-exit').click()
+      await expect(leavingPage.soloButton).toBeVisible()
+    } finally {
+      await closePlayers([staying, leaving])
     }
   })
 })

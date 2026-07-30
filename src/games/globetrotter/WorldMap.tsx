@@ -17,8 +17,10 @@ import {
   tileKey,
   revealTour,
   tileZoom,
+  tourTiles,
   unproject,
   visibleTiles,
+  wheelZoomFactor,
   worldView,
   zoomView,
   WORLD_SIZE,
@@ -76,6 +78,15 @@ const CLICK_SLOP_PX = 5
 const TOUCH_CLICK_SLOP_PX = 12
 /** Wait for the camera to rest this long before asking for tiles. */
 const TILE_SETTLE_MS = 220
+/** One press of +/− doubles or halves the scale, eased instead of snapped. */
+const ZOOM_STEP = 2
+const ZOOM_STEP_MS = 260
+/**
+ * Tiles one frame of the reveal tour may cost. The whole flight is paid for up
+ * front — a handful of tiles per destination, requested together — so the
+ * camera never has to stop and ask for more mid-move.
+ */
+const TOUR_TILE_BUDGET = 8
 /** Name a country only once it is this wide on screen, and never crowd the map. */
 const MIN_LABEL_PX = 58
 const MAX_LABELS = 26
@@ -124,6 +135,13 @@ function useTileLayer(tiles: Tile[], enabled: boolean) {
   const pending = useRef(new Set<string>())
   const failures = useRef(0)
   const mounted = useRef(true)
+  // Last set of tiles that actually had pixels. A new zoom level starts with
+  // none of its tiles downloaded, so without this the raster layer blinks off
+  // to the vector basemap on every pan and comes back a moment later — the
+  // flicker. Holding the previous level (tiles are placed in world
+  // coordinates, so they stay geographically correct, just coarser) means the
+  // new level fades in over a map instead of into a gap.
+  const shown = useRef<Tile[]>([])
   const [broken, setBroken] = useState(false)
 
   useEffect(() => {
@@ -163,8 +181,12 @@ function useTileLayer(tiles: Tile[], enabled: boolean) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keys, enabled, broken])
 
-  const readyTiles =
-    enabled && !broken ? tiles.filter((tile) => ready.current.has(tileKey(tile))) : []
+  if (!enabled || broken) shown.current = []
+  else {
+    const readyNow = tiles.filter((tile) => ready.current.has(tileKey(tile)))
+    if (readyNow.length > 0) shown.current = readyNow
+  }
+  const readyTiles = shown.current
   return { readyTiles, active: readyTiles.length > 0 }
 }
 
@@ -187,6 +209,9 @@ export function WorldMap({
   // True from the moment the reveal tour starts until the camera has pulled
   // back to the overview — the distance overlays wait for that.
   const [touring, setTouring] = useState(autoFit)
+  // Where the reveal tour is going to stop, so the map can pull a coarse layer
+  // for the whole route in one go rather than per leg.
+  const [tourViews, setTourViews] = useState<ViewBox[]>([])
   const flightRef = useRef<number | null>(null)
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelRef = useRef(false)
@@ -249,6 +274,33 @@ export function WorldMap({
     setFlying(false)
     setTouring((current) => (current ? false : current))
   }, [])
+
+  /**
+   * Ease the camera to a view. Used by the zoom buttons: a snapped 2× jump
+   * loses the eye, whereas a quarter-second tween keeps the world continuous.
+   * Deliberately not part of the reveal tour — it leaves `touring` alone, so
+   * zooming during a reveal does not re-hide the connectors.
+   */
+  const glideTo = useCallback(
+    (to: ViewBox) => {
+      stopFlight()
+      if (prefersReducedMotion()) {
+        setView(to)
+        return
+      }
+      cancelRef.current = false
+      const from = viewRef.current
+      const startedAt = performance.now()
+      const frame = (now: number) => {
+        if (cancelRef.current) return
+        const t = Math.min(1, (now - startedAt) / ZOOM_STEP_MS)
+        setView(lerpView(from, to, easeInOut(t)))
+        flightRef.current = t < 1 ? requestAnimationFrame(frame) : null
+      }
+      flightRef.current = requestAnimationFrame(frame)
+    },
+    [stopFlight]
+  )
 
   /** Walk the camera through a script of destinations, holds and all. */
   const runTour = useCallback(
@@ -316,6 +368,7 @@ export function WorldMap({
     }
 
     setView(steps[0].view)
+    setTourViews(steps.map((step) => step.view))
     // One frame of settle so the opening close-up paints before the tour runs.
     const timer = setTimeout(() => runTour(steps), 120)
     return () => clearTimeout(timer)
@@ -329,10 +382,37 @@ export function WorldMap({
     [view.w, size.width]
   )
 
-  // Only fetch tiles for a camera that has come to rest.
+  // Only fetch tiles for a camera that has come to rest. Asking per frame is
+  // what made the map flicker: the tour crosses a dozen zoom levels and pauses
+  // at each end long enough to look settled, so every level got requested and
+  // each half-loaded batch was painted over the flight.
   const settledView = useSettled(view, TILE_SETTLE_MS)
-  const z = tileZoom(settledView, size.width, MAX_TILE_ZOOM)
-  const tiles = useMemo(() => (TILES_ENABLED ? visibleTiles(settledView, z) : []), [settledView, z])
+  const animating = flying || touring
+  const tileViewRef = useRef(settledView)
+  // `useSettled` hands back the live view object once it has stopped changing,
+  // so identity is the test for "the camera is really parked here" — a value
+  // left over from a pause mid-flight does not qualify.
+  if (!animating && settledView === view) tileViewRef.current = settledView
+  const tileView = tileViewRef.current
+  const z = tileZoom(tileView, size.width, MAX_TILE_ZOOM)
+
+  /**
+   * What the tour flies over: one affordable tile set per destination, all of
+   * them requested the moment the reveal starts.
+   *
+   * The vector basemap alone cannot carry a close-up — 25 km of Saxony is one
+   * flat beige rectangle — while the deep levels a close-up really wants are
+   * both too many to fetch mid-flight and useless over the wide legs.
+   */
+  const routeTiles = useMemo(
+    () => tourTiles(tourViews, MAX_TILE_ZOOM, TOUR_TILE_BUDGET),
+    [tourViews]
+  )
+
+  const tiles = useMemo(() => {
+    if (!TILES_ENABLED) return []
+    return touring && routeTiles.length > 0 ? routeTiles : visibleTiles(tileView, z)
+  }, [touring, routeTiles, tileView, z])
   const { readyTiles, active: tilesActive } = useTileLayer(tiles, TILES_ENABLED)
 
   // Country outlines never move (the projection is fixed), so build the paths
@@ -357,23 +437,26 @@ export function WorldMap({
     )
   }, [])
 
+  // Read off the frozen tile camera rather than the live one: re-picking labels
+  // every frame of a fly-through both costs a pass over ~180 shapes and pops
+  // names in and out of existence as the camera crosses each size threshold.
   const labels = useMemo(() => {
     if (tilesActive) return []
     // Only name countries that are actually big enough on screen to read —
     // the same map is a 280 px minimap and a full-size panel.
-    const pxPerUnit = Math.max(1, size.width) / view.w
+    const pxPerUnit = Math.max(1, size.width) / tileView.w
     return countryShapes()
       .filter(
         (country) =>
           country.extent * pxPerUnit >= MIN_LABEL_PX &&
-          country.label.x > view.x &&
-          country.label.x < view.x + view.w &&
-          country.label.y > view.y &&
-          country.label.y < view.y + view.h
+          country.label.x > tileView.x &&
+          country.label.x < tileView.x + tileView.w &&
+          country.label.y > tileView.y &&
+          country.label.y < tileView.y + tileView.h
       )
       .sort((a, b) => b.extent - a.extent)
       .slice(0, MAX_LABELS)
-  }, [tilesActive, view, size.width])
+  }, [tilesActive, tileView, size.width])
 
   function toWorldPoint(clientX: number, clientY: number): Point | null {
     const rect = svgRef.current?.getBoundingClientRect()
@@ -392,9 +475,9 @@ export function WorldMap({
   }
 
   function zoomCentered(factor: number) {
-    const rect = svgRef.current?.getBoundingClientRect()
-    if (!rect) return
-    zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor)
+    const current = viewRef.current
+    const anchor = { x: current.x + current.w / 2, y: current.y + current.h / 2 }
+    glideTo(zoomView(current, anchor, factor, aspect))
   }
 
   // Wheel zoom needs a non-passive listener (preventDefault stops page scroll),
@@ -404,7 +487,7 @@ export function WorldMap({
     if (!svg) return
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
-      zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1.4 : 1 / 1.4)
+      zoomAt(event.clientX, event.clientY, wheelZoomFactor(event.deltaY, event.deltaMode))
     }
     svg.addEventListener('wheel', onWheel, { passive: false })
     return () => svg.removeEventListener('wheel', onWheel)
@@ -696,7 +779,7 @@ export function WorldMap({
           type="button"
           aria-label="Zoom in"
           data-testid="globetrotter-zoom-in"
-          onClick={() => zoomCentered(1.8)}
+          onClick={() => zoomCentered(ZOOM_STEP)}
         >
           +
         </button>
@@ -704,7 +787,7 @@ export function WorldMap({
           type="button"
           aria-label="Zoom out"
           data-testid="globetrotter-zoom-out"
-          onClick={() => zoomCentered(1 / 1.8)}
+          onClick={() => zoomCentered(1 / ZOOM_STEP)}
         >
           −
         </button>
@@ -713,10 +796,7 @@ export function WorldMap({
             type="button"
             aria-label="Reset zoom"
             data-testid="globetrotter-zoom-reset"
-            onClick={() => {
-              stopFlight()
-              setView(worldView(aspect))
-            }}
+            onClick={() => glideTo(worldView(aspect))}
           >
             ⤢
           </button>

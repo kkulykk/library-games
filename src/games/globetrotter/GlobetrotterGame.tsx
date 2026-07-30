@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
@@ -8,13 +8,14 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import { getSavedPlayerName, savePlayerName } from '@/lib/player-name'
 import { normalizeRoomCode } from '@/lib/room-code'
 import { useInviteCode, getInviteLink } from '@/hooks/useInviteCode'
+import { useDroppedPlayers } from '@/hooks/useDroppedPlayers'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { SupabaseSetupNotice } from '@/components/multiplayer/SupabaseSetupNotice'
 import { useGlobetrotterRoom } from './useGlobetrotterRoom'
-import { buildRandomWorldDeck, type DeckSource } from './randomWorld'
+import { buildRandomWorldDeck, type DeckSource, type RandomWorldDeck } from './randomWorld'
 import { reverseGeocode, type PlaceName } from './placeName'
 import { easeInOut } from './mercator'
-import { PanoViewer } from './PanoViewer'
+import { PanoViewer, warmPanorama } from './PanoViewer'
 import { WorldMap, type MapPin } from './WorldMap'
 import { AvatarSvg } from './avatars'
 import {
@@ -111,6 +112,36 @@ function CountUp({
   }, [value, duration])
 
   return <>{format(shown)}</>
+}
+
+// ─── Dropped players ─────────────────────────────────────────────────────────
+
+/**
+ * A room waits on everybody: one guess missing and nobody sees the reveal, and
+ * if the missing player is the host, nobody can advance the round either. This
+ * is the way out — offered only for a player presence has not reported for a
+ * while (see `useDroppedPlayers`), and to everybody rather than just the host,
+ * because the host is the one whose disappearance strands a room hardest.
+ */
+function DropPlayerButton({ name, onDrop }: { name: string; onDrop: () => void }) {
+  return (
+    <button
+      type="button"
+      className="sk-player-tag drop"
+      data-testid="globetrotter-drop-player"
+      aria-label={`Drop ${name} from the expedition`}
+      title={`${name} lost connection — drop them and carry on`}
+      onClick={onDrop}
+    >
+      Drop
+    </button>
+  )
+}
+
+interface DropControls {
+  /** Players presence has stopped reporting for long enough to call gone. */
+  droppedIds: string[]
+  onDrop: (playerId: string) => void
 }
 
 // ─── How to play (design GlobetrotterHowTo) ──────────────────────────────────
@@ -210,7 +241,18 @@ function HowToScreen({ onStart }: { onStart: () => void }) {
 
 // ─── Scouting (deck fetch progress) ──────────────────────────────────────────
 
-function ScoutingScreen({ progress, onCancel }: { progress: ScoutProgress; onCancel: () => void }) {
+/**
+ * @param onCancel Only the browser doing the scouting can call it off, so a
+ *   room's other players get the same screen without the button — the point is
+ *   that they can see the trip being assembled rather than an idle lobby.
+ */
+function ScoutingScreen({
+  progress,
+  onCancel,
+}: {
+  progress: ScoutProgress
+  onCancel?: () => void
+}) {
   const pct = Math.round((progress.found / Math.max(1, progress.total)) * 100)
   return (
     <Stage>
@@ -242,9 +284,13 @@ function ScoutingScreen({ progress, onCancel }: { progress: ScoutProgress; onCan
         <span className="mono gt-scout-count" data-testid="globetrotter-scout-count">
           {progress.found} of {progress.total} locations locked
         </span>
-        <button className="sk-btn sk-btn-ghost sk-btn-sm" onClick={onCancel}>
-          Cancel
-        </button>
+        {onCancel ? (
+          <button className="sk-btn sk-btn-ghost sk-btn-sm" onClick={onCancel}>
+            Cancel
+          </button>
+        ) : (
+          <span className="mono gt-scout-wait">Your host is picking the places</span>
+        )}
       </div>
     </Stage>
   )
@@ -425,35 +471,22 @@ interface LobbyScreenProps {
   gameState: GameState
   playerId: string
   roomCode: string
-  onStart: (deck?: GeoLocation[]) => void
+  drop: DropControls
+  onStart: (mode: ExpeditionMode) => void
   onLeave: () => void
 }
 
-function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyScreenProps) {
+function LobbyScreen({ gameState, playerId, roomCode, drop, onStart, onLeave }: LobbyScreenProps) {
   const isHost = gameState.players.find((p) => p.id === playerId)?.isHost ?? false
   const ready = gameState.players.length >= MIN_PLAYERS
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const [mode, setMode] = useState<ExpeditionMode>('random')
-  const [scouting, setScouting] = useState<ScoutProgress | null>(null)
 
   function copy(text: string, key: 'code' | 'link') {
     copyText(text).then(() => {
       setCopied(key)
       setTimeout(() => setCopied(null), 1800)
     })
-  }
-
-  async function handleStart() {
-    if (mode === 'landmarks') {
-      onStart()
-      return
-    }
-    setScouting({ found: 0, total: TOTAL_ROUNDS })
-    const { deck } = await buildRandomWorldDeck(TOTAL_ROUNDS, {
-      onProgress: (found, total) => setScouting({ found, total }),
-    })
-    setScouting(null)
-    onStart(deck)
   }
 
   return (
@@ -488,26 +521,37 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
               <span>Players</span>
               <span>{gameState.players.length} / 8</span>
             </div>
-            {gameState.players.map((player, index) => (
-              <div
-                key={player.id}
-                className={cn('sk-player-row', player.id === playerId && 'is-you')}
-              >
-                <div className="sk-player-avatar">
-                  <AvatarSvg idx={index} size={28} />
-                </div>
-                <span className="sk-player-name">
-                  {player.name}
-                  {player.id === playerId && (
-                    <span style={{ color: 'var(--ink-mute)', fontWeight: 400, fontSize: 11 }}>
-                      {' '}
-                      (you)
-                    </span>
+            {gameState.players.map((player, index) => {
+              const isDropped = drop.droppedIds.includes(player.id) && player.id !== playerId
+              return (
+                <div
+                  key={player.id}
+                  className={cn(
+                    'sk-player-row',
+                    player.id === playerId && 'is-you',
+                    isDropped && 'is-away'
                   )}
-                </span>
-                {player.isHost && <span className="sk-player-tag host">HOST</span>}
-              </div>
-            ))}
+                >
+                  <div className="sk-player-avatar">
+                    <AvatarSvg idx={index} size={28} />
+                  </div>
+                  <span className="sk-player-name">
+                    {player.name}
+                    {player.id === playerId && (
+                      <span style={{ color: 'var(--ink-mute)', fontWeight: 400, fontSize: 11 }}>
+                        {' '}
+                        (you)
+                      </span>
+                    )}
+                  </span>
+                  {player.isHost && <span className="sk-player-tag host">HOST</span>}
+                  {isDropped && <span className="sk-player-tag away">AWAY</span>}
+                  {isDropped && (
+                    <DropPlayerButton name={player.name} onDrop={() => drop.onDrop(player.id)} />
+                  )}
+                </div>
+              )
+            })}
           </div>
 
           <div className="sk-settings">
@@ -538,14 +582,6 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
                 {TOTAL_ROUNDS} · distance scored
               </span>
             </div>
-            {scouting && (
-              <div className="sk-settings-row">
-                <label>Scouting</label>
-                <span className="mono" style={{ color: 'var(--ink-dim)' }}>
-                  {scouting.found} of {scouting.total} found
-                </span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -569,10 +605,10 @@ function LobbyScreen({ gameState, playerId, roomCode, onStart, onLeave }: LobbyS
               <button
                 className="sk-btn"
                 data-testid="start-game-button"
-                disabled={!ready || scouting !== null}
-                onClick={() => void handleStart()}
+                disabled={!ready}
+                onClick={() => onStart(mode)}
               >
-                {scouting ? 'Scouting the planet…' : 'Start trip →'}
+                Start trip →
               </button>
             )}
           </div>
@@ -620,6 +656,7 @@ interface GameBoardProps {
   lockedGhosts: Guess[]
   crumbScore: number
   deckNote?: string | null
+  drop?: DropControls
   onLockGuess: (guess: Guess) => void
   onLeave: () => void
   leaveTestId: string
@@ -635,6 +672,7 @@ function GameBoard({
   lockedGhosts,
   crumbScore,
   deckNote = null,
+  drop,
   onLockGuess,
   onLeave,
   leaveTestId,
@@ -703,20 +741,34 @@ function GameBoard({
                   {lockedCount}/{players.length} locked
                 </span>
               </div>
-              {players.map((player, index) => (
-                <div key={player.id} className={cn('sk-player-row', player.isYou && 'is-you')}>
-                  <div className="sk-player-avatar" style={{ width: 26, height: 26 }}>
-                    <AvatarSvg idx={index} size={20} />
+              {players.map((player, index) => {
+                const isDropped = !player.isYou && (drop?.droppedIds.includes(player.id) ?? false)
+                return (
+                  <div
+                    key={player.id}
+                    className={cn(
+                      'sk-player-row',
+                      player.isYou && 'is-you',
+                      isDropped && 'is-away'
+                    )}
+                  >
+                    <div className="sk-player-avatar" style={{ width: 26, height: 26 }}>
+                      <AvatarSvg idx={index} size={20} />
+                    </div>
+                    <span className="sk-player-name" style={{ fontSize: 12 }}>
+                      {player.name}
+                    </span>
+                    {isDropped ? (
+                      <DropPlayerButton name={player.name} onDrop={() => drop?.onDrop(player.id)} />
+                    ) : (
+                      <span className="sk-score-pts" style={{ fontSize: 11 }}>
+                        {player.score.toLocaleString('en-US')}
+                      </span>
+                    )}
+                    {player.locked && <span className="sk-player-tag locked">✓</span>}
                   </div>
-                  <span className="sk-player-name" style={{ fontSize: 12 }}>
-                    {player.name}
-                  </span>
-                  <span className="sk-score-pts" style={{ fontSize: 11 }}>
-                    {player.score.toLocaleString('en-US')}
-                  </span>
-                  {player.locked && <span className="sk-player-tag locked">✓</span>}
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -815,6 +867,7 @@ interface RevealScreenProps {
   rows: RevealRow[]
   isSolo: boolean
   canAdvance: boolean
+  drop?: DropControls
   onNext: () => void
 }
 
@@ -856,6 +909,7 @@ function RevealScreen({
   rows,
   isSolo,
   canAdvance,
+  drop,
   onNext,
 }: RevealScreenProps) {
   const sorted = [...rows].sort((a, b) => b.points - a.points)
@@ -921,29 +975,50 @@ function RevealScreen({
                 <span>{isSolo ? 'Your guess' : 'Round results'}</span>
                 <span>the gold flag was the spot</span>
               </div>
-              {sorted.map((row, index) => (
-                <div
-                  key={row.id}
-                  className={cn('gt-reveal-row', row.isYou && 'you')}
-                  style={{ animationDelay: `${0.5 + index * 0.09}s` }}
-                >
-                  <span className="gt-reveal-rank">{index + 1}</span>
-                  <div className="sk-player-avatar" style={{ width: 26, height: 26 }}>
-                    <AvatarSvg idx={row.avatarIdx} size={20} />
-                  </div>
-                  <span className="gt-reveal-name">{row.name}</span>
-                  <span className="gt-reveal-dist mono">
-                    {row.distanceKm !== null ? formatKm(row.distanceKm) : 'no guess'}
-                  </span>
-                  <span
-                    className="gt-reveal-pts"
-                    data-testid={row.isYou ? 'globetrotter-round-score' : undefined}
+              {sorted.map((row, index) => {
+                const isDropped = !row.isYou && (drop?.droppedIds.includes(row.id) ?? false)
+                return (
+                  <div
+                    key={row.id}
+                    className={cn('gt-reveal-row', row.isYou && 'you', isDropped && 'is-away')}
+                    style={{ animationDelay: `${0.5 + index * 0.09}s` }}
                   >
-                    +{row.points.toLocaleString('en-US')}
-                  </span>
-                </div>
-              ))}
+                    <span className="gt-reveal-rank">{index + 1}</span>
+                    <div className="sk-player-avatar" style={{ width: 26, height: 26 }}>
+                      <AvatarSvg idx={row.avatarIdx} size={20} />
+                    </div>
+                    <span className="gt-reveal-name">{row.name}</span>
+                    {isDropped ? (
+                      <DropPlayerButton name={row.name} onDrop={() => drop?.onDrop(row.id)} />
+                    ) : (
+                      <span className="gt-reveal-dist mono">
+                        {row.distanceKm !== null ? formatKm(row.distanceKm) : 'no guess'}
+                      </span>
+                    )}
+                    <span
+                      className="gt-reveal-pts"
+                      data-testid={row.isYou ? 'globetrotter-round-score' : undefined}
+                    >
+                      +{row.points.toLocaleString('en-US')}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
+            {/* The photosphere's source page, held back until now: its title
+                names the location, so during the round it is the answer. */}
+            {location.pano && (
+              <a
+                className="gt-reveal-credit mono"
+                data-testid="globetrotter-photo-credit"
+                href={location.pano.page}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Photo © {location.pano.author} · {location.pano.license} ·{' '}
+                {location.pano.source ?? 'Wikimedia Commons'} ↗
+              </a>
+            )}
           </div>
         </div>
         <div className="sk-end-cta">
@@ -1099,6 +1174,34 @@ function useHostPlaceLookup(
   }, [key, needed, isHost, playerId])
 }
 
+/**
+ * A deck being scouted, or one already in hand.
+ *
+ * Assembling a Random World deck means four-odd requests to two rate-limited
+ * archives, which is most of the wait between pressing Solo and looking at a
+ * photosphere. Nothing about it depends on the player, so it starts while they
+ * are still choosing how to play; by the time they press the button the deck is
+ * usually sitting here and the scouting screen never appears at all.
+ */
+interface DeckScout {
+  promise: Promise<RandomWorldDeck>
+  /** Latest progress, so a player who presses Solo mid-scout sees a real bar. */
+  progress: ScoutProgress
+  /** Set once the archives have answered — the "no wait at all" case. */
+  result: RandomWorldDeck | null
+  controller: AbortController
+  cancelled: boolean
+}
+
+/**
+ * How long a relayed scout is believed after its last progress message.
+ *
+ * Long enough to cover a slow archive sweep between two finds, short enough
+ * that a host who closed the tab does not leave the room watching a bar that
+ * will never move.
+ */
+const SCOUT_SILENCE_MS = 20_000
+
 const DECK_NOTES: Record<DeckSource, string | null> = {
   live: null,
   mixed: 'The photo archives were stingy — some rounds come from the offline reserve.',
@@ -1112,7 +1215,13 @@ export function GlobetrotterGame() {
   const [soloSource, setSoloSource] = useState<DeckSource>('live')
   const [scouting, setScouting] = useState<ScoutProgress | null>(null)
   const [soloError, setSoloError] = useState<string | null>(null)
-  const scoutRef = useRef<AbortController | null>(null)
+  const scoutRef = useRef<DeckScout | null>(null)
+  // The host's scouting progress, as reported to everybody else in the room.
+  const [roomScout, setRoomScout] = useState<ScoutProgress | null>(null)
+  // Set for as long as a scout is worth telling the room about — the entry
+  // screen's background scout deliberately is not, or joining a room mid-scout
+  // would show the others a trip nobody has started.
+  const announceRef = useRef<((progress: ScoutProgress) => void) | null>(null)
 
   const {
     gameState,
@@ -1121,37 +1230,75 @@ export function GlobetrotterGame() {
     status,
     error,
     connectionStatus,
+    onlinePlayerIds,
     savedSession,
     createRoom,
     joinRoom,
     restoreSession,
     dispatch,
     leaveRoom,
+    broadcast,
+    onBroadcast: onBroadcastRef,
   } = useGlobetrotterRoom()
 
   // One reverse-geocode per round for the whole room, run by the host.
   useHostPlaceLookup(gameState, playerId, dispatch)
+
+  // Who the room may offer to drop: presence has to have lost them for a while,
+  // so a reconnect or a backgrounded phone never puts a kick button on screen.
+  const droppedIds = useDroppedPlayers(
+    gameState?.players.map((player) => player.id) ?? [],
+    onlinePlayerIds
+  )
+  const drop: DropControls = {
+    droppedIds,
+    onDrop: (targetId) => {
+      if (playerId) dispatch({ type: 'KICK_PLAYER', playerId, targetId })
+    },
+  }
 
   // An invite link should land the player straight on the join form.
   useEffect(() => {
     if (inviteCode) setGateDismissed(true)
   }, [inviteCode])
 
-  useEffect(() => () => scoutRef.current?.abort(), [])
+  useEffect(() => () => scoutRef.current?.controller.abort(), [])
+
+  /** Start scouting a deck, or hand back the one already on its way. */
+  const scoutDeck = useCallback((): DeckScout => {
+    const existing = scoutRef.current
+    if (existing) return existing
+    const controller = new AbortController()
+    const scout: DeckScout = {
+      progress: { found: 0, total: TOTAL_ROUNDS },
+      result: null,
+      controller,
+      cancelled: false,
+      promise: buildRandomWorldDeck(TOTAL_ROUNDS, {
+        signal: controller.signal,
+        onProgress: (found, total) => {
+          scout.progress = { found, total }
+          // Only moves a bar that is actually on screen; a background scout has
+          // nobody watching it.
+          setScouting((current) => (current ? { found, total } : current))
+          announceRef.current?.({ found, total })
+        },
+      }),
+    }
+    void scout.promise.then((result) => {
+      scout.result = result
+    })
+    scoutRef.current = scout
+    return scout
+  }, [])
 
   async function startSolo() {
-    const controller = new AbortController()
-    scoutRef.current?.abort()
-    scoutRef.current = controller
     setSoloError(null)
-    setScouting({ found: 0, total: TOTAL_ROUNDS })
-    const { deck, source } = await buildRandomWorldDeck(TOTAL_ROUNDS, {
-      signal: controller.signal,
-      onProgress: (found, total) => {
-        if (!controller.signal.aborted) setScouting({ found, total })
-      },
-    })
-    if (controller.signal.aborted) return
+    const scout = scoutDeck()
+    // A deck that is already in hand skips the scouting screen entirely.
+    if (!scout.result) setScouting(scout.progress)
+    const { deck, source } = await scout.promise
+    if (scout.cancelled) return
     scoutRef.current = null
     setScouting(null)
     if (deck.length < TOTAL_ROUNDS) {
@@ -1163,18 +1310,103 @@ export function GlobetrotterGame() {
   }
 
   function cancelScouting() {
-    scoutRef.current?.abort()
+    const scout = scoutRef.current
+    if (scout) {
+      scout.cancelled = true
+      scout.controller.abort()
+    }
     scoutRef.current = null
     setScouting(null)
+    if (announceRef.current) {
+      announceRef.current = null
+      broadcast({ type: 'scouting_done' })
+    }
   }
+
+  /**
+   * Host: start the trip. A Random World room has to scout a deck first, which
+   * is several seconds of archive requests during which there is no game to
+   * write — so the room is told what is happening rather than left staring at
+   * an unchanged lobby. The deck may well be scouted already, in which case
+   * this is instant and nobody sees a thing.
+   */
+  async function startRoom(mode: ExpeditionMode) {
+    if (!playerId) return
+    if (mode === 'landmarks') {
+      void dispatch({ type: 'START_GAME', playerId })
+      return
+    }
+    const scout = scoutDeck()
+    if (!scout.result) {
+      setScouting(scout.progress)
+      announceRef.current = (progress) => broadcast({ type: 'scouting', ...progress })
+      // Say so at once: the players waiting have no other way to know the host
+      // pressed the button.
+      broadcast({ type: 'scouting', ...scout.progress })
+    }
+    const { deck } = await scout.promise
+    announceRef.current = null
+    if (scout.cancelled) return
+    scoutRef.current = null
+    setScouting(null)
+    // START_GAME lands as a state change, which is what clears the other
+    // players' screens; a deck that came up short falls back to the landmarks.
+    void dispatch({ type: 'START_GAME', playerId, deck })
+  }
+
+  // Scout a deck the moment the player is one click away from using it. Reading
+  // "Solo · Random World" and reaching for it takes about as long as the
+  // archives do, so the wait is spent rather than watched.
+  const onEntryScreen = gateDismissed && !soloGame && !gameState
+  useEffect(() => {
+    if (onEntryScreen) scoutDeck()
+  }, [onEntryScreen, scoutDeck])
+
+  // Watch the host scout. Progress is chatter, so it is only ever believed for
+  // as long as it keeps coming: a host who closes the tab mid-scout stops
+  // sending, and the screen falls away on its own rather than stranding the
+  // room in a trip that will never start.
+  const roomPhase = gameState?.phase ?? null
+  useEffect(() => {
+    onBroadcastRef.current = (message) => {
+      if (message.type === 'scouting_done') setRoomScout(null)
+      else setRoomScout({ found: message.found, total: message.total })
+    }
+    return () => {
+      onBroadcastRef.current = null
+    }
+  }, [onBroadcastRef])
+
+  useEffect(() => {
+    if (!roomScout) return
+    const timer = setTimeout(() => setRoomScout(null), SCOUT_SILENCE_MS)
+    return () => clearTimeout(timer)
+  }, [roomScout])
+
+  useEffect(() => {
+    // The game starting (or the room going away) is the definitive answer.
+    if (roomPhase !== 'lobby') setRoomScout(null)
+  }, [roomPhase])
+
+  // The next photosphere downloads while the player reads this round's reveal,
+  // so "Developing film" is over before they press Next round.
+  const nextSoloPanoUrl =
+    (soloGame?.phase === 'reveal' ? soloGame.rounds[soloGame.roundNumber]?.pano?.url : null) ?? null
+  useEffect(() => {
+    if (nextSoloPanoUrl) warmPanorama(nextSoloPanoUrl)
+  }, [nextSoloPanoUrl])
 
   const isLoading = status === 'creating' || status === 'joining' || status === 'restoring'
 
-  // ── Scouting a solo deck ───────────────────────────────────────────────────
-  if (scouting && !soloGame) {
+  // ── Scouting a deck: your own, or the host's ───────────────────────────────
+  // `scouting` is this browser doing the work (a solo trip, or hosting one);
+  // `roomScout` is somebody else's, relayed. Either way the whole room watches
+  // the same five dots fill in instead of an idle lobby.
+  const watchedScout = scouting ?? (roomPhase === 'lobby' ? roomScout : null)
+  if (watchedScout && !soloGame) {
     return (
-      <Shell crumb="Scouting">
-        <ScoutingScreen progress={scouting} onCancel={cancelScouting} />
+      <Shell crumb="Scouting" roomCode={roomCode}>
+        <ScoutingScreen progress={watchedScout} onCancel={scouting ? cancelScouting : undefined} />
       </Shell>
     )
   }
@@ -1313,6 +1545,39 @@ export function GlobetrotterGame() {
   }
 
   // ── Online flow ────────────────────────────────────────────────────────────
+
+  // Dropped while you were away. Presence goes quiet for a backgrounded phone
+  // as readily as for a closed laptop, so coming back to find the room has
+  // moved on without you is a real ending, not an edge case — and a roster you
+  // are not on renders a board with nobody's score on it. Say what happened.
+  if (!gameState.players.some((player) => player.id === playerId)) {
+    return (
+      <Shell crumb="Dropped" roomCode={roomCode}>
+        <Stage>
+          <div className="sk-entry" data-testid="globetrotter-dropped">
+            <div className="sk-entry-head">
+              <h2>You were dropped from this expedition</h2>
+              <p>
+                The room lost you for long enough that the others carried on without you. Room{' '}
+                {roomCode} is still running — ask them for the code to rejoin, or start a trip of
+                your own.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button
+                className="sk-btn"
+                data-testid="globetrotter-dropped-exit"
+                onClick={leaveRoom}
+              >
+                Back to menu →
+              </button>
+            </div>
+          </div>
+        </Stage>
+      </Shell>
+    )
+  }
+
   const redacted = redactForPlayer(gameState, playerId)
 
   if (redacted.phase === 'lobby') {
@@ -1322,7 +1587,8 @@ export function GlobetrotterGame() {
           gameState={redacted}
           playerId={playerId}
           roomCode={roomCode}
-          onStart={(deck) => dispatch({ type: 'START_GAME', playerId, deck })}
+          drop={drop}
+          onStart={(mode) => void startRoom(mode)}
           onLeave={leaveRoom}
         />
       </Shell>
@@ -1376,6 +1642,7 @@ export function GlobetrotterGame() {
           }))}
           isSolo={false}
           canAdvance={isHost}
+          drop={drop}
           onNext={() => dispatch({ type: 'NEXT_ROUND', playerId })}
         />
       </Shell>
@@ -1405,6 +1672,7 @@ export function GlobetrotterGame() {
         youLocked={youLocked}
         lockedGhosts={lockedGhosts}
         crumbScore={redacted.players.find((p) => p.id === playerId)?.score ?? 0}
+        drop={drop}
         onLockGuess={(guess) =>
           dispatch({ type: 'SUBMIT_GUESS', playerId, lat: guess.lat, lng: guess.lng })
         }
