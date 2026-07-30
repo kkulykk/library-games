@@ -1026,9 +1026,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-a.gt-pano-watermark:hover {
-  color: rgba(255, 255, 255, 0.9);
-}
 
 /* ─── Loading / error states ───────────────────────────────── */
 .gt-scope .gt-pano-loading {
@@ -1590,6 +1587,21 @@ a.gt-pano-watermark:hover {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+}
+/* Where the round's photosphere came from — a link only now that the answer
+   is on screen; during the round the same credit is plain text. */
+.gt-scope .gt-reveal-credit {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-mute);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gt-scope .gt-reveal-credit:hover {
+  color: var(--ink);
+  text-decoration: underline;
 }
 .gt-scope .gt-reveal-verdict {
   background: var(--bg-2);

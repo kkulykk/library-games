@@ -616,9 +616,12 @@ export function PanoViewer({ pano, className }: PanoViewerProps) {
           <span className="gt-pano-hint-touch">⇄ Swipe to look · pinch to zoom</span>
         </div>
       )}
-      <a className="gt-pano-watermark mono" href={pano.page} target="_blank" rel="noreferrer">
+      {/* Credit only — deliberately not a link. The archive page it would open
+          names the place in its title, which is the answer. The link to the
+          source lives on the reveal, where there is nothing left to give away. */}
+      <span className="gt-pano-watermark mono">
         © {pano.author} · {pano.license} · {pano.source ?? 'Wikimedia Commons'}
-      </a>
+      </span>
     </div>
   )
 }

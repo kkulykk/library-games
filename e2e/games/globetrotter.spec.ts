@@ -295,15 +295,25 @@ test.describe('Globetrotter solo (Random World, mocked archives)', () => {
    * a test that wants Panoramax down routes over it afterwards.
    */
   async function mockPanoramax(page: Page): Promise<void> {
+    // Sweeps aim at randomly chosen coverage cells, so answering with the box's
+    // own corner made two sweeps that landed near each other yield pictures the
+    // separation rule then threw away — and a deck that came up short every so
+    // often. Walking the answers around the globe per sweep instead keeps the
+    // double's job ("this archive has usable spherical pictures") deterministic.
+    let sweep = 0
     await page.route('https://api.panoramax.xyz/**', async (route) => {
-      const bbox = (new URL(route.request().url()).searchParams.get('bbox') ?? '')
-        .split(',')
-        .map(Number)
+      const spot = sweep++
       const features = [0, 1].map((i) => {
-        const id = `mock-pic-${bbox[0].toFixed(0)}-${i}`
+        const step = spot * 2 + i
+        const id = `mock-pic-${step}`
         return {
           id,
-          geometry: { type: 'Point', coordinates: [bbox[0] + i, bbox[1] + i] },
+          // Every answer lands at least 20° of longitude from every other, so
+          // the 50 km separation rule never has cause to drop one.
+          geometry: {
+            type: 'Point',
+            coordinates: [-170 + ((step * 37) % 340), -55 + ((step * 23) % 110)],
+          },
           assets: {
             sd: { href: `${PANORAMAX_HOST}/derivates/${id}/sd.jpg`, type: 'image/jpeg' },
           },
@@ -662,7 +672,15 @@ test.describe('Globetrotter solo (Random World, mocked archives)', () => {
     const credit = page.locator('.gt-pano-watermark')
     await expect(credit).toContainText('Panoramax')
     await expect(credit).toContainText('Mock Panoramaxer')
-    await expect(credit).toHaveAttribute('href', /api\.panoramax\.xyz\/#focus=pic/)
+    // The credit is text, not a link: the archive page names the location, so
+    // one click on it during the round would hand over the answer.
+    expect(await credit.evaluate((node) => node.tagName)).toBe('SPAN')
+
+    // The source link turns up at the reveal, once there is nothing to spoil.
+    await solo.placeAndLockGuess(0.5, 0.5)
+    const revealCredit = page.getByTestId('globetrotter-photo-credit')
+    await expect(revealCredit).toContainText('Mock Panoramaxer')
+    await expect(revealCredit).toHaveAttribute('href', /api\.panoramax\.xyz\/#focus=pic/)
   })
 
   test('only ever asks Wikimedia for a rendition it will serve', async ({ page }) => {

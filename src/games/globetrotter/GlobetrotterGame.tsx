@@ -1012,6 +1012,20 @@ function RevealScreen({
                 )
               })}
             </div>
+            {/* The photosphere's source page, held back until now: its title
+                names the location, so during the round it is the answer. */}
+            {location.pano && (
+              <a
+                className="gt-reveal-credit mono"
+                data-testid="globetrotter-photo-credit"
+                href={location.pano.page}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Photo © {location.pano.author} · {location.pano.license} ·{' '}
+                {location.pano.source ?? 'Wikimedia Commons'} ↗
+              </a>
+            )}
           </div>
         </div>
         <div className="sk-end-cta">
