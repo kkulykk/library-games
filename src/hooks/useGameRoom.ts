@@ -9,6 +9,12 @@ import type { ZodType } from 'zod'
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
 
+// A burst of writes (several players acting at once) fires one broadcast signal
+// per write, and every client answers each signal with its own SELECT — so read
+// load grows as writes × players. Collapsing signals inside this window turns a
+// burst into a single read without making the UI feel laggy.
+const REFETCH_DEBOUNCE_MS = 120
+
 // Runtime guard for presence rows crossing the (untrusted) presence channel into React.
 // Strictly stronger than the previous unchecked player_id cast: a malformed presence row is
 // now filtered out instead of blindly trusted (T-04-02).
@@ -233,6 +239,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   const onBroadcastRef = useRef<((message: TBroadcast) => void) | null>(null)
   const gameStateRef = useRef<TState | null>(null)
   const versionRef = useRef(0)
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Per-room write capability for the dispatch RPC; set by create/join/restore (D-01..D-04).
   const roomTokenRef = useRef('')
 
@@ -335,14 +342,30 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         if (row) applyIfNewer(row.state, row.version)
       }
 
+      // Coalesce a burst of signals into one read (REFETCH_DEBOUNCE_MS).
+      const scheduleRefetch = () => {
+        if (refetchTimerRef.current !== null) return
+        refetchTimerRef.current = setTimeout(() => {
+          refetchTimerRef.current = null
+          void refetchAuthoritativeState()
+        }, REFETCH_DEBOUNCE_MS)
+      }
+
       // State sync is broadcast-signalled now (ACCESS-05, D-08): the postgres_changes UPDATE
       // arm is gone. Subscribe to the plan-01 trigger's public `room:CODE` topic, event
       // 'state', and use it only as a wakeup to refetch authoritative state.
       stateChannelRef.current?.unsubscribe()
       stateChannelRef.current = supabaseClient
         .channel(`room:${code}`)
-        .on('broadcast', { event: 'state' }, () => {
-          void refetchAuthoritativeState()
+        .on('broadcast', { event: 'state' }, (payload: { payload?: { version?: unknown } }) => {
+          // The signal carries only the new version — never trusted state. When it
+          // is not ahead of what we hold there is nothing to fetch, which skips the
+          // writer refetching the echo of its own optimistic update. A forged
+          // version can only cost an extra read: the value written to versionRef
+          // still comes from the authoritative SELECT (CR-03).
+          const signalled = payload?.payload?.version
+          if (typeof signalled === 'number' && signalled <= versionRef.current) return
+          scheduleRefetch()
         })
         // Refetch-on-reconnect (D-10): on (re)subscribe, re-read the current {state, version}
         // through the code-gated get_<game> RPC, recovering any signal missed while
@@ -682,6 +705,10 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         })
       }
     } finally {
+      if (refetchTimerRef.current !== null) {
+        clearTimeout(refetchTimerRef.current)
+        refetchTimerRef.current = null
+      }
       stateChannelRef.current?.unsubscribe()
       stateChannelRef.current = null
       broadcastChannelRef.current?.unsubscribe()
@@ -712,6 +739,10 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     // both events firing, or an event followed by the unmount cleanup below — is a no-op (D-08).
     // MUST NOT clearSession / setStatus / setPlayerId / setGameState / setOnlinePlayerIds.
     const teardown = () => {
+      if (refetchTimerRef.current !== null) {
+        clearTimeout(refetchTimerRef.current)
+        refetchTimerRef.current = null
+      }
       stateChannelRef.current?.unsubscribe()
       stateChannelRef.current = null
       broadcastChannelRef.current?.unsubscribe()
@@ -745,6 +776,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
 
   useEffect(() => {
     return () => {
+      if (refetchTimerRef.current !== null) clearTimeout(refetchTimerRef.current)
       stateChannelRef.current?.unsubscribe()
       broadcastChannelRef.current?.unsubscribe()
       presenceChannelRef.current?.unsubscribe()

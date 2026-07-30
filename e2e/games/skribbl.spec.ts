@@ -10,14 +10,6 @@ type SkribblPlayer = {
   avatar: number
 }
 
-type DrawPoint = {
-  x: number
-  y: number
-  color: string
-  size: number
-  tool: 'pen' | 'eraser'
-}
-
 type SkribblState = {
   phase: 'lobby' | 'picking' | 'drawing' | 'round-end' | 'finished'
   players: SkribblPlayer[]
@@ -27,7 +19,6 @@ type SkribblState = {
   word: string | null
   wordChoices: string[]
   hint: string
-  strokes: Array<{ points: DrawPoint[] }>
   messages: Array<{
     id: string
     playerId: string
@@ -96,14 +87,6 @@ function seededDrawingState(players: SkribblPlayer[]): SkribblState {
     word: encodeWord('apple'),
     wordChoices: [],
     hint: '_ _ _ _ _',
-    strokes: [
-      {
-        points: [
-          { x: 100, y: 100, color: '#000000', size: 6, tool: 'pen' },
-          { x: 180, y: 160, color: '#000000', size: 6, tool: 'pen' },
-        ],
-      },
-    ],
     messages: [],
     guessedPlayers: [],
     drawStartTime: Date.now(),

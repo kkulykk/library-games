@@ -1,4 +1,4 @@
-import { GameStateSchema } from './schema'
+import { BroadcastMessageSchema, GameStateSchema, SNAPSHOT_CHUNK_SIZE } from './schema'
 
 const validGameState = {
   phase: 'lobby' as const,
@@ -9,7 +9,6 @@ const validGameState = {
   word: null,
   wordChoices: [],
   hint: '',
-  strokes: [],
   messages: [],
   guessedPlayers: [],
   drawStartTime: null,
@@ -23,14 +22,13 @@ describe('skribbl GameStateSchema', () => {
     expect(GameStateSchema.safeParse(validGameState).success).toBe(true)
   })
 
-  it('accepts a drawing state with strokes and messages', () => {
+  it('accepts a drawing state with messages', () => {
     const state = {
       ...validGameState,
       phase: 'drawing' as const,
       word: 'cat',
       hint: '_ _ _',
       drawStartTime: Date.now(),
-      strokes: [{ points: [{ x: 10, y: 20, color: '#000', size: 4, tool: 'pen' as const }] }],
       messages: [
         {
           id: 'msg1',
@@ -57,12 +55,14 @@ describe('skribbl GameStateSchema', () => {
     expect(GameStateSchema.safeParse(invalid).success).toBe(false)
   })
 
-  it('rejects a draw point with an invalid tool', () => {
-    const invalid = {
+  it('rejects a state that still carries strokes', () => {
+    // Strokes are broadcast-only now; a room row must never grow a canvas again.
+    const parsed = GameStateSchema.safeParse({
       ...validGameState,
-      strokes: [{ points: [{ x: 10, y: 20, color: '#000', size: 4, tool: 'spray' }] }],
-    }
-    expect(GameStateSchema.safeParse(invalid).success).toBe(false)
+      strokes: [{ points: [{ x: 1, y: 2 }], color: '#000', size: 4, tool: 'pen' }],
+    })
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && 'strokes' in parsed.data).toBe(false)
   })
 
   it('accepts a player name with an emoji', () => {
@@ -79,5 +79,56 @@ describe('skribbl GameStateSchema', () => {
       players: [{ id: 'p1', name: 'a'.repeat(21), isHost: true, score: 0, avatar: 0 }],
     }
     expect(GameStateSchema.safeParse(invalid).success).toBe(false)
+  })
+})
+
+describe('skribbl BroadcastMessageSchema', () => {
+  const stroke = { points: [{ x: 10, y: 20 }], color: '#000', size: 4, tool: 'pen' as const }
+
+  it('accepts a stroke message', () => {
+    expect(
+      BroadcastMessageSchema.safeParse({ type: 'stroke', playerId: 'p1', stroke }).success
+    ).toBe(true)
+  })
+
+  it('accepts undo and clear messages', () => {
+    expect(BroadcastMessageSchema.safeParse({ type: 'undo', playerId: 'p1' }).success).toBe(true)
+    expect(BroadcastMessageSchema.safeParse({ type: 'clear', playerId: 'p1' }).success).toBe(true)
+  })
+
+  it('accepts a snapshot chunk', () => {
+    expect(
+      BroadcastMessageSchema.safeParse({
+        type: 'snapshot',
+        playerId: 'p1',
+        strokes: [stroke],
+        reset: true,
+      }).success
+    ).toBe(true)
+  })
+
+  it('rejects a snapshot larger than one chunk', () => {
+    expect(
+      BroadcastMessageSchema.safeParse({
+        type: 'snapshot',
+        playerId: 'p1',
+        strokes: Array.from({ length: SNAPSHOT_CHUNK_SIZE + 1 }, () => stroke),
+        reset: true,
+      }).success
+    ).toBe(false)
+  })
+
+  it('rejects an invalid tool', () => {
+    expect(
+      BroadcastMessageSchema.safeParse({
+        type: 'stroke',
+        playerId: 'p1',
+        stroke: { ...stroke, tool: 'spray' },
+      }).success
+    ).toBe(false)
+  })
+
+  it('rejects an unknown message type', () => {
+    expect(BroadcastMessageSchema.safeParse({ type: 'wipe', playerId: 'p1' }).success).toBe(false)
   })
 })

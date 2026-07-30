@@ -271,12 +271,22 @@ alter table public.mindmeld_rooms add column if not exists room_token uuid not n
 alter table public.globetrotter_rooms add column if not exists room_token uuid not null default gen_random_uuid();
 
 -- ─── Shared broadcast trigger function ───────────────────────────────────────
--- Emits the full {state, version} on the PUBLIC topic `room:CODE` after every
--- state UPDATE (ACCESS-05, D-09 full payload, D-11 secret-topic model). The 4th
--- arg to realtime.send MUST be `false` → PUBLIC channel that any anon client may
--- subscribe to without a JWT or RLS on realtime.messages. Do NOT use
--- realtime.broadcast_changes() (hardwired private) and do NOT pass true here.
+-- Emits {version} on the PUBLIC topic `room:CODE` after every state UPDATE
+-- (ACCESS-05, D-11 secret-topic model). The 4th arg to realtime.send MUST be
+-- `false` → PUBLIC channel that any anon client may subscribe to without a JWT or
+-- RLS on realtime.messages. Do NOT use realtime.broadcast_changes() (hardwired
+-- private) and do NOT pass true here.
 -- search_path = '' forces fully-qualified public./realtime. names (lint 0011).
+--
+-- This is a SIGNAL, not a state transfer. It used to carry the full `new.state`,
+-- but the client never trusted that payload — the topic is public, so it always
+-- re-read authoritative state through get_<game> anyway (CR-03). Since
+-- realtime.send() INSERTs its payload into realtime.messages, shipping the state
+-- meant every update wrote the whole blob to Postgres a second time for nothing:
+-- with N players in a room, one action cost 1 state write + 1 state insert + N
+-- state reads. Sending only the version keeps that insert tiny and lets clients
+-- skip the refetch entirely when the signalled version is not ahead of what they
+-- already hold. Do NOT put `state` back in here.
 
 create or replace function public.broadcast_room_state()
 returns trigger
@@ -286,7 +296,7 @@ set search_path = ''
 as $$
 begin
   perform realtime.send(
-    jsonb_build_object('state', new.state, 'version', new.version),
+    jsonb_build_object('version', new.version),
     'state',                       -- event name (client .on('broadcast',{event:'state'}))
     'room:' || new.code,           -- topic = the room code (the secret)
     false                          -- private=false → PUBLIC channel (anon-subscribable)
@@ -1905,3 +1915,38 @@ $$;
 
 revoke all on function public.get_globetrotter(text) from public;
 grant execute on function public.get_globetrotter(text) to anon;
+
+-- ─── Scheduled room cleanup (pg_cron) ────────────────────────────────────────
+-- Rooms are never deleted by clients (there is no DELETE policy). Two mechanisms
+-- reclaim them: the opportunistic bounded delete on each create_<game> path, and
+-- this hourly sweep.
+--
+-- The sweep previously covered ONLY uno_rooms, so the other 6 tables
+-- accumulated rooms indefinitely. This function is generated from the GAMES list,
+-- so a new online game is swept automatically.
+
+create extension if not exists pg_cron;
+
+create or replace function public.cleanup_stale_rooms()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from public.uno_rooms where updated_at < now() - interval '24 hours';
+  delete from public.skribbl_rooms where updated_at < now() - interval '24 hours';
+  delete from public.agario_rooms where updated_at < now() - interval '24 hours';
+  delete from public.cah_rooms where updated_at < now() - interval '24 hours';
+  delete from public.codenames_rooms where updated_at < now() - interval '24 hours';
+  delete from public.mindmeld_rooms where updated_at < now() - interval '24 hours';
+  delete from public.globetrotter_rooms where updated_at < now() - interval '24 hours';
+end;
+$$;
+
+revoke all on function public.cleanup_stale_rooms() from public;
+
+-- Replace any earlier per-table job with the one that sweeps every table.
+select cron.unschedule(jobid) from cron.job where command like '%_rooms where updated_at%';
+select cron.unschedule(jobid) from cron.job where jobname = 'cleanup-stale-rooms';
+select cron.schedule('cleanup-stale-rooms', '0 * * * *', 'select public.cleanup_stale_rooms()');

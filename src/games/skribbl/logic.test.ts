@@ -1,8 +1,11 @@
 import {
   createLobbyState,
   addPlayer,
+  applyDrawMessage,
+  chunkSnapshot,
   removePlayer,
   applyAction,
+  MAX_STROKES,
   generateHint,
   revealHintLetters,
   calculateGuessScore,
@@ -11,6 +14,7 @@ import {
   getCurrentDrawer,
   encodeWord,
   decodeWord,
+  type DrawStroke,
   type Player,
   type GameState,
 } from './logic'
@@ -222,50 +226,98 @@ describe('PICK_WORD', () => {
   })
 })
 
-describe('ADD_STROKE / CLEAR_CANVAS / UNDO_STROKE', () => {
-  function drawingState(): GameState {
-    const state = startedGame()
-    const drawer = getCurrentDrawer(state)!
-    return applyAction(state, {
-      type: 'PICK_WORD',
-      playerId: drawer.id,
-      word: state.wordChoices[0],
-    })
-  }
-
-  it('drawer can add strokes', () => {
-    const state = drawingState()
-    const drawer = getCurrentDrawer(state)!
-    const stroke = { points: [{ x: 0, y: 0, color: '#000', size: 3, tool: 'pen' as const }] }
-    const next = applyAction(state, { type: 'ADD_STROKE', playerId: drawer.id, stroke })
-    expect(next.strokes).toHaveLength(1)
+describe('applyDrawMessage', () => {
+  const DRAWER = 'drawer-1'
+  const stroke = (x = 0): DrawStroke => ({
+    points: [{ x, y: 0 }],
+    color: '#000',
+    size: 3,
+    tool: 'pen',
   })
 
-  it('non-drawer cannot add strokes', () => {
-    const state = drawingState()
-    const stroke = { points: [{ x: 0, y: 0, color: '#000', size: 3, tool: 'pen' as const }] }
-    const next = applyAction(state, { type: 'ADD_STROKE', playerId: 'p2', stroke })
-    expect(next.strokes).toHaveLength(0)
+  it('appends a stroke from the drawer', () => {
+    const next = applyDrawMessage(
+      [],
+      { type: 'stroke', playerId: DRAWER, stroke: stroke() },
+      DRAWER
+    )
+    expect(next).toHaveLength(1)
   })
 
-  it('drawer can clear canvas', () => {
-    const state = drawingState()
-    const drawer = getCurrentDrawer(state)!
-    const stroke = { points: [{ x: 0, y: 0, color: '#000', size: 3, tool: 'pen' as const }] }
-    let next = applyAction(state, { type: 'ADD_STROKE', playerId: drawer.id, stroke })
-    next = applyAction(next, { type: 'CLEAR_CANVAS', playerId: drawer.id })
-    expect(next.strokes).toHaveLength(0)
+  it('ignores a stroke from anyone who is not the drawer', () => {
+    const next = applyDrawMessage([], { type: 'stroke', playerId: 'p2', stroke: stroke() }, DRAWER)
+    expect(next).toHaveLength(0)
   })
 
-  it('drawer can undo last stroke', () => {
-    const state = drawingState()
-    const drawer = getCurrentDrawer(state)!
-    const stroke = { points: [{ x: 0, y: 0, color: '#000', size: 3, tool: 'pen' as const }] }
-    let next = applyAction(state, { type: 'ADD_STROKE', playerId: drawer.id, stroke })
-    next = applyAction(next, { type: 'ADD_STROKE', playerId: drawer.id, stroke })
-    expect(next.strokes).toHaveLength(2)
-    next = applyAction(next, { type: 'UNDO_STROKE', playerId: drawer.id })
-    expect(next.strokes).toHaveLength(1)
+  it('ignores everything when there is no drawer', () => {
+    const next = applyDrawMessage([], { type: 'stroke', playerId: DRAWER, stroke: stroke() }, null)
+    expect(next).toHaveLength(0)
+  })
+
+  it('undo removes the last stroke', () => {
+    const start = [stroke(1), stroke(2)]
+    const next = applyDrawMessage(start, { type: 'undo', playerId: DRAWER }, DRAWER)
+    expect(next).toHaveLength(1)
+    expect(next[0].points[0].x).toBe(1)
+  })
+
+  it('undo on an empty canvas is a no-op that preserves identity', () => {
+    const start: DrawStroke[] = []
+    expect(applyDrawMessage(start, { type: 'undo', playerId: DRAWER }, DRAWER)).toBe(start)
+  })
+
+  it('clear empties the canvas', () => {
+    const next = applyDrawMessage([stroke()], { type: 'clear', playerId: DRAWER }, DRAWER)
+    expect(next).toHaveLength(0)
+  })
+
+  it('a reset snapshot replaces the canvas', () => {
+    const next = applyDrawMessage(
+      [stroke(1)],
+      { type: 'snapshot', playerId: DRAWER, strokes: [stroke(9)], reset: true },
+      DRAWER
+    )
+    expect(next).toHaveLength(1)
+    expect(next[0].points[0].x).toBe(9)
+  })
+
+  it('a non-reset snapshot chunk appends to the canvas', () => {
+    const next = applyDrawMessage(
+      [stroke(1)],
+      { type: 'snapshot', playerId: DRAWER, strokes: [stroke(9)], reset: false },
+      DRAWER
+    )
+    expect(next.map((s) => s.points[0].x)).toEqual([1, 9])
+  })
+
+  it('caps the canvas at MAX_STROKES, dropping the oldest', () => {
+    const start = Array.from({ length: MAX_STROKES }, (_, index) => stroke(index))
+    const next = applyDrawMessage(
+      start,
+      { type: 'stroke', playerId: DRAWER, stroke: stroke(9999) },
+      DRAWER
+    )
+    expect(next).toHaveLength(MAX_STROKES)
+    expect(next[next.length - 1].points[0].x).toBe(9999)
+    expect(next[0].points[0].x).toBe(1)
+  })
+})
+
+describe('chunkSnapshot', () => {
+  const stroke = (): DrawStroke => ({
+    points: [{ x: 0, y: 0 }],
+    color: '#000',
+    size: 3,
+    tool: 'pen',
+  })
+
+  it('returns a single empty chunk for an empty canvas', () => {
+    expect(chunkSnapshot([], 40)).toEqual([[]])
+  })
+
+  it('splits strokes into chunks no larger than chunkSize', () => {
+    const chunks = chunkSnapshot(Array.from({ length: 95 }, stroke), 40)
+    expect(chunks.map((c) => c.length)).toEqual([40, 40, 15])
   })
 })
 
