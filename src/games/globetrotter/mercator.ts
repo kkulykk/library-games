@@ -276,6 +276,28 @@ export function tileZoom(view: ViewBox, viewportWidthPx: number, maxZoom = 12): 
   return clamp(Math.round(Math.log2(scale)), 0, maxZoom)
 }
 
+/**
+ * Deepest tile level that covers `view` in no more than `maxTiles` tiles.
+ *
+ * The reveal tour has no single level that suits it — it opens 25 km across and
+ * ends up showing a continent — and asking for the right one at every step is
+ * what made the map flicker. A tile *budget* gives every frame of the flight a
+ * level it can afford: near-native detail over a close-up (a handful of tiles
+ * cover 25 km) and a coarse world underneath a continental sweep. Blurry where
+ * the camera is moving fastest, but a map rather than a coloured rectangle.
+ */
+export function budgetZoom(view: ViewBox, maxZoom = 12, maxTiles = 8): number {
+  let best = 0
+  for (let z = 1; z <= maxZoom; z++) {
+    const size = WORLD_SIZE / 2 ** z
+    const across = Math.ceil(view.w / size) + 1
+    const down = Math.ceil(view.h / size) + 1
+    if (across * down > maxTiles) break
+    best = z
+  }
+  return best
+}
+
 /** Every tile of `z` intersecting the view, in draw order. */
 export function visibleTiles(view: ViewBox, z: number): Tile[] {
   const count = 2 ** z
@@ -289,6 +311,30 @@ export function visibleTiles(view: ViewBox, z: number): Tile[] {
     for (let x = minX; x <= maxX; x++) tiles.push({ z, x, y })
   }
   return tiles
+}
+
+/**
+ * One affordable tile set for a whole camera tour, coarse levels first.
+ *
+ * Each destination gets the deepest level its budget allows, so the close-ups
+ * arrive near native detail while the wide legs fall back to a coarse world —
+ * and because the tour's last stop frames every other one, its tiles double as
+ * a backdrop for the frames *between* destinations. Ordering matters: the SVG
+ * paints in array order, so shallow tiles go down first and detail lands on
+ * top of them.
+ */
+export function tourTiles(views: readonly ViewBox[], maxZoom = 12, maxTiles = 8): Tile[] {
+  const seen = new Set<string>()
+  const collected: Tile[] = []
+  for (const view of views) {
+    for (const tile of visibleTiles(view, budgetZoom(view, maxZoom, maxTiles))) {
+      const key = tileKey(tile)
+      if (seen.has(key)) continue
+      seen.add(key)
+      collected.push(tile)
+    }
+  }
+  return collected.sort((a, b) => a.z - b.z)
 }
 
 /** World-coordinate box a tile occupies. */

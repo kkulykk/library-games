@@ -17,6 +17,7 @@ import {
   tileKey,
   revealTour,
   tileZoom,
+  tourTiles,
   unproject,
   visibleTiles,
   wheelZoomFactor,
@@ -80,6 +81,12 @@ const TILE_SETTLE_MS = 220
 /** One press of +/− doubles or halves the scale, eased instead of snapped. */
 const ZOOM_STEP = 2
 const ZOOM_STEP_MS = 260
+/**
+ * Tiles one frame of the reveal tour may cost. The whole flight is paid for up
+ * front — a handful of tiles per destination, requested together — so the
+ * camera never has to stop and ask for more mid-move.
+ */
+const TOUR_TILE_BUDGET = 8
 /** Name a country only once it is this wide on screen, and never crowd the map. */
 const MIN_LABEL_PX = 58
 const MAX_LABELS = 26
@@ -202,6 +209,9 @@ export function WorldMap({
   // True from the moment the reveal tour starts until the camera has pulled
   // back to the overview — the distance overlays wait for that.
   const [touring, setTouring] = useState(autoFit)
+  // Where the reveal tour is going to stop, so the map can pull a coarse layer
+  // for the whole route in one go rather than per leg.
+  const [tourViews, setTourViews] = useState<ViewBox[]>([])
   const flightRef = useRef<number | null>(null)
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelRef = useRef(false)
@@ -358,6 +368,7 @@ export function WorldMap({
     }
 
     setView(steps[0].view)
+    setTourViews(steps.map((step) => step.view))
     // One frame of settle so the opening close-up paints before the tour runs.
     const timer = setTimeout(() => runTour(steps), 120)
     return () => clearTimeout(timer)
@@ -371,13 +382,10 @@ export function WorldMap({
     [view.w, size.width]
   )
 
-  // Only fetch tiles for a camera that has come to rest — and never while one
-  // is animating. A reveal tour crosses a dozen zoom levels and pauses at each
-  // end long enough to look settled, so the naive version fired off a request
-  // per level and painted each half-loaded batch over the flight: the flicker.
-  // Freezing the tile set for the duration keeps the detail already on screen
-  // (tiles sit in world coordinates, so they travel with the camera) and loads
-  // the close-up detail once, after the camera lands.
+  // Only fetch tiles for a camera that has come to rest. Asking per frame is
+  // what made the map flicker: the tour crosses a dozen zoom levels and pauses
+  // at each end long enough to look settled, so every level got requested and
+  // each half-loaded batch was painted over the flight.
   const settledView = useSettled(view, TILE_SETTLE_MS)
   const animating = flying || touring
   const tileViewRef = useRef(settledView)
@@ -387,12 +395,25 @@ export function WorldMap({
   if (!animating && settledView === view) tileViewRef.current = settledView
   const tileView = tileViewRef.current
   const z = tileZoom(tileView, size.width, MAX_TILE_ZOOM)
-  const tiles = useMemo(() => (TILES_ENABLED ? visibleTiles(tileView, z) : []), [tileView, z])
-  // The reveal tour is the one camera move that spans the whole zoom range, so
-  // there is no level of raster detail that suits it: world tiles stretched
-  // over a street-level close-up are mush. It flies over the clean vector world
-  // instead, and the photographic detail arrives when the camera stops.
-  const { readyTiles, active: tilesActive } = useTileLayer(tiles, TILES_ENABLED && !touring)
+
+  /**
+   * What the tour flies over: one affordable tile set per destination, all of
+   * them requested the moment the reveal starts.
+   *
+   * The vector basemap alone cannot carry a close-up — 25 km of Saxony is one
+   * flat beige rectangle — while the deep levels a close-up really wants are
+   * both too many to fetch mid-flight and useless over the wide legs.
+   */
+  const routeTiles = useMemo(
+    () => tourTiles(tourViews, MAX_TILE_ZOOM, TOUR_TILE_BUDGET),
+    [tourViews]
+  )
+
+  const tiles = useMemo(() => {
+    if (!TILES_ENABLED) return []
+    return touring && routeTiles.length > 0 ? routeTiles : visibleTiles(tileView, z)
+  }, [touring, routeTiles, tileView, z])
+  const { readyTiles, active: tilesActive } = useTileLayer(tiles, TILES_ENABLED)
 
   // Country outlines never move (the projection is fixed), so build the paths
   // once — a pan would otherwise diff ~180 elements every frame.

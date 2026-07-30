@@ -1,5 +1,6 @@
 import {
   ANSWER_HOLD_MS,
+  budgetZoom,
   clampView,
   CLOSE_VIEW_WIDTH,
   closeView,
@@ -14,6 +15,7 @@ import {
   tileBox,
   tileKey,
   tileZoom,
+  tourTiles,
   TRAVEL_MS,
   unproject,
   visibleTiles,
@@ -373,6 +375,83 @@ describe('tiles', () => {
     expect(tileBox({ z: 0, x: 0, y: 0 })).toEqual({ x: 0, y: 0, w: 256, h: 256 })
     expect(tileBox({ z: 2, x: 3, y: 1 })).toEqual({ x: 192, y: 64, w: 64, h: 64 })
     expect(tileKey({ z: 2, x: 3, y: 1 })).toBe('2/3/1')
+  })
+})
+
+describe('budgetZoom', () => {
+  it('spends its whole budget on a close-up, landing near native detail', () => {
+    const close = closeView({ lat: 51.34, lng: 12.39 }, 2)
+    const z = budgetZoom(close, 12, 8)
+    expect(visibleTiles(close, z).length).toBeLessThanOrEqual(8)
+    // A 25 km view is worth z12 natively; the budget gives up very little.
+    expect(z).toBeGreaterThanOrEqual(10)
+  })
+
+  it('drops to a coarse world rather than blowing the budget', () => {
+    const world = worldView(2)
+    const z = budgetZoom(world, 12, 8)
+    expect(visibleTiles(world, z).length).toBeLessThanOrEqual(8)
+    expect(z).toBeLessThanOrEqual(2)
+  })
+
+  it('keeps every view inside the budget across the whole zoom range', () => {
+    for (let w = WORLD_SIZE; w > WORLD_SIZE / 4096; w /= 1.7) {
+      const view = clampView({ x: 40, y: 40, w, h: w / 2 }, 2)
+      expect(visibleTiles(view, budgetZoom(view, 12, 8)).length).toBeLessThanOrEqual(8)
+    }
+  })
+
+  it('never goes deeper than the cap, however tight the view', () => {
+    const pinhole: ViewBox = { x: 100, y: 100, w: 0.001, h: 0.0005 }
+    expect(budgetZoom(pinhole, 12, 8)).toBe(12)
+    expect(budgetZoom(pinhole, 6, 8)).toBe(6)
+  })
+
+  it('falls back to the whole world when nothing fits', () => {
+    expect(budgetZoom(worldView(2), 12, 1)).toBe(0)
+  })
+})
+
+describe('tourTiles', () => {
+  const target = { lat: 51.34, lng: 12.39 }
+  const guess = { lat: 50.5, lng: 11.2 }
+  const steps = revealTour(target, guess, [], 2)
+  const views = steps.map((step) => step.view)
+
+  it('covers every destination of the tour', () => {
+    const tiles = tourTiles(views, 12, 8)
+    for (const view of views) {
+      const wanted = visibleTiles(view, budgetZoom(view, 12, 8)).map(tileKey)
+      expect(wanted.every((key) => tiles.map(tileKey).includes(key))).toBe(true)
+    }
+  })
+
+  it('paints coarse first so detail lands on top', () => {
+    const zooms = tourTiles(views, 12, 8).map((tile) => tile.z)
+    expect([...zooms].sort((a, b) => a - b)).toEqual(zooms)
+    // A close-up and a pull-back cannot want the same level.
+    expect(new Set(zooms).size).toBeGreaterThan(1)
+  })
+
+  it('asks for each tile once, however many legs share it', () => {
+    const keys = tourTiles([...views, ...views], 12, 8).map(tileKey)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('stays affordable — a whole reveal costs a few dozen tiles at most', () => {
+    // The antipodal case: opposite sides of the planet, every leg different.
+    const far = revealTour({ lat: -41.3, lng: 174.8 }, { lat: 55.7, lng: 12.6 }, [], 2)
+    expect(
+      tourTiles(
+        far.map((step) => step.view),
+        12,
+        8
+      ).length
+    ).toBeLessThanOrEqual(32)
+  })
+
+  it('has nothing to draw without a tour', () => {
+    expect(tourTiles([], 12, 8)).toEqual([])
   })
 })
 
