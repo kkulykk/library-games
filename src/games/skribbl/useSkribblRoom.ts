@@ -5,18 +5,16 @@ import {
   addPlayer,
   applyAction,
   createLobbyState,
+  type BroadcastMessage,
   type GameAction,
   type GameState,
   type Player,
 } from './logic'
-import { GameStateSchema } from './schema'
+import { BroadcastMessageSchema, GameStateSchema } from './schema'
 
 export type { RoomStatus } from '@/hooks/useGameRoom'
 
-export type UseSkribblRoomReturn = Omit<
-  UseGameRoomReturn<GameState, GameAction>,
-  'broadcast' | 'onBroadcast'
->
+export type UseSkribblRoomReturn = UseGameRoomReturn<GameState, GameAction, BroadcastMessage>
 
 function resolveAvatar(extras?: Record<string, unknown>, playerIndex = 0): number {
   const avatar = extras?.avatar
@@ -27,7 +25,7 @@ function resolveAvatar(extras?: Record<string, unknown>, playerIndex = 0): numbe
 }
 
 export function useSkribblRoom(): UseSkribblRoomReturn {
-  return useGameRoom<GameState, GameAction>({
+  return useGameRoom<GameState, GameAction, BroadcastMessage>({
     tableName: 'skribbl_rooms',
     channelPrefix: 'skribbl',
     sessionKey: 'skribbl_session',
@@ -43,5 +41,11 @@ export function useSkribblRoom(): UseSkribblRoomReturn {
         avatar: resolveAvatar(extras, playerIndex),
       }) as Player,
     addPlayer,
+    // Strokes are ephemeral and go peer-to-peer over Realtime — they are never
+    // written to Postgres. See the note on GameStateSchema.
+    broadcast: {
+      channelPrefix: 'skribbl-draw',
+      schema: BroadcastMessageSchema,
+    },
   })
 }

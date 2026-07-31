@@ -18,13 +18,16 @@ import { RoomEntry } from '@/components/multiplayer/RoomEntry'
 import { DesyncIndicator } from '@/components/multiplayer/DesyncIndicator'
 import { useSkribblRoom, type UseSkribblRoomReturn } from './useSkribblRoom'
 import {
+  applyDrawMessage,
+  chunkSnapshot,
   decodeWord,
   getCurrentDrawer,
-  type DrawPoint,
+  type BroadcastMessage,
   type DrawStroke,
   type GameAction,
   type GameState,
 } from './logic'
+import { SNAPSHOT_CHUNK_SIZE } from './schema'
 import styles from './SkribblGame.module.css'
 
 const SKRIBBL_GENRE = games.find((g) => g.slug === 'skribbl')?.genre
@@ -203,10 +206,10 @@ function DrawingCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawingRef = useRef(false)
-  const currentStrokeRef = useRef<DrawPoint[]>([])
+  const currentStrokeRef = useRef<DrawStroke | null>(null)
 
   const redraw = useCallback(
-    (preview?: DrawPoint[]) => {
+    (preview?: DrawStroke | null) => {
       const canvas = canvasRef.current
       if (!canvas) return
 
@@ -216,7 +219,7 @@ function DrawingCanvas({
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-      const allStrokes = preview && preview.length > 0 ? [...strokes, { points: preview }] : strokes
+      const allStrokes = preview ? [...strokes, preview] : strokes
 
       for (const stroke of allStrokes) {
         if (stroke.points.length === 0) continue
@@ -226,8 +229,8 @@ function DrawingCanvas({
         ctx.lineJoin = 'round'
 
         const first = stroke.points[0]
-        ctx.strokeStyle = first.tool === 'eraser' ? '#ffffff' : first.color
-        ctx.lineWidth = first.size
+        ctx.strokeStyle = stroke.tool === 'eraser' ? '#ffffff' : stroke.color
+        ctx.lineWidth = stroke.size
         ctx.moveTo(first.x, first.y)
 
         for (let index = 1; index < stroke.points.length; index += 1) {
@@ -259,9 +262,11 @@ function DrawingCanvas({
     const scaleY = canvas.height / rect.height
     const point = 'touches' in event ? event.touches[0] || event.changedTouches[0] : event
 
+    // Round to whole pixels — sub-pixel precision is invisible on an 800×560
+    // canvas but roughly doubles the JSON size of every point sent over the wire.
     return {
-      x: (point.clientX - rect.left) * scaleX,
-      y: (point.clientY - rect.top) * scaleY,
+      x: Math.round((point.clientX - rect.left) * scaleX),
+      y: Math.round((point.clientY - rect.top) * scaleY),
     }
   }
 
@@ -275,7 +280,7 @@ function DrawingCanvas({
     if (!position) return
 
     drawingRef.current = true
-    currentStrokeRef.current = [{ ...position, color, size, tool }]
+    currentStrokeRef.current = { points: [position], color, size, tool }
     redraw(currentStrokeRef.current)
   }
 
@@ -283,22 +288,30 @@ function DrawingCanvas({
     event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
   ) {
     if (!isDrawer || !drawingRef.current) return
+    const stroke = currentStrokeRef.current
+    if (!stroke) return
     event.preventDefault()
 
     const position = getPosition(event)
     if (!position) return
 
-    currentStrokeRef.current.push({ ...position, color, size, tool })
-    redraw(currentStrokeRef.current)
+    // Drop points the pointer barely moved to. A mousemove stream emits far more
+    // samples than the drawing needs, and each one is payload.
+    const last = stroke.points[stroke.points.length - 1]
+    if (last && Math.abs(last.x - position.x) < 2 && Math.abs(last.y - position.y) < 2) return
+
+    stroke.points.push(position)
+    redraw(stroke)
   }
 
   function endStroke() {
     if (!isDrawer || !drawingRef.current) return
 
     drawingRef.current = false
-    if (currentStrokeRef.current.length > 0) {
-      onStrokeComplete({ points: currentStrokeRef.current })
-      currentStrokeRef.current = []
+    const stroke = currentStrokeRef.current
+    currentStrokeRef.current = null
+    if (stroke && stroke.points.length > 0) {
+      onStrokeComplete(stroke)
     }
   }
 
@@ -1069,14 +1082,22 @@ function GameBoardScreen({
   gameState,
   onlinePlayerIds,
   playerId,
+  strokes,
   onAction,
+  onClear,
   onLeave,
+  onStroke,
+  onUndo,
 }: {
   gameState: GameState
   onlinePlayerIds: string[]
   playerId: string
+  strokes: DrawStroke[]
   onAction: (action: GameAction) => void
+  onClear: () => void
   onLeave: () => void
+  onStroke: (stroke: DrawStroke) => void
+  onUndo: () => void
 }) {
   const [color, setColor] = useState('#000000')
   const [size, setSize] = useState(6)
@@ -1196,12 +1217,12 @@ function GameBoardScreen({
 
       <div className={styles.canvasColumn}>
         <DrawingCanvas
-          strokes={gameState.strokes}
+          strokes={strokes}
           isDrawer={isDrawer}
           color={tool === 'eraser' ? '#ffffff' : color}
           size={size}
           tool={tool}
-          onStrokeComplete={(stroke) => onAction({ type: 'ADD_STROKE', playerId, stroke })}
+          onStrokeComplete={onStroke}
         />
 
         {isDrawer ? (
@@ -1264,18 +1285,13 @@ function GameBoardScreen({
               >
                 <Eraser className="h-4 w-4" />
               </button>
-              <button
-                type="button"
-                title="Undo"
-                onClick={() => onAction({ type: 'UNDO_STROKE', playerId })}
-                className={styles.toolButton}
-              >
+              <button type="button" title="Undo" onClick={onUndo} className={styles.toolButton}>
                 <Undo2 className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 title="Clear all"
-                onClick={() => onAction({ type: 'CLEAR_CANVAS', playerId })}
+                onClick={onClear}
                 className={cn(styles.toolButton, styles.toolButtonDanger)}
               >
                 <Trash2 className="h-4 w-4" />
@@ -1308,6 +1324,7 @@ export function SkribblGame() {
     process.env.NEXT_PUBLIC_E2E_FAKE_SUPABASE === '1' ? 'entry' : 'howto'
   )
   const {
+    broadcast,
     connectionStatus,
     createRoom,
     dispatch,
@@ -1315,6 +1332,7 @@ export function SkribblGame() {
     gameState,
     joinRoom,
     leaveRoom,
+    onBroadcast: onBroadcastRef,
     onlinePlayerIds,
     playerId,
     restoreSession,
@@ -1323,11 +1341,95 @@ export function SkribblGame() {
     status,
   } = useSkribblRoom()
 
+  // The canvas lives here, not in the room state: strokes are ephemeral and go
+  // over the broadcast channel so they never hit Postgres.
+  const [strokes, setStrokes] = useState<DrawStroke[]>([])
+  const strokesRef = useRef<DrawStroke[]>([])
+
+  const drawer = gameState ? getCurrentDrawer(gameState) : null
+  const drawerId = drawer?.id ?? null
+  const drawerIdRef = useRef<string | null>(null)
+
+  // Mirror render values into refs so the broadcast handler and the snapshot
+  // effect can read the latest without re-subscribing. Declared before the
+  // effects that consume them so they are always synced first.
+  useEffect(() => {
+    strokesRef.current = strokes
+  }, [strokes])
+
+  useEffect(() => {
+    drawerIdRef.current = drawerId
+  }, [drawerId])
+
   useEffect(() => {
     if (inviteCode) {
       setEntryMode('entry')
     }
   }, [inviteCode])
+
+  // Each turn starts on a blank canvas. Keyed on drawStartTime so a new turn
+  // clears it even when the same player draws again.
+  useEffect(() => {
+    setStrokes([])
+  }, [gameState?.drawStartTime])
+
+  // Incoming draw messages. applyDrawMessage drops anything not sent by the
+  // current drawer — the broadcast topic is public.
+  useEffect(() => {
+    if (!onBroadcastRef) return
+    onBroadcastRef.current = (message: BroadcastMessage) => {
+      setStrokes((current) => applyDrawMessage(current, message, drawerIdRef.current))
+    }
+    return () => {
+      onBroadcastRef.current = null
+    }
+  }, [onBroadcastRef])
+
+  const applyLocally = useCallback((message: BroadcastMessage) => {
+    setStrokes((current) => applyDrawMessage(current, message, drawerIdRef.current))
+    return message
+  }, [])
+
+  // The drawer applies its own strokes immediately (so the canvas never lags the
+  // pointer) and broadcasts the same message to everyone else.
+  const handleStroke = useCallback(
+    (stroke: DrawStroke) => {
+      if (!playerId || !broadcast) return
+      broadcast(applyLocally({ type: 'stroke', playerId, stroke }))
+    },
+    [applyLocally, broadcast, playerId]
+  )
+
+  const handleUndo = useCallback(() => {
+    if (!playerId || !broadcast) return
+    broadcast(applyLocally({ type: 'undo', playerId }))
+  }, [applyLocally, broadcast, playerId])
+
+  const handleClear = useCallback(() => {
+    if (!playerId || !broadcast) return
+    broadcast(applyLocally({ type: 'clear', playerId }))
+  }, [applyLocally, broadcast, playerId])
+
+  // Late joiners and reconnecting players would otherwise see a blank canvas,
+  // since nothing about the drawing is persisted. When presence reports someone
+  // new, the drawer re-sends the canvas in payload-sized chunks.
+  const knownPeersRef = useRef<string[]>([])
+  useEffect(() => {
+    const known = knownPeersRef.current
+    const newcomers = onlinePlayerIds.filter((id) => !known.includes(id))
+    knownPeersRef.current = onlinePlayerIds
+
+    if (newcomers.length === 0) return
+    if (!playerId || !broadcast) return
+    if (drawerId !== playerId) return
+    if (gameState?.phase !== 'drawing') return
+    // Nothing drawn yet — the newcomer's canvas is already blank.
+    if (strokesRef.current.length === 0) return
+
+    chunkSnapshot(strokesRef.current, SNAPSHOT_CHUNK_SIZE).forEach((chunk, index) => {
+      broadcast({ type: 'snapshot', playerId, strokes: chunk, reset: index === 0 })
+    })
+  }, [broadcast, drawerId, gameState?.phase, onlinePlayerIds, playerId])
 
   const crumb = makeCrumb(gameState, roomCode, playerId, inviteCode)
   const handleAction = useCallback(
@@ -1418,8 +1520,12 @@ export function SkribblGame() {
           gameState={gameState}
           onlinePlayerIds={onlinePlayerIds}
           playerId={playerId}
+          strokes={strokes}
           onAction={handleAction}
+          onClear={handleClear}
           onLeave={handleLeave}
+          onStroke={handleStroke}
+          onUndo={handleUndo}
         />
       ) : gameState.phase === 'round-end' ? (
         <RoundEndScreen

@@ -1,7 +1,7 @@
 import skribblWords from '@/data/words/skribbl-words.json'
 import { shuffle } from '@/lib/shuffle'
-import type { GameState } from './schema'
-export type { GameState }
+import type { BroadcastMessage, GameState } from './schema'
+export type { BroadcastMessage, GameState }
 
 let msgCounter = 0
 function generateMsgId(): string {
@@ -35,28 +35,80 @@ export interface ChatMessage {
 export interface DrawPoint {
   x: number
   y: number
+}
+
+export interface DrawStroke {
+  points: DrawPoint[]
   color: string
   size: number
   tool: 'pen' | 'eraser'
 }
 
-export interface DrawStroke {
-  points: DrawPoint[]
-}
+// Chat is capped so a long game cannot grow the persisted state without bound —
+// every write rewrites the whole blob, so an unbounded array makes each message
+// cost more than the last.
+export const MAX_MESSAGES = 60
+
+// Ceiling on locally-held strokes. Drawing past this drops the oldest strokes
+// rather than letting one turn's canvas grow without limit.
+export const MAX_STROKES = 600
 
 export type GameAction =
   | { type: 'START_GAME'; playerId: string }
   | { type: 'UPDATE_SETTINGS'; playerId: string; totalRounds?: number; turnDuration?: number }
   | { type: 'REMOVE_PLAYER'; playerId: string; targetPlayerId: string }
   | { type: 'PICK_WORD'; playerId: string; word: string }
-  | { type: 'ADD_STROKE'; playerId: string; stroke: DrawStroke }
-  | { type: 'CLEAR_CANVAS'; playerId: string }
-  | { type: 'UNDO_STROKE'; playerId: string }
   | { type: 'GUESS'; playerId: string; text: string }
   | { type: 'REVEAL_HINT'; playerId: string; ratio: number }
   | { type: 'END_TURN'; playerId: string }
   | { type: 'NEXT_TURN'; playerId: string }
   | { type: 'PLAY_AGAIN'; playerId: string }
+
+// ─── Drawing (broadcast, never persisted) ────────────────────────────────────
+
+// Fold an incoming draw broadcast into the local canvas. Pure so it can be unit
+// tested and so the same reducer runs for the drawer's own optimistic updates and
+// for peers receiving them.
+//
+// `drawerId` is the authority check: the broadcast topic is public, so a message
+// from anyone who is not the current drawer is dropped. A null drawerId (no
+// active turn) drops everything.
+export function applyDrawMessage(
+  strokes: DrawStroke[],
+  message: BroadcastMessage,
+  drawerId: string | null
+): DrawStroke[] {
+  if (!drawerId || message.playerId !== drawerId) return strokes
+
+  if (message.type === 'stroke') {
+    return [...strokes, message.stroke].slice(-MAX_STROKES)
+  }
+
+  if (message.type === 'undo') {
+    if (strokes.length === 0) return strokes
+    return strokes.slice(0, -1)
+  }
+
+  if (message.type === 'clear') {
+    if (strokes.length === 0) return strokes
+    return []
+  }
+
+  // snapshot: the first chunk replaces the canvas, subsequent chunks extend it.
+  const base = message.reset ? [] : strokes
+  return [...base, ...message.strokes].slice(-MAX_STROKES)
+}
+
+// Split a canvas into broadcast-sized chunks. Always yields at least one chunk so
+// an empty canvas still clears a late joiner's stale strokes.
+export function chunkSnapshot(strokes: DrawStroke[], chunkSize: number): DrawStroke[][] {
+  if (strokes.length === 0) return [[]]
+  const chunks: DrawStroke[][] = []
+  for (let index = 0; index < strokes.length; index += chunkSize) {
+    chunks.push(strokes.slice(index, index + chunkSize))
+  }
+  return chunks
+}
 
 // ─── Word list ────────────────────────────────────────────────────────────────
 
@@ -172,7 +224,6 @@ export function createLobbyState(host: Player): GameState {
     word: null,
     wordChoices: [],
     hint: '',
-    strokes: [],
     messages: [],
     guessedPlayers: [],
     drawStartTime: null,
@@ -211,7 +262,6 @@ function startPickingPhase(state: GameState): GameState {
     wordChoices: choices.map(encodeWord),
     word: null,
     hint: '',
-    strokes: [],
     messages: [],
     guessedPlayers: [],
     drawStartTime: null,
@@ -319,28 +369,6 @@ export function applyAction(state: GameState, action: GameAction): GameState {
     }
   }
 
-  if (action.type === 'ADD_STROKE') {
-    if (state.phase !== 'drawing') return state
-    const drawer = getCurrentDrawer(state)
-    if (drawer?.id !== action.playerId) return state
-    return { ...state, strokes: [...state.strokes, action.stroke] }
-  }
-
-  if (action.type === 'CLEAR_CANVAS') {
-    if (state.phase !== 'drawing') return state
-    const drawer = getCurrentDrawer(state)
-    if (drawer?.id !== action.playerId) return state
-    return { ...state, strokes: [] }
-  }
-
-  if (action.type === 'UNDO_STROKE') {
-    if (state.phase !== 'drawing') return state
-    const drawer = getCurrentDrawer(state)
-    if (drawer?.id !== action.playerId) return state
-    if (state.strokes.length === 0) return state
-    return { ...state, strokes: state.strokes.slice(0, -1) }
-  }
-
   if (action.type === 'GUESS') {
     if (state.phase !== 'drawing') return state
     const drawer = getCurrentDrawer(state)
@@ -391,7 +419,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         ...state,
         players,
         guessedPlayers: newGuessedPlayers,
-        messages: [...state.messages, msg],
+        messages: [...state.messages, msg].slice(-MAX_MESSAGES),
         scoreDeltas: {
           ...state.scoreDeltas,
           [action.playerId]: guessScore,
@@ -418,7 +446,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       text: action.text.trim(),
       isClose: isCloseGuess(guess, answer),
     }
-    return { ...state, messages: [...state.messages, msg] }
+    return { ...state, messages: [...state.messages, msg].slice(-MAX_MESSAGES) }
   }
 
   if (action.type === 'REVEAL_HINT') {
