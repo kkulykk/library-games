@@ -800,15 +800,19 @@ export function WorldMap({
         )}
       </div>
 
+      {/* Two credits, two links: the data is OpenStreetMap's and the rendering
+          is CARTO's, and CARTO's terms ask for a link to its own attributions
+          page rather than a shared one. */}
       {readyTiles.length > 0 && (
-        <a
-          className="gt-map-attribution mono"
-          href="https://www.openstreetmap.org/copyright"
-          target="_blank"
-          rel="noreferrer"
-        >
-          © OpenStreetMap · © CARTO
-        </a>
+        <div className="gt-map-attribution mono">
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+            © OpenStreetMap
+          </a>
+          {' · '}
+          <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">
+            © CARTO
+          </a>
+        </div>
       )}
     </div>
   )

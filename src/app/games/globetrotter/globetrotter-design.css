@@ -1413,7 +1413,13 @@
   color: color-mix(in oklch, var(--ink) 65%, transparent);
   background: color-mix(in oklch, var(--bg) 70%, transparent);
   padding: 1px 5px;
+}
+.gt-scope .gt-map-attribution a {
+  color: inherit;
   text-decoration: none;
+}
+.gt-scope .gt-map-attribution a:hover {
+  text-decoration: underline;
 }
 .gt-scope .gt-pin-anim {
   transform-box: fill-box;

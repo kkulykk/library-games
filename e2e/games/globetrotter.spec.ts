@@ -8,6 +8,8 @@ type GlobetrotterPlayer = {
   name: string
   isHost: boolean
   score: number
+  /** Set when somebody walks out of a finished room — they stay on the board. */
+  left?: boolean
 }
 
 type GlobetrotterLocation = {
@@ -856,7 +858,15 @@ test.describe('Globetrotter gameplay smoke', () => {
       await expect(hostPage.waiting).toContainText('Waiting for 1 more')
       await hostPage.expectStatus('Pins locked: 1 of 2')
 
+      // The host has locked a pin and the guest has not. Where the host pinned
+      // is the guest's answer to find, not a hint to copy off: the guessing map
+      // shows nobody else's guess, only your own once you place it.
+      await guestPage.expandMap()
+      await expect(guestPage.map.locator('.gt-map-ghostpin')).toHaveCount(0)
+      await expect(guestPage.map.locator('.gt-map-pin')).toHaveCount(0)
+
       await guestPage.placeAndLockGuess(0.52, 0.24)
+      await expect(guestPage.map.locator('.gt-map-pin')).not.toHaveCount(0)
 
       await expect(hostPage.reveal).toContainText('Eiffel Tower')
       await expect(guestPage.reveal).toContainText('Eiffel Tower')
@@ -887,6 +897,59 @@ test.describe('Globetrotter gameplay smoke', () => {
 
       const finalRoom = await readGlobetrotterRoom(roomCode)
       expect(finalRoom.state.phase).toBe('finished')
+    } finally {
+      await closePlayers([guest])
+    }
+  })
+})
+
+test.describe('Globetrotter final scoreboard', () => {
+  test('the winner keeps the win after leaving the finished room', async ({ page, browser }) => {
+    const hostPage = new GlobetrotterPage(page)
+    const guest = await createPlayer(browser, 'Guest Globe')
+    const guestPage = new GlobetrotterPage(guest.page)
+
+    try {
+      await hostPage.goto()
+      const roomCode = await hostPage.createRoom('Host Globe')
+      await guestPage.goto()
+      await guestPage.joinRoom(roomCode, guest.name)
+      await hostPage.page.getByTestId('globetrotter-mode-landmarks').click()
+      await hostPage.startGame()
+
+      // Seed the last round already revealed, with the host clearly ahead —
+      // a tie would say nothing about who the board promotes.
+      const started = await readGlobetrotterRoom(roomCode)
+      const decided = seededFinalRevealState(started.state.players)
+      const [winner, runnerUp] = decided.players
+      await updateGlobetrotterRoom(roomCode, started, {
+        ...decided,
+        players: [
+          { ...winner, score: 17000 },
+          { ...runnerUp, score: 12005 },
+        ],
+      })
+      await hostPage.advanceRound()
+
+      await expect(guestPage.finishedBanner).toContainText('Host Globe wins the trip')
+
+      // The winner closes the room. A finished room is a result, not a roster:
+      // dropping their row would hand the trip to the runner-up.
+      await hostPage.leaveRoom()
+      await expect(hostPage.soloButton).toBeVisible()
+
+      await expect(guestPage.finalLeaderboard).toContainText('left')
+      await expect(guestPage.finishedBanner).toContainText('Host Globe wins the trip')
+      await expect(guestPage.finalLeaderboard).toContainText('Host Globe')
+
+      const room = await readGlobetrotterRoom(roomCode)
+      expect(room.state.players.map((player) => player.name)).toEqual(['Host Globe', 'Guest Globe'])
+      const [departed, remaining] = room.state.players
+      expect(departed.left).toBe(true)
+      expect(departed.score).toBeGreaterThan(remaining.score)
+      // ...and the badge moves, so the room is not stuck without a host.
+      expect(departed.isHost).toBe(false)
+      expect(remaining.isHost).toBe(true)
     } finally {
       await closePlayers([guest])
     }
