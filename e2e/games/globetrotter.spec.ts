@@ -893,6 +893,23 @@ test.describe('Globetrotter gameplay smoke', () => {
   })
 })
 
+test.describe('Globetrotter entry', () => {
+  test('a failed join does not follow you to the create form', async ({ page }) => {
+    const entry = new GlobetrotterPage(page)
+    await entry.goto()
+
+    await entry.joinRoomExpectingError('ZZZZZZ', 'Lost Globe')
+    await entry.expectError(/Room not found/i)
+
+    // The message belongs to the room that refused you. Carried over to the
+    // create form it reads as the app refusing to make you a room at all.
+    await page.getByRole('button', { name: '← Back' }).click()
+    await page.getByTestId('create-room-button').filter({ visible: true }).first().click()
+
+    await expect(entry.errorBanner).toHaveCount(0)
+  })
+})
+
 test.describe('Globetrotter room scouting', () => {
   test('shows every player the deck being scouted, not an idle lobby', async ({
     page,

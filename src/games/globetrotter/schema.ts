@@ -7,6 +7,13 @@ const PlayerSchema = z.object({
   name: playerNameSchema,
   isHost: z.boolean(),
   score: z.number().int().min(0),
+  /**
+   * Set when somebody walks out of a *finished* room. A final scoreboard is a
+   * result, not a roster: the leaver keeps their row and their score, and is
+   * only dropped for real when the host starts another game. Absent everywhere
+   * else — a player who leaves mid-game is removed outright.
+   */
+  left: z.boolean().optional(),
 })
 
 const GuessSchema = z.object({

@@ -140,6 +140,16 @@ export interface UseGameRoomReturn<TState, TAction, TBroadcast = never> {
   // CLIENT-01: 'desynced' when a realtime payload fails Zod safeParse or the channel reports
   // CHANNEL_ERROR/TIMED_OUT/CLOSED; auto-clears to 'live' on the next valid apply or SUBSCRIBED.
   connectionStatus: 'live' | 'desynced'
+  /**
+   * Drop the last failure message.
+   *
+   * `createRoom`/`joinRoom` each clear it when they run, but a failed attempt
+   * leaves the text on screen until the *next* attempt starts — so an entry
+   * screen that lets a player switch from joining to creating shows them
+   * "This game has already started." over a form that has nothing to do with
+   * it. Call this when the player moves on from whatever failed.
+   */
+  clearError: () => void
   createRoom: (playerName: string, extras?: Record<string, unknown>) => Promise<void>
   joinRoom: (code: string, playerName: string, extras?: Record<string, unknown>) => Promise<void>
   restoreSession: () => Promise<void>
@@ -784,12 +794,21 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     }
   }, [])
 
+  const clearError = useCallback(() => {
+    setError(null)
+    // 'error' is a dead end — the hook only leaves it on create/join/restore.
+    // Leaving the status behind would keep every `status === 'error'` branch lit
+    // with no message to show for it.
+    setStatus((current) => (current === 'error' ? 'idle' : current))
+  }, [])
+
   return {
     gameState,
     playerId,
     roomCode,
     status,
     error,
+    clearError,
     savedSession,
     onlinePlayerIds,
     connectionStatus,

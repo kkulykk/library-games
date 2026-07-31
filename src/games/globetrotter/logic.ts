@@ -10,6 +10,8 @@ export interface Player {
   name: string
   isHost: boolean
   score: number
+  /** Walked out after the final round — kept on the scoreboard, see `removePlayer`. */
+  left?: boolean
 }
 
 export interface Guess {
@@ -306,11 +308,12 @@ function nextRound(state: GameState, playerId: string): GameState {
 function playAgain(state: GameState, playerId: string): GameState {
   if (state.phase !== 'finished') return state
   const host = state.players.find((p) => p.id === playerId)
-  if (!host?.isHost) return state
+  if (!host?.isHost || host.left) return state
   return {
     ...state,
     phase: 'lobby',
-    players: state.players.map((p) => ({ ...p, score: 0 })),
+    // The scoreboard held on to whoever walked out; a new lobby does not.
+    players: withHost(state.players.filter((p) => !p.left).map((p) => ({ ...p, score: 0 }))),
     roundNumber: 0,
     deck: [],
     currentRound: null,
@@ -327,8 +330,12 @@ function playAgain(state: GameState, playerId: string): GameState {
  * useful rather than terminal.
  */
 function withHost(players: Player[]): Player[] {
-  if (players.length === 0 || players.some((p) => p.isHost)) return players
-  return players.map((p, index) => (index === 0 ? { ...p, isHost: true } : p))
+  if (players.length === 0 || players.some((p) => p.isHost && !p.left)) return players
+  // Never hand the badge to somebody who has already walked out of a finished
+  // room — they are a scoreboard row, not a player who can press Play again.
+  const heir = players.find((p) => !p.left)
+  if (!heir) return players
+  return players.map((p) => (p.id === heir.id ? { ...p, isHost: true } : p))
 }
 
 /**
@@ -341,6 +348,21 @@ export function removePlayer(state: GameState, playerId: string, droppedBy?: str
   if (!player) return state
   const players = withHost(state.players.filter((p) => p.id !== playerId))
   const departed = droppedBy ? `was dropped by ${droppedBy}` : 'left the expedition'
+
+  // A finished room is a result, not a roster. Deleting the leaver's row here
+  // would hand the win to whoever was second — the game would keep rewriting
+  // its own ending as people close their tabs. So mark them departed instead:
+  // the scoreboard stands, and `playAgain` is where they actually go.
+  if (state.phase === 'finished') {
+    if (player.left) return state
+    return {
+      ...state,
+      players: withHost(
+        state.players.map((p) => (p.id === playerId ? { ...p, isHost: false, left: true } : p))
+      ),
+      log: [...state.log, `${player.name} ${departed}.`],
+    }
+  }
 
   if (state.phase === 'lobby' || !state.currentRound) {
     return { ...state, players }

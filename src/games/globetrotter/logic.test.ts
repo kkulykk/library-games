@@ -331,6 +331,25 @@ describe('NEXT_ROUND / PLAY_AGAIN', () => {
 })
 
 describe('REMOVE_PLAYER', () => {
+  /** A played-out room: `guest` pinned the target every round and won it. */
+  function finishedState(): GameState {
+    let state = playingState([host, guest, third])
+    for (let round = 1; round <= TOTAL_ROUNDS; round++) {
+      const target = state.currentRound!.location
+      state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: host.id, lat: 40, lng: 40 })
+      state = applyAction(state, { type: 'SUBMIT_GUESS', playerId: third.id, lat: 60, lng: 60 })
+      state = applyAction(state, {
+        type: 'SUBMIT_GUESS',
+        playerId: guest.id,
+        lat: target.lat,
+        lng: target.lng,
+      })
+      state = applyAction(state, { type: 'NEXT_ROUND', playerId: host.id })
+    }
+    expect(state.phase).toBe('finished')
+    return state
+  }
+
   it('removes a player in the lobby', () => {
     let state = createLobbyState(host)
     state = addPlayer(state, guest)
@@ -359,6 +378,47 @@ describe('REMOVE_PLAYER', () => {
     expect(state.players).toHaveLength(2)
     expect(state.currentRound?.phase).toBe('reveal')
     expect(state.currentRound?.roundScores[host.id]).toBeGreaterThanOrEqual(0)
+  })
+
+  it('keeps the winner on the board when they leave a finished room', () => {
+    // The scoreboard is the result of the game. Deleting the leaver's row would
+    // promote whoever came second — a room that rewrites its own ending as
+    // people close their tabs.
+    let state = finishedState()
+    const winner = getWinners(state)[0]
+    expect(winner.id).toBe(guest.id)
+
+    state = applyAction(state, { type: 'REMOVE_PLAYER', playerId: guest.id })
+
+    expect(state.players).toHaveLength(3)
+    expect(getWinners(state).map((p) => p.id)).toEqual([guest.id])
+    expect(getLeaderboard(state)[0].id).toBe(guest.id)
+    expect(state.players.find((p) => p.id === guest.id)?.left).toBe(true)
+    expect(state.log.at(-1)).toContain('left the expedition')
+  })
+
+  it('hands the host badge to somebody still in the finished room', () => {
+    let state = finishedState()
+    state = applyAction(state, { type: 'REMOVE_PLAYER', playerId: host.id })
+
+    const stillHere = state.players.filter((p) => !p.left)
+    expect(stillHere.filter((p) => p.isHost)).toHaveLength(1)
+    expect(state.players.find((p) => p.id === host.id)?.isHost).toBe(false)
+    // Leaving twice must not shuffle the badge again.
+    expect(applyAction(state, { type: 'REMOVE_PLAYER', playerId: host.id })).toBe(state)
+  })
+
+  it('leaves the departed behind when the room plays again', () => {
+    let state = finishedState()
+    state = applyAction(state, { type: 'REMOVE_PLAYER', playerId: guest.id })
+    const newHost = state.players.find((p) => p.isHost)!
+
+    state = applyAction(state, { type: 'PLAY_AGAIN', playerId: newHost.id })
+
+    expect(state.phase).toBe('lobby')
+    expect(state.players.map((p) => p.id)).not.toContain(guest.id)
+    expect(state.players.every((p) => p.score === 0 && !p.left)).toBe(true)
+    expect(state.players.filter((p) => p.isHost)).toHaveLength(1)
   })
 
   it('drops the leaver from a revealed round without touching others', () => {

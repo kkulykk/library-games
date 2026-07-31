@@ -57,6 +57,17 @@ describe('globetrotter GameStateSchema', () => {
     expect(GameStateSchema.safeParse(invalid).success).toBe(false)
   })
 
+  it('accepts a player marked as having left a finished room', () => {
+    const state = {
+      ...validGameState,
+      phase: 'finished' as const,
+      players: [{ id: 'p1', name: 'Alice', isHost: true, score: 4200, left: true }],
+    }
+    const parsed = GameStateSchema.safeParse(state)
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data.players[0].left).toBe(true)
+  })
+
   it('rejects a blank player name', () => {
     const invalid = {
       ...validGameState,
