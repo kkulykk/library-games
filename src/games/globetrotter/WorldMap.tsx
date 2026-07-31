@@ -70,6 +70,16 @@ interface WorldMapProps {
 // read while you place a pin.
 const TILE_URL = (tile: Tile) =>
   `https://basemaps.cartocdn.com/rastertiles/voyager/${tile.z}/${tile.x}/${tile.y}.png`
+/**
+ * Deepest tile level the map ever asks for.
+ *
+ * A budget first — one level per camera, and the game is played at country and
+ * city scale — but it is also where the map stops being English. Voyager draws
+ * every *place* name (country, city, district) from the Latin/English tags at
+ * every level, and switches to local-script *street* names from about z13:
+ * 丸の内, вулиця Хрещатик. Zooming past this cap stretches z12 tiles rather
+ * than fetching those, so a player never meets a label they cannot read.
+ */
 const MAX_TILE_ZOOM = 12
 // E2E runs offline against a fake backend; skip the network so specs stay
 // deterministic and fall back to the vector basemap.

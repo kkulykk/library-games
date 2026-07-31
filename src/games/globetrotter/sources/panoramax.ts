@@ -202,9 +202,17 @@ function covers(part: number | null, whole: number | null): boolean {
  * down the middle. Same for the half-sphere a Pixel photosphere gives up on.
  *
  * So the picture is made to answer with its own numbers: the projection it
- * claims, and how much of the sphere it declares that it actually fills. Note
- * that a 2:1 frame is *not* the test — a full sphere sampled 2048×1965 is
- * still a full sphere, just oversampled vertically, and maps perfectly well.
+ * claims, and how much of the sphere it declares that it actually fills.
+ *
+ * What is measured is coverage, never the served file's shape. The two are
+ * easy to confuse because `sensor_array_dimensions` looks like a frame size
+ * and is not: it is the sphere the picture *declares* (GPano's
+ * FullPanoWidth/Height), which is 2:1 whenever it describes a whole sphere, so
+ * checking it is a cheap sanity gate on the declaration rather than a rule
+ * about pixels. The rendition a round actually downloads is never measured —
+ * a derivative comes in whatever size the instance generated, and a picture
+ * that only covers 187° is caught by the margins it is missing, not by the
+ * aspect of the JPEG those 187° arrive in.
  */
 function isSpherical(feature: PanoramaxFeature): boolean {
   const optics = feature.properties?.['pers:interior_orientation']

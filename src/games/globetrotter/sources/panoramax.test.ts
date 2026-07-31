@@ -173,6 +173,31 @@ describe('panoramaxSource', () => {
     await expect(panoramaxSource.collect(3, deps(fetchFn))).resolves.toEqual([])
   })
 
+  it('judges a picture by the sphere it covers, not by the shape of its file', async () => {
+    // `sensor_array_dimensions` reads like a frame size and is not: it is the
+    // sphere the picture declares, 2:1 whenever it declares a whole one. The
+    // rendition a round downloads is never measured — this one says 2048x1965,
+    // and covering the sphere is what makes it playable.
+    const { fetchFn } = makeFetchDouble(() => ({
+      features: [
+        feature({
+          id: 'oversampled',
+          dimensions: [12626, 6313],
+          exif: {
+            'Xmp.GPano.FullPanoWidthPixels': '12626',
+            'Xmp.GPano.FullPanoHeightPixels': '6313',
+            'Xmp.GPano.CroppedAreaImageWidthPixels': '12626',
+            'Xmp.GPano.CroppedAreaImageHeightPixels': '6313',
+            'Exif.Photo.PixelXDimension': '2048',
+            'Exif.Photo.PixelYDimension': '1965',
+          },
+        }),
+      ],
+    }))
+    const finds = await panoramaxSource.collect(1, deps(fetchFn))
+    expect(finds).toHaveLength(1)
+  })
+
   it('keeps a full sphere that is a rounding error short of its own numbers', async () => {
     // Stitchers round. Demanding an exact match would throw away most of the
     // archive over a missing pixel — the crops worth dropping are missing a
