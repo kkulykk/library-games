@@ -46,8 +46,6 @@ export interface MapTarget {
 
 interface WorldMapProps {
   pins?: MapPin[]
-  /** Locked opponents' guesses shown as ghost dots while you still guess. */
-  ghosts?: Guess[]
   /** Revealed answer: gold flag marker + animated connectors to every pin. */
   target?: MapTarget | null
   onSelect?: (guess: Guess) => void
@@ -60,10 +58,28 @@ interface WorldMapProps {
   ariaLabel?: string
 }
 
-// Free, open basemap: OpenStreetMap standard raster tiles (ODbL). Rendered on
-// top of the built-in vector world so the map still works — coastlines,
-// borders and country names — when the tiles are blocked or offline.
-const TILE_URL = (tile: Tile) => `https://tile.openstreetmap.org/${tile.z}/${tile.x}/${tile.y}.png`
+// Free, open basemap: CARTO's Voyager raster tiles, drawn from OpenStreetMap
+// data (ODbL). Rendered on top of the built-in vector world so the map still
+// works — coastlines, borders and country names — when the tiles are blocked
+// or offline.
+//
+// Voyager rather than the standard OSM style because its labels come from the
+// Latin/English name tags: `tile.openstreetmap.org` names every country and
+// city in its own language and script, so a player who cannot read Cyrillic,
+// Greek, Arabic or CJK loses half the map — on a map whose entire job is being
+// read while you place a pin.
+const TILE_URL = (tile: Tile) =>
+  `https://basemaps.cartocdn.com/rastertiles/voyager/${tile.z}/${tile.x}/${tile.y}.png`
+/**
+ * Deepest tile level the map ever asks for.
+ *
+ * A budget first — one level per camera, and the game is played at country and
+ * city scale — but it is also where the map stops being English. Voyager draws
+ * every *place* name (country, city, district) from the Latin/English tags at
+ * every level, and switches to local-script *street* names from about z13:
+ * 丸の内, вулиця Хрещатик. Zooming past this cap stretches z12 tiles rather
+ * than fetching those, so a player never meets a label they cannot read.
+ */
 const MAX_TILE_ZOOM = 12
 // E2E runs offline against a fake backend; skip the network so specs stay
 // deterministic and fall back to the vector basemap.
@@ -192,7 +208,6 @@ function useTileLayer(tiles: Tile[], enabled: boolean) {
 
 export function WorldMap({
   pins = [],
-  ghosts = [],
   target = null,
   onSelect,
   interactive = false,
@@ -654,7 +669,7 @@ export function WorldMap({
           {borderPaths}
         </g>
 
-        {/* OpenStreetMap raster tiles fade in over the vector base. */}
+        {/* CARTO raster tiles fade in over the vector base. */}
         {readyTiles.map((tile) => {
           const box = tileBox(tile)
           return (
@@ -704,14 +719,6 @@ export function WorldMap({
               />
             )
           })}
-
-        {/* opponents already locked in (guess mode) — ghost dots */}
-        {ghosts.map((ghost, index) => {
-          const { x, y } = project(ghost.lat, ghost.lng)
-          return (
-            <circle key={`ghost-${index}`} cx={x} cy={y} r={px(5)} className="gt-map-ghostpin" />
-          )
-        })}
 
         {/* pins */}
         {pins.map((pin, index) => {
@@ -803,15 +810,19 @@ export function WorldMap({
         )}
       </div>
 
+      {/* Two credits, two links: the data is OpenStreetMap's and the rendering
+          is CARTO's, and CARTO's terms ask for a link to its own attributions
+          page rather than a shared one. */}
       {readyTiles.length > 0 && (
-        <a
-          className="gt-map-attribution mono"
-          href="https://www.openstreetmap.org/copyright"
-          target="_blank"
-          rel="noreferrer"
-        >
-          © OpenStreetMap
-        </a>
+        <div className="gt-map-attribution mono">
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+            © OpenStreetMap
+          </a>
+          {' · '}
+          <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">
+            © CARTO
+          </a>
+        </div>
       )}
     </div>
   )

@@ -307,6 +307,8 @@ interface EntryScreenProps {
   hasSavedSession: boolean
   loading: boolean
   error: string | null
+  /** Drops a stale failure — see `switchMode`. */
+  onClearError?: () => void
   initialCode?: string | null
 }
 
@@ -319,6 +321,7 @@ function EntryScreen({
   hasSavedSession,
   loading,
   error,
+  onClearError,
   initialCode,
 }: EntryScreenProps) {
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose')
@@ -333,6 +336,17 @@ function EntryScreen({
 
   const isCreate = mode === 'create'
   const canSubmit = name.trim().length >= 2 && (isCreate || code.trim().length >= 6)
+
+  /**
+   * Moving between the create and join forms drops the last failure with it.
+   * "This game has already started." belongs to the room you tried to join;
+   * carrying it over to the create form (which cannot possibly hit it) reads as
+   * the app refusing to make you a room.
+   */
+  function switchMode(next: 'choose' | 'create' | 'join') {
+    onClearError?.()
+    setMode(next)
+  }
 
   function submit() {
     if (!canSubmit || loading) return
@@ -373,7 +387,7 @@ function EntryScreen({
             <button
               className="sk-entry-card"
               data-testid="create-room-button"
-              onClick={() => setMode('create')}
+              onClick={() => switchMode('create')}
             >
               <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M 20 8 L 20 32 M 8 20 L 32 20" />
@@ -386,7 +400,7 @@ function EntryScreen({
             <button
               className="sk-entry-card"
               data-testid="join-room-button"
-              onClick={() => setMode('join')}
+              onClick={() => switchMode('join')}
             >
               <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M 8 20 L 32 20 M 24 12 L 32 20 L 24 28" />
@@ -447,7 +461,7 @@ function EntryScreen({
             </div>
           )}
           <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-            <button className="sk-back" onClick={() => setMode('choose')}>
+            <button className="sk-back" onClick={() => switchMode('choose')}>
               ← Back
             </button>
             <button
@@ -653,7 +667,6 @@ interface GameBoardProps {
   isSolo: boolean
   players: BoardPlayer[]
   youLocked: boolean
-  lockedGhosts: Guess[]
   crumbScore: number
   deckNote?: string | null
   drop?: DropControls
@@ -669,7 +682,6 @@ function GameBoard({
   isSolo,
   players,
   youLocked,
-  lockedGhosts,
   crumbScore,
   deckNote = null,
   drop,
@@ -781,7 +793,6 @@ function GameBoard({
             <WorldMap
               interactive={expanded && !youLocked}
               pins={pending && !youLocked ? [{ ...pending, isYou: true, pending: true }] : []}
-              ghosts={lockedGhosts}
               onSelect={(guess) => setPending(guess)}
             />
 
@@ -1043,6 +1054,8 @@ interface FinishedRow {
   avatarIdx: number
   isYou: boolean
   total: number
+  /** Closed their tab after the results — still on the board, just not around. */
+  left?: boolean
 }
 
 interface FinishedScreenProps {
@@ -1100,12 +1113,16 @@ function FinishedScreen({
         </div>
         <div className="sk-end-table" data-testid="globetrotter-final-leaderboard">
           {sorted.map((row, index) => (
-            <div key={row.id} className={cn('sk-end-row', index === 0 && !isSolo && 'win')}>
+            <div
+              key={row.id}
+              className={cn('sk-end-row', index === 0 && !isSolo && 'win', row.left && 'is-away')}
+            >
               <span className="sk-end-rank">{index === 0 && !isSolo ? '👑' : index + 1}</span>
               <span className="sk-end-name">
                 <AvatarSvg idx={row.avatarIdx} size={22} />
                 {row.name}
                 {row.isYou && ' (you)'}
+                {row.left && <span className="sk-end-left mono">left</span>}
               </span>
               <span className="sk-end-delta">
                 {isSolo ? 'TOTAL' : index === 0 ? 'WINNER' : `−${winner.total - row.total}`}
@@ -1229,6 +1246,7 @@ export function GlobetrotterGame() {
     roomCode,
     status,
     error,
+    clearError,
     connectionStatus,
     onlinePlayerIds,
     savedSession,
@@ -1475,7 +1493,6 @@ export function GlobetrotterGame() {
             { id: 'you', name: 'You', score: soloGame.totalScore, locked: false, isYou: true },
           ]}
           youLocked={false}
-          lockedGhosts={[]}
           crumbScore={soloGame.totalScore}
           deckNote={DECK_NOTES[soloSource]}
           onLockGuess={(guess) => setSoloGame(submitSoloGuess(soloGame, guess.lat, guess.lng))}
@@ -1538,6 +1555,7 @@ export function GlobetrotterGame() {
           hasSavedSession={Boolean(savedSession)}
           loading={isLoading}
           error={error}
+          onClearError={clearError}
           initialCode={inviteCode}
         />
       </Shell>
@@ -1607,6 +1625,7 @@ export function GlobetrotterGame() {
             avatarIdx: redacted.players.findIndex((p) => p.id === player.id),
             isYou: player.id === playerId,
             total: player.score,
+            left: player.left,
           }))}
           totalRounds={redacted.totalRounds}
           isSolo={false}
@@ -1650,9 +1669,6 @@ export function GlobetrotterGame() {
   }
 
   const youLocked = Boolean(round.guesses[playerId])
-  const lockedGhosts = redacted.players
-    .filter((player) => player.id !== playerId && round.guesses[player.id])
-    .map((player) => round.guesses[player.id])
 
   return (
     <Shell crumb={`Round ${round.number}`} roomCode={roomCode}>
@@ -1670,7 +1686,6 @@ export function GlobetrotterGame() {
           isYou: player.id === playerId,
         }))}
         youLocked={youLocked}
-        lockedGhosts={lockedGhosts}
         crumbScore={redacted.players.find((p) => p.id === playerId)?.score ?? 0}
         drop={drop}
         onLockGuess={(guess) =>

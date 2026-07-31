@@ -123,9 +123,15 @@ interface PanoramaxFeature {
     'pers:interior_orientation'?: {
       field_of_view?: number
       sensor_array_dimensions?: unknown
+      /** `[left, top, right, bottom]` margins the frame does not cover, in sphere pixels. */
+      visible_area?: unknown
     }
+    exif?: PanoramaxExif
   }
 }
+
+/** Raw EXIF/XMP as the API hands it over: one flat bag of stringly-typed tags. */
+type PanoramaxExif = Record<string, string | number | undefined>
 
 interface SearchResponse {
   features?: PanoramaxFeature[]
@@ -163,17 +169,87 @@ function sphericalAsset(feature: PanoramaxFeature): string | null {
   return servedFromKnownInstance(href) ? href : null
 }
 
-/** Defence in depth: the search filter already asks for these, so re-check cheaply. */
+/** EXIF arrives as strings ("23800") on some instances and numbers on others. */
+function exifNumber(exif: PanoramaxExif | undefined, key: string): number | null {
+  const raw = exif?.[key]
+  const value = typeof raw === 'string' ? Number(raw) : raw
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+}
+
+/**
+ * How much of the declared sphere may be missing before a picture is a crop.
+ *
+ * Not zero: stitchers round, and plenty of honest photospheres come back a
+ * pixel or two short of their own declared height. A real crop is not shy —
+ * the ones this drops are missing a third of the sphere, not 0.5% of it.
+ */
+const COVERAGE_TOLERANCE = 0.02
+
+function covers(part: number | null, whole: number | null): boolean {
+  if (!part || !whole) return true
+  return part / whole >= 1 - COVERAGE_TOLERANCE
+}
+
+/**
+ * True when the pixels really do wrap the whole sphere.
+ *
+ * `field_of_view = 360` is not the promise it looks like. Panoramax reads it
+ * off the `GPano.FullPanoWidthPixels` tag, which says how wide a full sphere
+ * *would* be — not how much of one the file contains. A phone sweep panorama
+ * declares 360 while holding a 14880×3904 strip of the horizon, and the search
+ * filter waves it straight through; the viewer then stretches that strip over
+ * a whole sphere, and the round is an unplayable smear of ground with a seam
+ * down the middle. Same for the half-sphere a Pixel photosphere gives up on.
+ *
+ * So the picture is made to answer with its own numbers: the projection it
+ * claims, and how much of the sphere it declares that it actually fills.
+ *
+ * What is measured is coverage, never the served file's shape. The two are
+ * easy to confuse because `sensor_array_dimensions` looks like a frame size
+ * and is not: it is the sphere the picture *declares* (GPano's
+ * FullPanoWidth/Height), which is 2:1 whenever it describes a whole sphere, so
+ * checking it is a cheap sanity gate on the declaration rather than a rule
+ * about pixels. The rendition a round actually downloads is never measured —
+ * a derivative comes in whatever size the instance generated, and a picture
+ * that only covers 187° is caught by the margins it is missing, not by the
+ * aspect of the JPEG those 187° arrive in.
+ */
 function isSpherical(feature: PanoramaxFeature): boolean {
   const optics = feature.properties?.['pers:interior_orientation']
   if (optics?.field_of_view !== 360) return false
   const dims = optics.sensor_array_dimensions
-  if (Array.isArray(dims) && dims.length === 2) {
-    const [width, height] = dims
-    if (typeof width === 'number' && typeof height === 'number' && height > 0) {
-      if (Math.abs(width / height - 2) > ASPECT_TOLERANCE) return false
-    }
+  const declared = Array.isArray(dims) && dims.length === 2 ? dims : null
+  const [declaredWidth, declaredHeight] =
+    declared && typeof declared[0] === 'number' && typeof declared[1] === 'number'
+      ? (declared as [number, number])
+      : [null, null]
+  if (declaredWidth && declaredHeight) {
+    if (Math.abs(declaredWidth / declaredHeight - 2) > ASPECT_TOLERANCE) return false
   }
+
+  // Panoramax's own read of what is missing: the margins, in pixels of the
+  // declared sphere, that the frame does not cover. Absent on a full sphere.
+  const area = optics.visible_area
+  if (Array.isArray(area) && area.length === 4 && area.every((v) => typeof v === 'number')) {
+    const [left, top, right, bottom] = area as [number, number, number, number]
+    if (declaredWidth && !covers(declaredWidth - left - right, declaredWidth)) return false
+    if (declaredHeight && !covers(declaredHeight - top - bottom, declaredHeight)) return false
+  }
+
+  const exif = feature.properties?.exif
+  // A phone sweep is cylindrical, not equirectangular: 360° of horizon in a
+  // projection the viewer's shader does not speak.
+  const projection = exif?.['Xmp.GPano.ProjectionType']
+  if (typeof projection === 'string' && projection.toLowerCase() !== 'equirectangular') return false
+
+  // The GPano crop tags say the same thing first-hand. Height is often left
+  // implicit, and a full sphere is half its own width.
+  const fullWidth = exifNumber(exif, 'Xmp.GPano.FullPanoWidthPixels')
+  const fullHeight =
+    exifNumber(exif, 'Xmp.GPano.FullPanoHeightPixels') ?? (fullWidth ? fullWidth / 2 : null)
+  if (!covers(exifNumber(exif, 'Xmp.GPano.CroppedAreaImageWidthPixels'), fullWidth)) return false
+  if (!covers(exifNumber(exif, 'Xmp.GPano.CroppedAreaImageHeightPixels'), fullHeight)) return false
+
   return true
 }
 

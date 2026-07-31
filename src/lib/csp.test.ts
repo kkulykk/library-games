@@ -57,7 +57,7 @@ describe('contentSecurityPolicy', () => {
     for (const origin of IMAGE_ORIGINS) expect(img).toContain(origin)
     // The panorama's <img> decode fallback and the raster basemap.
     expect(IMAGE_ORIGINS).toContain('https://upload.wikimedia.org')
-    expect(IMAGE_ORIGINS).toContain('https://tile.openstreetmap.org')
+    expect(IMAGE_ORIGINS).toContain('https://basemaps.cartocdn.com')
   })
 
   // Panoramax is federated: the catalog is central but the pixels come from

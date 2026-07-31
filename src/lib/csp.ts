@@ -25,8 +25,16 @@ const ORIGINS = {
   panoramaxApi: 'https://api.panoramax.xyz',
   /** Globetrotter — reverse-geocoding the drop point for the reveal. `placeName.ts` */
   nominatim: 'https://nominatim.openstreetmap.org',
-  /** Globetrotter — OpenStreetMap raster basemap. `WorldMap.tsx` */
-  osmTiles: 'https://tile.openstreetmap.org',
+  /**
+   * Globetrotter — CARTO's raster basemap (OpenStreetMap data, CARTO styling).
+   * `WorldMap.tsx`
+   *
+   * CARTO rather than `tile.openstreetmap.org` because CARTO renders its labels
+   * from the Latin/English name tags: the standard OSM style names every place
+   * in its own language, which turns half the world into a script the player
+   * cannot read, on a map whose whole job is being read.
+   */
+  cartoTiles: 'https://basemaps.cartocdn.com',
 } as const
 
 /**
@@ -67,7 +75,7 @@ export const CONNECT_ORIGINS: readonly string[] = [
 export const IMAGE_ORIGINS: readonly string[] = [
   ORIGINS.wikimediaUploads,
   ...PANORAMAX_IMAGE_ORIGINS,
-  ORIGINS.osmTiles,
+  ORIGINS.cartoTiles,
 ]
 
 export interface CspEnv {

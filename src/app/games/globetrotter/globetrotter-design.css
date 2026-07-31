@@ -846,6 +846,25 @@
   gap: 8px;
   min-width: 0;
 }
+/* Walked out once the results were up — the row keeps its place and its score,
+   it just stops looking like somebody who is still in the room. */
+.gt-scope .sk-end-row.is-away .sk-end-name,
+.gt-scope .sk-end-row.is-away .sk-end-total {
+  opacity: 0.6;
+}
+.gt-scope .sk-end-left {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.gt-scope .sk-end-row.win .sk-end-left {
+  color: var(--acid-ink);
+  border-color: currentColor;
+}
 .gt-scope .sk-end-delta {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -1394,11 +1413,13 @@
   color: color-mix(in oklch, var(--ink) 65%, transparent);
   background: color-mix(in oklch, var(--bg) 70%, transparent);
   padding: 1px 5px;
+}
+.gt-scope .gt-map-attribution a {
+  color: inherit;
   text-decoration: none;
 }
-.gt-scope .gt-map-ghostpin {
-  fill: var(--ink-mute);
-  opacity: 0.5;
+.gt-scope .gt-map-attribution a:hover {
+  text-decoration: underline;
 }
 .gt-scope .gt-pin-anim {
   transform-box: fill-box;

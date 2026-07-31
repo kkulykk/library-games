@@ -12,6 +12,10 @@ interface FeatureOptions {
   host?: string
   fieldOfView?: number
   dimensions?: [number, number]
+  /** `[left, top, right, bottom]` sphere pixels the frame does not cover. */
+  visibleArea?: [number, number, number, number]
+  /** Raw EXIF/XMP tags, merged over the defaults. */
+  exif?: Record<string, string | number>
   license?: string
   producer?: string
 }
@@ -35,6 +39,11 @@ function feature(options: FeatureOptions = {}) {
       'pers:interior_orientation': {
         field_of_view: options.fieldOfView ?? 360,
         sensor_array_dimensions: options.dimensions ?? [5760, 2880],
+        ...(options.visibleArea ? { visible_area: options.visibleArea } : {}),
+      },
+      exif: {
+        'Xmp.GPano.ProjectionType': 'equirectangular',
+        ...options.exif,
       },
     },
   }
@@ -125,6 +134,90 @@ describe('panoramaxSource', () => {
       ],
     }))
     await expect(panoramaxSource.collect(2, deps(fetchFn))).resolves.toEqual([])
+  })
+
+  it('drops a picture that declares 360° while holding a slice of one', async () => {
+    // The archive's own `field_of_view` is read off GPano's "how wide a full
+    // sphere would be" tag, so a phone sweep panorama — 360° of horizon in a
+    // 14880x3904 strip — sails through the API filter and then plays as a
+    // smear of stretched ground. Every one of these is a dead round.
+    const { fetchFn } = makeFetchDouble(() => ({
+      features: [
+        // Samsung sweep: cylindrical, and a third of the declared sphere.
+        feature({
+          id: 'sweep',
+          dimensions: [23800, 11900],
+          exif: {
+            'Xmp.GPano.ProjectionType': 'cylindrical',
+            'Xmp.GPano.FullPanoWidthPixels': '23800',
+            'Xmp.GPano.CroppedAreaImageWidthPixels': '14880',
+            'Xmp.GPano.CroppedAreaImageHeightPixels': '3904',
+          },
+        }),
+        // Same crop, no projection tag: the GPano numbers alone are enough.
+        feature({
+          id: 'strip',
+          dimensions: [16384, 8192],
+          exif: {
+            'Xmp.GPano.FullPanoWidthPixels': '16384',
+            'Xmp.GPano.FullPanoHeightPixels': '8192',
+            'Xmp.GPano.CroppedAreaImageWidthPixels': '16384',
+            'Xmp.GPano.CroppedAreaImageHeightPixels': '2520',
+          },
+        }),
+        // Photosphere the contributor gave up on halfway: 187° wide. Panoramax
+        // reports the missing margins itself.
+        feature({ id: 'half', dimensions: [12626, 6313], visibleArea: [2892, 0, 3158, 1] }),
+      ],
+    }))
+    await expect(panoramaxSource.collect(3, deps(fetchFn))).resolves.toEqual([])
+  })
+
+  it('judges a picture by the sphere it covers, not by the shape of its file', async () => {
+    // `sensor_array_dimensions` reads like a frame size and is not: it is the
+    // sphere the picture declares, 2:1 whenever it declares a whole one. The
+    // rendition a round downloads is never measured — this one says 2048x1965,
+    // and covering the sphere is what makes it playable.
+    const { fetchFn } = makeFetchDouble(() => ({
+      features: [
+        feature({
+          id: 'oversampled',
+          dimensions: [12626, 6313],
+          exif: {
+            'Xmp.GPano.FullPanoWidthPixels': '12626',
+            'Xmp.GPano.FullPanoHeightPixels': '6313',
+            'Xmp.GPano.CroppedAreaImageWidthPixels': '12626',
+            'Xmp.GPano.CroppedAreaImageHeightPixels': '6313',
+            'Exif.Photo.PixelXDimension': '2048',
+            'Exif.Photo.PixelYDimension': '1965',
+          },
+        }),
+      ],
+    }))
+    const finds = await panoramaxSource.collect(1, deps(fetchFn))
+    expect(finds).toHaveLength(1)
+  })
+
+  it('keeps a full sphere that is a rounding error short of its own numbers', async () => {
+    // Stitchers round. Demanding an exact match would throw away most of the
+    // archive over a missing pixel — the crops worth dropping are missing a
+    // third of the sphere, not 0.5% of it.
+    const { fetchFn } = makeFetchDouble(() => ({
+      features: [
+        feature({
+          id: 'rounded',
+          dimensions: [17020, 8510],
+          visibleArea: [0, 45, 0, 0],
+          exif: {
+            'Xmp.GPano.FullPanoWidthPixels': '17020',
+            'Xmp.GPano.CroppedAreaImageWidthPixels': '17020',
+            'Xmp.GPano.CroppedAreaImageHeightPixels': '8465',
+          },
+        }),
+      ],
+    }))
+    const finds = await panoramaxSource.collect(1, deps(fetchFn))
+    expect(finds).toHaveLength(1)
   })
 
   it('takes at most two rounds from one cell, kilometres apart', async () => {
