@@ -24,6 +24,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:all
+        env:
+          # `test:all` ends with `pnpm build`, so the static export — the only
+          # path to production that used to be first exercised by `deploy.yml`
+          # after merge — is gated on every branch. Nothing contacts Supabase at
+          # build time; these only need to be non-empty so the build renders the
+          # configured code path rather than the "Supabase not set up" one.
+          # Playwright's webServer sets its own env, so the e2e run is unaffected.
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v7

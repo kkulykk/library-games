@@ -22,8 +22,14 @@ const eslintConfig = defineConfig([
     },
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-explicit-any': 'warn',
-      'react-hooks/set-state-in-effect': 'off',
+      // `error`, not `warn`: `pnpm lint` runs plain `eslint .` with no `--max-warnings`, so a
+      // warning is invisible to CI. The codebase has zero violations — this locks that in.
+      '@typescript-eslint/no-explicit-any': 'error',
+      // On, and kept on. Where an effect legitimately sets state — reading an external store
+      // after mount, or resetting local UI state when the round/room it belongs to changes —
+      // suppress it at that line with a reason. A blanket `off` here buys nothing but costs
+      // every future effect its render-loop check.
+      'react-hooks/set-state-in-effect': 'error',
     },
   },
 ])

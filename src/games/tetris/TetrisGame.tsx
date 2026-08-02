@@ -274,6 +274,9 @@ export function TetrisGame() {
 
   useEffect(() => {
     try {
+      // localStorage is absent at export time; hydrating from it in render would mismatch the
+      // prerendered HTML. Runs once on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- post-mount localStorage read
       setBest(Number(localStorage.getItem('tetris-best') || 0))
     } catch {
       /* ignore */
@@ -345,6 +348,10 @@ export function TetrisGame() {
   // Persist high score
   useEffect(() => {
     if (state.status === 'over' && state.score > best) {
+      // Writes the new high score to localStorage — the external system this effect exists to
+      // sync — and mirrors it into state so the panel updates. Self-limiting: the
+      // `state.score > best` guard is false on the very next render, so this cannot cascade.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guarded, settles in one pass
       setBest(state.score)
       try {
         localStorage.setItem('tetris-best', String(state.score))

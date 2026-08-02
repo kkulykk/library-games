@@ -1,19 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { createFakeSupabaseClient } from '@/lib/e2e/fake-supabase'
 
-type QueryResult<T> = Promise<{
-  data: T | null
-  error: { message: string; code?: string; details?: string; hint?: string } | null
-}>
-
-type QueryBuilderBoundary = {
-  insert(values: unknown): QueryBuilderBoundary
-  update(values: unknown): QueryBuilderBoundary
-  select(columns?: string): QueryResult<Record<string, unknown>[]> & QueryBuilderBoundary
-  eq(column: string, value: unknown): QueryBuilderBoundary
-  single(): QueryResult<Record<string, unknown>>
-}
-
 type ChannelBoundary = {
   on<TPayload = unknown>(
     type: string,
@@ -45,8 +32,14 @@ type RpcResult = {
   error: { message: string; code?: string } | null
 }
 
+// Deliberately narrow: `channel` for realtime, `rpc` for every read and write. There is no
+// `from()` here on purpose. Since the Phase-2 hardening every room read/write goes through a
+// SECURITY DEFINER RPC, and Phase 3 sealed the tables behind default-deny RLS, so a direct
+// `.from('<game>_rooms')` would read zero rows in production regardless. Keeping the query-builder
+// on the boundary type left a dead seam on a security surface that new code could reach for and
+// appear to use correctly against a permissive local project. Re-adding it means re-opening RLS —
+// add an RPC to `scripts/generate-schema.mjs` instead.
 type SupabaseBoundary = {
-  from(table: string): QueryBuilderBoundary
   channel(name: string): ChannelBoundary
   rpc(fn: string, args?: Record<string, unknown>): Promise<RpcResult>
 }

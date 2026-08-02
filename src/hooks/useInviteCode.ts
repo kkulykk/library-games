@@ -17,6 +17,11 @@ export function useInviteCode(): string | null | undefined {
   useEffect(() => {
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
     const searchParams = new URLSearchParams(window.location.search)
+    // Reads an external store (window.location) that does not exist at export time. The pages
+    // are statically prerendered, so this cannot move into render or a lazy useState
+    // initializer without a hydration mismatch; `undefined` is the deliberate "not resolved
+    // yet" render. Runs once on mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- post-mount external-store read
     setCode(
       normalizeInviteCode(hashParams.get('code')) ?? normalizeInviteCode(searchParams.get('code'))
     )

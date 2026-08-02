@@ -19,6 +19,10 @@ export function HomeExperience({ games }: HomeExperienceProps) {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
+      // localStorage does not exist during the static export, so restoring the tab in render
+      // or a lazy useState initializer would desync the prerendered HTML from the hydrated
+      // tree. Runs once on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- post-mount localStorage read
       if (saved === 'library' || saved === 'discover') setTab(saved)
     } catch {}
   }, [])

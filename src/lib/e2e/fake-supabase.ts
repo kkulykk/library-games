@@ -1,5 +1,3 @@
-type QueryResult<T> = { data: T | null; error: { message: string } | null }
-
 // Mirrors the real supabase-js rpc() envelope. Our SECURITY DEFINER RPCs use
 // `returns table(...)`, so `data` is an array the caller reads `[0]` from, and
 // `error` carries a Postgres `code` (22023 / 42501 / 40001 / 23505).
@@ -88,63 +86,6 @@ function parseEqFilter(filter?: string): Filter | null {
   const match = filter.match(/^([^=]+)=eq\.(.+)$/)
   if (!match) return null
   return { column: match[1], value: match[2] }
-}
-
-class FakeQueryBuilder {
-  private readonly filters: Filter[] = []
-  private op: 'insert' | 'select' | 'update' | null = null
-  private values: unknown = null
-  private selectedColumns = '*'
-
-  constructor(private readonly table: string) {}
-
-  insert(values: unknown): this {
-    this.op = 'insert'
-    this.values = values
-    return this
-  }
-
-  update(values: unknown): this {
-    this.op = 'update'
-    this.values = values
-    return this
-  }
-
-  select(columns = '*'): Promise<QueryResult<Record<string, unknown>[]>> & this {
-    this.selectedColumns = columns
-    if (!this.op) this.op = 'select'
-    return this as Promise<QueryResult<Record<string, unknown>[]>> & this
-  }
-
-  eq(column: string, value: unknown): this {
-    this.filters.push({ column, value })
-    return this
-  }
-
-  async single(): Promise<QueryResult<Record<string, unknown>>> {
-    if (!this.op) this.op = 'select'
-    return this.execute<Record<string, unknown>>(true)
-  }
-
-  then<TResult1 = QueryResult<Record<string, unknown>[]>, TResult2 = never>(
-    onfulfilled?:
-      | ((value: QueryResult<Record<string, unknown>[]>) => TResult1 | PromiseLike<TResult1>)
-      | null,
-    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
-  ): Promise<TResult1 | TResult2> {
-    return this.execute<Record<string, unknown>[]>(false).then(onfulfilled, onrejected)
-  }
-
-  private async execute<T>(single: boolean): Promise<QueryResult<T>> {
-    return post<QueryResult<T>>('/query', {
-      op: this.op,
-      table: this.table,
-      values: this.values,
-      filters: this.filters,
-      columns: this.selectedColumns,
-      single,
-    })
-  }
 }
 
 class FakeRealtimeChannel {
@@ -246,11 +187,11 @@ class FakeRealtimeChannel {
   }
 }
 
+// Mirrors SupabaseBoundary: `channel` + `rpc` only. The query-builder `from()` was removed
+// alongside the boundary's — with the tables sealed behind default-deny RLS, the fake having a
+// working direct-table path could only ever be more permissive than production.
 export function createFakeSupabaseClient() {
   return {
-    from(table: string) {
-      return new FakeQueryBuilder(table)
-    },
     channel(name: string) {
       return new FakeRealtimeChannel(name)
     },

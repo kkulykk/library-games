@@ -464,6 +464,9 @@ function GameBoard({
 
   // Reset selection on phase change
   useEffect(() => {
+    // Clears a draft selection belonging to the previous round when the shared room state
+    // moves on. Depends only on the incoming phase/black card, so it settles in one pass.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on incoming room state
     setSelectedCards([])
   }, [gameState.phase, gameState.blackCard?.text])
 

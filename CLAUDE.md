@@ -103,14 +103,21 @@ Two workflows, each with a single responsibility and a single trigger:
 - **`test.yml`** (_Test_) — the CI gate. Runs on **every branch push except
   `main`** (`branches-ignore: [main]`). A single `test` job runs
   `pnpm test:all`, which chains `lint` (ESLint + Prettier), `typecheck`,
-  `check:schema`, `test:coverage`, and Playwright (`e2e:ci`) against the fake
-  Supabase server. Keep the whole gate in `test:all` so it stays one command
-  locally and in CI.
+  `check:schema`, `test:coverage`, Playwright (`e2e:ci`) against the fake
+  Supabase server, and finally `build`. Keep the whole gate in `test:all` so it
+  stays one command locally and in CI. `build` runs **last** on purpose: it is
+  the most expensive check, and `next build` writing `.next/` before the e2e run
+  would collide with the `next dev` server Playwright starts.
 - **`deploy.yml`** (_Deploy_) — builds the static export and
   publishes it. Runs **only** on push/merge to `main`. It does not run the test
   suite; gate deploys by requiring **Test** as a branch-protection check on
   `main` so only tested code reaches `deploy`. The Pages artifact is `out/` —
   Next's static export dir, set by `output: 'export'`.
+
+  The build here is a _publish_ step, not a check — `test.yml` already proved the
+  same `pnpm build` succeeds on the branch. Do not treat `deploy.yml` as the
+  first place an export error can surface; that was the gap this arrangement
+  closes.
 
 So: a branch push runs tests, a merge to `main` runs the deploy. Neither runs
 both. Do not let `test.yml` trigger on `main` — a branch is already green before
@@ -143,3 +150,12 @@ Never skip the lint, test, or e2e step. Do not force-push to `main`.
 - ESLint 9 flat config in `eslint.config.mjs`
 - Prettier config in `.prettierrc` (single quotes, no semis, 100-char width, tailwind plugin)
 - Run `pnpm lint:fix` to auto-fix before committing
+- `pnpm lint` runs with `--max-warnings=0`, matching the lint-staged hook. A warning is a
+  failure, so nothing can land in the "reported but ignored" state — including ESLint's
+  unused-disable-directive warning, which makes stale suppressions self-cleaning.
+- `react-hooks/set-state-in-effect` is **on**. Effects that legitimately set state — reading
+  `localStorage`/`window.location` after mount (the static export has neither at build time),
+  or resetting local UI state when the round/room it belongs to changes — carry a targeted
+  `// eslint-disable-next-line react-hooks/set-state-in-effect -- <reason>` on the setter line
+  itself, with the fuller explanation in a normal comment above. Do not turn the rule off
+  globally, and prefer deriving the value during render when it is a pure function of state.

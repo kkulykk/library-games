@@ -931,6 +931,9 @@ function RoundEndScreen({
 
   useEffect(() => {
     firedRef.current = false
+    // Re-arms the round-end countdown before starting the interval that drives it; the
+    // interval (an external timer) owns every subsequent update. Once per round.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-arms an interval-owned timer
     setCountdown(ROUND_END_DELAY)
 
     const interval = window.setInterval(() => {
@@ -1362,7 +1365,10 @@ export function SkribblGame() {
   }, [drawerId])
 
   useEffect(() => {
+    // `inviteCode` resolves from the URL only after mount (see useInviteCode), so this reacts
+    // to an external store settling, not to a render. Fires at most once per code.
     if (inviteCode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- post-mount invite-code arrival
       setEntryMode('entry')
     }
   }, [inviteCode])
@@ -1370,6 +1376,7 @@ export function SkribblGame() {
   // Each turn starts on a blank canvas. Keyed on drawStartTime so a new turn
   // clears it even when the same player draws again.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on incoming room state
     setStrokes([])
   }, [gameState?.drawStartTime])
 

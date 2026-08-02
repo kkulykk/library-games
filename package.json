@@ -14,7 +14,7 @@
     "generate:panoramax": "node scripts/generate-panoramax-coverage.mjs",
     "generate:worldmap": "node scripts/generate-worldmap.mjs",
     "check:worldmap": "node scripts/generate-worldmap.mjs --check",
-    "lint": "eslint . && prettier --check .",
+    "lint": "eslint . --max-warnings=0 && prettier --check .",
     "lint:fix": "eslint . --fix && prettier --write .",
     "test": "jest --config jest.config.js",
     "test:watch": "jest --config jest.config.js --watch",
@@ -23,7 +23,7 @@
     "e2e:ui": "playwright test --ui",
     "e2e:debug": "playwright test --debug",
     "e2e:ci": "playwright test --reporter=github,line",
-    "test:all": "pnpm lint && pnpm typecheck && pnpm check:schema && pnpm test:coverage && pnpm e2e:ci",
+    "test:all": "pnpm lint && pnpm typecheck && pnpm check:schema && pnpm test:coverage && pnpm e2e:ci && pnpm build",
     "test:supabase": "playwright test --config=playwright.integration.config.ts",
     "prepare": "husky"
   },

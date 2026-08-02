@@ -330,6 +330,9 @@ function EntryScreen({
 
   useEffect(() => {
     if (!initialCode) return
+    // `initialCode` arrives from the post-mount URL read, after the useState initializers above
+    // have already run with it absent. Once per code; both setters settle in one pass.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- post-mount invite-code arrival
     setMode('join')
     setCode(initialCode)
   }, [initialCode])
@@ -898,6 +901,9 @@ function usePlaceName(location: GeoLocation, allowLookup: boolean): PlaceName | 
   const { lat, lng } = location
 
   useEffect(() => {
+    // Drops the previous round's place name before the geocoder request for the new drop
+    // starts, so the reveal never shows a stale location. Keyed on the coordinates.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset before an async lookup
     setPlace(null)
     if (!wanted) return
     let cancelled = false
@@ -1277,6 +1283,9 @@ export function GlobetrotterGame() {
 
   // An invite link should land the player straight on the join form.
   useEffect(() => {
+    // `inviteCode` resolves from the URL only after mount (see useInviteCode), so this reacts
+    // to an external store settling, not to a render. Fires at most once per code.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- post-mount invite-code arrival
     if (inviteCode) setGateDismissed(true)
   }, [inviteCode])
 
@@ -1402,7 +1411,10 @@ export function GlobetrotterGame() {
   }, [roomScout])
 
   useEffect(() => {
+    // Clears the lobby's deck-scouting notice in response to incoming room state, not to a
+    // render. Idempotent once `roomScout` is null, so it settles immediately.
     // The game starting (or the room going away) is the definitive answer.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on incoming room state
     if (roomPhase !== 'lobby') setRoomScout(null)
   }, [roomPhase])
 

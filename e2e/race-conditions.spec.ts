@@ -5,20 +5,18 @@ import { SkribblPage, UnoPage } from './pages'
 
 const fakeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321'
 
-type QueryPayload = {
-  op?: 'select' | 'update' | 'insert'
-  table?: string
-  values?: {
-    state?: unknown
-    version?: number
-  }
-  filters?: Array<{ column: string; value: unknown }>
-  columns?: string
-  single?: boolean
-  // RPC payloads (posted to /rpc as { fn, args }) — the join pre-read now flows
-  // through the code-gated get_<game> SECURITY DEFINER RPC, not a direct select.
+// Every production-path call is now an RPC posted to `/rpc` as `{ fn, args }`: reads go through
+// the code-gated `get_<game>`, writes through the token-gated `dispatch_<game>`. The app has no
+// direct-table path left to intercept — `SupabaseBoundary` no longer exposes `from()` — so this
+// barrier speaks only the RPC shape.
+type RpcPayload = {
   fn?: string
-  args?: Record<string, unknown>
+  args?: {
+    p_code?: unknown
+    p_new_state?: unknown
+    p_expected_version?: unknown
+    p_room_token?: unknown
+  }
 }
 
 type RoomRow<TState> = {
@@ -84,21 +82,25 @@ type SkribblState = {
   scoreDeltas: Record<string, number>
 }
 
-function hasFilter(payload: QueryPayload, column: string, value: unknown): boolean {
-  return (
-    payload.filters?.some((filter) => filter.column === column && filter.value === value) ?? false
-  )
-}
-
+/**
+ * Holds every context's matching RPC until all of them have one in flight, then releases them
+ * together — that simultaneity is what forces the version conflict these tests assert on.
+ *
+ * Returns `assertBarrierFired`, which every caller MUST await after the concurrent actions. A
+ * predicate that stops matching (because a payload shape changed) degrades silently otherwise:
+ * nothing blocks, the actions serialize, and the test keeps passing while testing nothing. That
+ * is exactly how the skribbl predicate below rotted once — it was still written against the
+ * direct-table `/query` update shape long after writes moved to the `dispatch_<game>` RPC.
+ */
 async function installQueryBarrier(
   contexts: BrowserContext[],
-  predicate: (payload: QueryPayload) => boolean
-): Promise<void> {
+  predicate: (payload: RpcPayload) => boolean
+): Promise<() => Promise<void>> {
   const waiting: Route[] = []
   let released = false
 
   const handler = async (route: Route) => {
-    const payload = route.request().postDataJSON() as QueryPayload
+    const payload = route.request().postDataJSON() as RpcPayload
 
     if (!released && predicate(payload)) {
       waiting.push(route)
@@ -114,14 +116,14 @@ async function installQueryBarrier(
     await route.continue()
   }
 
-  await Promise.all(
-    contexts.flatMap((context) => [
-      // The barrier gates both endpoints: `/query` for direct selects/updates and
-      // `/rpc` for the SECURITY DEFINER RPC reads (e.g. the get_<game> join pre-read).
-      context.route(`${fakeSupabaseUrl}/query`, handler),
-      context.route(`${fakeSupabaseUrl}/rpc`, handler),
-    ])
-  )
+  await Promise.all(contexts.map((context) => context.route(`${fakeSupabaseUrl}/rpc`, handler)))
+
+  return async () => {
+    expect(
+      released,
+      'query barrier never matched — the predicate is stale, so no race was forced'
+    ).toBe(true)
+  }
 }
 
 async function readRoom<TState>(table: string, roomCode: string): Promise<RoomRow<TState>> {
@@ -203,16 +205,18 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
       await guestOnePage.goto()
       await guestTwoPage.goto()
 
-      await installQueryBarrier([guestOne.context, guestTwo.context], (payload) => {
+      const assertBarrierFired = await installQueryBarrier(
+        [guestOne.context, guestTwo.context],
         // joinRoom's pre-read now goes through the code-gated get_uno RPC
         // (replacing the old direct .from('uno_rooms').select().single()).
-        return payload.fn === 'get_uno' && payload.args?.p_code === roomCode
-      })
+        (payload) => payload.fn === 'get_uno' && payload.args?.p_code === roomCode
+      )
 
       await Promise.allSettled([
         guestOnePage.joinRoom(roomCode, guestOne.name),
         guestTwoPage.joinRoom(roomCode, guestTwo.name),
       ])
+      await assertBarrierFired()
 
       const finalRoom = await readRoom<UnoState>('uno_rooms', roomCode)
       const names = finalRoom.state.players.map((player) => player.name)
@@ -274,19 +278,25 @@ test.describe('multiplayer race conditions and reconnect resilience', () => {
       await expect(guesserOnePage.hintMask).toContainText('_ _ _ _ _')
       await expect(guesserTwoPage.hintMask).toContainText('_ _ _ _ _')
 
-      await installQueryBarrier([guesserOne.context, guesserTwo.context], (payload) => {
-        const state = payload.values?.state as Partial<SkribblState> | undefined
-        return (
-          payload.op === 'update' &&
-          payload.table === 'skribbl_rooms' &&
-          hasFilter(payload, 'code', roomCode) &&
-          state?.phase === 'drawing' &&
-          state.guessedPlayers?.length === 1 &&
-          state.messages?.some((message) => message.text.includes('guessed the word')) === true
-        )
-      })
+      // Hold both correct-guess writes until each has one in flight, so they race on the same
+      // `p_expected_version` and one must lose the CAS. Both guessers still see one prior
+      // guesser (`guessedPlayers.length === 1`) — that stale read is the race being forced.
+      const assertBarrierFired = await installQueryBarrier(
+        [guesserOne.context, guesserTwo.context],
+        (payload) => {
+          const state = payload.args?.p_new_state as Partial<SkribblState> | undefined
+          return (
+            payload.fn === 'dispatch_skribbl' &&
+            payload.args?.p_code === roomCode &&
+            state?.phase === 'drawing' &&
+            state.guessedPlayers?.length === 1 &&
+            state.messages?.some((message) => message.text.includes('guessed the word')) === true
+          )
+        }
+      )
 
       await Promise.all([guesserOnePage.submitGuess('apple'), guesserTwoPage.submitGuess('apple')])
+      await assertBarrierFired()
 
       await expect(hostPage.roundEnd).toBeVisible()
       const finalRoom = await readRoom<SkribblState>('skribbl_rooms', roomCode)

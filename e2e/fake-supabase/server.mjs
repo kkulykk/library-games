@@ -170,11 +170,16 @@ function runQueryBody(body, res) {
 
 // Anon `/query` handler. Emulates the Phase 3 seal: post-seal, anon direct table
 // access on `*_rooms` tables is RLS default-denied — `select` returns zero rows,
-// `update`/`insert` are no-ops (nothing written, no broadcast). This makes the
-// harness honest: a production-path direct `.from(*_rooms).select()/.update()`
-// regression (BLOCKER-1-style) now hits this sealed path and observes empty,
-// so the suite can FAIL instead of masking it. Non-`_rooms` tables and the RPC
-// path are unaffected. Fixtures route through the ungated `/admin/query` instead.
+// `update`/`insert` are no-ops (nothing written, no broadcast). Non-`_rooms`
+// tables and the RPC path are unaffected. Fixtures route through the ungated
+// `/admin/query` instead.
+//
+// As of the `from()` removal this is belt-and-braces: `SupabaseBoundary` no longer
+// exposes a query builder and the fake client no longer implements one, so the app
+// has no way to post here at all — a direct-table regression is now a type error
+// rather than something the harness has to catch at runtime. Kept because it costs
+// nothing and keeps the anon-vs-`/admin` split legible: this endpoint is what anon
+// would get, `/admin/query` is the deliberate test backdoor.
 async function handleQuery(req, res) {
   const body = await readBody(req)
   const { op, table } = body

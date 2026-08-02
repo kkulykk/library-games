@@ -11,25 +11,25 @@ type GameMode = 'single' | 'dual'
 export function TicTacToeGame() {
   const [mode, setMode] = useState<GameMode | null>(null)
   const [state, setState] = useState<GameState>(createInitialState())
-  const [aiThinking, setAiThinking] = useState(false)
+  // "The AI owes us a move" is a fact about the current state, not something to mirror into
+  // state of its own: it is true exactly while the pending-move effect below has a timer
+  // running. Deriving it keeps the two from ever disagreeing — every path that ended the AI's
+  // turn (its move landing, restart, changing mode) had to remember to clear the old flag.
+  const aiThinking = mode === 'single' && state.currentPlayer === 'O' && !isGameOver(state)
 
   // AI move for single-player mode (AI plays as O)
   useEffect(() => {
-    if (mode !== 'single') return
-    if (state.currentPlayer !== 'O') return
-    if (isGameOver(state)) return
+    if (!aiThinking) return
 
-    setAiThinking(true)
     const timeout = setTimeout(() => {
       const move = getAIMove(state.board, 'O')
       if (move !== -1) {
         setState((prev) => makeMove(prev, move))
       }
-      setAiThinking(false)
     }, AI_THINK_DELAY_MS)
 
     return () => clearTimeout(timeout)
-  }, [mode, state])
+  }, [aiThinking, state.board])
 
   function handleCellClick(index: number) {
     if (aiThinking) return
@@ -39,13 +39,11 @@ export function TicTacToeGame() {
 
   function restart() {
     setState(createInitialState())
-    setAiThinking(false)
   }
 
   function changeMode() {
     setMode(null)
     setState(createInitialState())
-    setAiThinking(false)
   }
 
   if (mode === null) {

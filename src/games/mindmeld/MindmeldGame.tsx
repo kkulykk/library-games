@@ -431,10 +431,16 @@ function PlayingScreen({
   const [guess, setGuess] = useState(50)
 
   useEffect(() => {
+    // Clears the clue draft when the round it was typed for is replaced by incoming room
+    // state. One pass, no cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on incoming room state
     setClueInput('')
   }, [round.number, round.phase, round.psychicId])
 
   useEffect(() => {
+    // Re-seeds the local slider from the team's shared guess whenever the room advances.
+    // One pass, no cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on incoming room state
     setGuess(round.teamGuess ?? 50)
   }, [round.number, round.phase, round.teamGuess])
 

@@ -699,6 +699,10 @@ function GameBoard({
       prevTopCardRef.current = topCardId
 
       if (!wasFirst && topCard) {
+        // Fires the discard-pile animation and action toast when a *new* top card arrives from
+        // the room. Gated on `topCardId !== prevTopCardRef.current`, already updated above, so
+        // the next render short-circuits and this runs at most once per played card.
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- ref-gated, once per card
         setDiscardKey((k) => k + 1)
         const t = ACTION_TOAST[topCard.value]
         if (t) {
@@ -1163,6 +1167,9 @@ export function UnoGame() {
   } = useUnoRoom()
 
   useEffect(() => {
+    // `inviteCode` resolves from the URL only after mount (see useInviteCode), so this reacts
+    // to an external store settling, not to a render. Fires at most once per code.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- post-mount invite-code arrival
     if (inviteCode) setEntryMode('entry')
   }, [inviteCode])
 
