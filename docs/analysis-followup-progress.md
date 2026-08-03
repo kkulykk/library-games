@@ -48,6 +48,31 @@ is one command locally and in CI" rule.
 
 **Cost.** ~20s of CI time (measured).
 
+### Follow-up: the placeholder env vars broke the e2e run
+
+The first CI run on this branch went red — 51 e2e failures across specs the
+change never touched, all `ENOTFOUND ci-placeholder.supabase.co`.
+
+Cause: three e2e files and `playwright.config.ts` derived the **fake server's
+own address** from `NEXT_PUBLIC_SUPABASE_URL`
+(`process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321'`). That
+variable is the _app's_ backend address, not the harness's, so the job-level
+placeholder redirected the harness's own `/reset` and `/admin/query` calls at a
+domain that does not resolve. Every spec using the shared `test` fixture died
+in `resetFakeSupabase`.
+
+Local verification missed it because the build was checked _with_ those vars
+and the e2e suite _without_ them — never both at once, which is precisely the
+CI configuration.
+
+**Fix:** `e2e/helpers/fakeSupabaseUrl.ts` now owns the address as
+`FAKE_SUPABASE_URL` (override via `FAKE_SUPABASE_URL`, default
+`http://127.0.0.1:54321`), and `helpers/fakeSupabase.ts`,
+`race-conditions.spec.ts`, `games/agario.spec.ts` and `playwright.config.ts`
+all read it. The harness can no longer be redirected by an ambient app
+variable. Re-verified with `NEXT_PUBLIC_SUPABASE_*` exported to the CI
+placeholders: **70 Playwright tests passed**.
+
 ---
 
 ## #8 — Dead surface on the Supabase boundary

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { FAKE_SUPABASE_URL } from './e2e/helpers/fakeSupabaseUrl'
 
 const PORT = process.env.PORT ?? '3000'
 const HOST = '127.0.0.1'
@@ -28,7 +29,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'node e2e/fake-supabase/server.mjs',
-      url: 'http://127.0.0.1:54321/health',
+      url: `${FAKE_SUPABASE_URL}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
@@ -37,9 +38,11 @@ export default defineConfig({
       url: baseURL,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      // Explicitly pins the dev server's backend to the fake, overriding whatever
+      // NEXT_PUBLIC_SUPABASE_* the surrounding shell or CI job happens to export.
       env: {
         NEXT_PUBLIC_E2E_FAKE_SUPABASE: '1',
-        NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
+        NEXT_PUBLIC_SUPABASE_URL: FAKE_SUPABASE_URL,
         NEXT_PUBLIC_SUPABASE_ANON_KEY: 'e2e-anon-key',
       },
     },

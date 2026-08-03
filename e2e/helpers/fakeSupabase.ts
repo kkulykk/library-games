@@ -1,6 +1,5 @@
 import { expect, test as base } from '@playwright/test'
-
-const fakeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321'
+import { FAKE_SUPABASE_URL as fakeSupabaseUrl } from './fakeSupabaseUrl'
 
 type FakeSupabaseQueryPayload = {
   op: 'select' | 'update' | 'insert'

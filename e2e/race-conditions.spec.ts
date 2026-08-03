@@ -3,7 +3,7 @@ import { fakeSupabaseQuery, test, expect } from './helpers/fakeSupabase'
 import { closePlayers, createPlayer } from './helpers/players'
 import { SkribblPage, UnoPage } from './pages'
 
-const fakeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321'
+import { FAKE_SUPABASE_URL as fakeSupabaseUrl } from './helpers/fakeSupabaseUrl'
 
 // Every production-path call is now an RPC posted to `/rpc` as `{ fn, args }`: reads go through
 // the code-gated `get_<game>`, writes through the token-gated `dispatch_<game>`. The app has no

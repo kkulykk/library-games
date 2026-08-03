@@ -1,4 +1,5 @@
 import { fakeSupabaseQuery, test, expect } from '../helpers/fakeSupabase'
+import { FAKE_SUPABASE_URL } from '../helpers/fakeSupabaseUrl'
 import { closePlayers, createPlayer } from '../helpers/players'
 import { AgarioPage } from '../pages'
 
@@ -56,7 +57,7 @@ type AgarioBroadcastMessage =
   | { type: 'game_start'; startTime: number; food: Food[]; nextFoodId: number }
   | { type: 'game_end' }
 
-const fakeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321'
+const fakeSupabaseUrl = FAKE_SUPABASE_URL
 
 async function readAgarioRoom(roomCode: string): Promise<AgarioRoomRow> {
   const selected = await fakeSupabaseQuery<AgarioRoomRow>({
