@@ -86,7 +86,9 @@ Online games use Supabase as a real-time state bus — no custom WebSocket serve
 
 **Local env:** copy `.env.local.example` → `.env.local` and fill in Supabase URL + anon key. When unset, `supabase` resolves to `null` and online games no-op.
 
-**CI:** `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must be set as GitHub Actions secrets for the build to connect. E2E runs against an in-memory fake Supabase (`NEXT_PUBLIC_E2E_FAKE_SUPABASE=1`), not the real backend.
+**CI:** `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must be set as GitHub Actions secrets for the build to connect. Both `test.yml` and `deploy.yml` pass them to `pnpm build`, so the branch build rehearses the deploy build exactly. Without them the build still succeeds and exports every route — it just renders the "Supabase not set up" path.
+
+E2E runs against an in-memory fake Supabase (`NEXT_PUBLIC_E2E_FAKE_SUPABASE=1`), not the real backend. The harness addresses that fake server via `FAKE_SUPABASE_URL` (`e2e/helpers/fakeSupabaseUrl.ts`), deliberately **not** via `NEXT_PUBLIC_SUPABASE_URL` — that variable is the app's backend address, and reading it in the harness meant any ambient value silently redirected the fake server's own `/reset` and `/admin/query` calls. Keep new e2e helpers on `FAKE_SUPABASE_URL`.
 
 **Database:** schema lives in `supabase/schema.sql`. Apply via Supabase MCP (`mcp__supabase__apply_migration`) or paste into the Supabase SQL Editor. Rooms are deleted only by a `pg_cron` cleanup job (older than 24h) — it must be scheduled manually in the Supabase project; there is no client DELETE policy. One-off ops scripts (already applied to the live project — RLS sealing, rollbacks) live under `supabase/migrations/` for reference; they are not run automatically and don't need to be re-applied to a fresh project since `supabase/schema.sql` embeds their end state.
 
@@ -135,6 +137,14 @@ advisory database, so it fails commits that have not changed whenever a new
 advisory lands on a transitive dependency. Do not add it back. Apply the same
 rule to anything else whose result depends on the outside world at the moment it
 runs.
+
+The `NEXT_PUBLIC_SUPABASE_*` secrets the `test` job passes to `pnpm build` are
+_not_ an exception to this. The rule is about inputs the outside world changes on
+its own — an advisory database moves under a commit that never changed. Repo
+secrets change only when a human changes them, and `deploy.yml` already builds
+with these, so the branch gate depending on them is the point: a rotated or
+renamed secret should fail the branch, not the deploy. Nothing contacts Supabase
+at build time; `next build` only inlines the values.
 
 Dependency vulnerabilities are handled out of band instead — Dependabot PRs, or
 manually running `pnpm audit --prod` when you want to look. Fix findings by

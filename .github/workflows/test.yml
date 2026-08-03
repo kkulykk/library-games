@@ -25,14 +25,21 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:all
         env:
-          # `test:all` ends with `pnpm build`, so the static export — the only
-          # path to production that used to be first exercised by `deploy.yml`
-          # after merge — is gated on every branch. Nothing contacts Supabase at
-          # build time; these only need to be non-empty so the build renders the
-          # configured code path rather than the "Supabase not set up" one.
-          # Playwright's webServer sets its own env, so the e2e run is unaffected.
-          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          # `test:all` ends with `pnpm build`, so the static export — the only path to
+          # production that used to be first exercised by `deploy.yml` after merge — is
+          # gated on every branch. These are the same secrets `deploy.yml` builds with, on
+          # purpose: the branch build is then a true rehearsal of the deploy build, and a
+          # rotated or renamed secret turns the branch red instead of the deploy. Nothing
+          # contacts Supabase at build time; `next build` only inlines the values.
+          #
+          # Safe to set job-wide only because the e2e harness addresses its fake server via
+          # FAKE_SUPABASE_URL (e2e/helpers/fakeSupabaseUrl.ts), not this variable. Before
+          # that, any value here — placeholder or real — hijacked the harness's own calls.
+          #
+          # Absent (a fork, or a fresh clone without the secrets) the build still succeeds
+          # and exports every route; it just renders the "Supabase not set up" path.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v7
