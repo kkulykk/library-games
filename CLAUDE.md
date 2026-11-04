@@ -82,7 +82,8 @@ Online games use Supabase as a real-time state bus — no custom WebSocket serve
 - `schema.ts` — Zod schema; every state/broadcast payload crossing the network is `safeParse`d before entering React state
 - `use<Name>Room.ts` — a small adapter that passes a `GameRoomConfig` (table name, channel prefix, session key, schema, `applyAction` reducer, player/lobby factories) to the **shared `useGameRoom` hook** (`src/hooks/useGameRoom.ts`). Do not re-implement room lifecycle per game — `useGameRoom` owns create/join/restore, realtime subscription, presence, optimistic dispatch, and 24h `localStorage` session resume.
 - Game state lives entirely in a single `jsonb` `state` column, paired with an integer `version` column. Every action overwrites `state` via a compare-and-swap on `version` (optimistic concurrency, retries up to 3× on conflict).
-- Realtime `postgres_changes` UPDATE events re-validate via the Zod schema and call `setGameState`.
+- State sync is a broadcast signal: an `after update` trigger sends `{version}` on the room topic via `realtime.send`, and each client re-reads `{state, version}` through `get_<game>` and re-validates it with the Zod schema. Room tables are intentionally **not** in the `supabase_realtime` publication — don't add them back (logical decoding of every state write was pure CPU cost).
+- Dispatch failures back off: CAS retries wait a jittered, growing delay, and after a dispatch exhausts its retries further dispatches are dropped client-side for a cooldown (1s doubling to 30s, reset on success or room change). Don't remove this — a stale client once replayed failing dispatches at ~2,000 req/s.
 
 **Local env:** copy `.env.local.example` → `.env.local` and fill in Supabase URL + anon key. When unset, `supabase` resolves to `null` and online games no-op.
 

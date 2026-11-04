@@ -64,8 +64,6 @@ create or replace trigger uno_rooms_protect_immutable
   before update on uno_rooms
   for each row execute function protect_immutable_columns();
 
-alter publication supabase_realtime add table uno_rooms;
-
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table uno_rooms enable row level security;
@@ -89,8 +87,6 @@ create or replace trigger skribbl_rooms_updated_at
 create or replace trigger skribbl_rooms_protect_immutable
   before update on skribbl_rooms
   for each row execute function protect_immutable_columns();
-
-alter publication supabase_realtime add table skribbl_rooms;
 
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
@@ -116,8 +112,6 @@ create or replace trigger agario_rooms_protect_immutable
   before update on agario_rooms
   for each row execute function protect_immutable_columns();
 
-alter publication supabase_realtime add table agario_rooms;
-
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table agario_rooms enable row level security;
@@ -141,8 +135,6 @@ create or replace trigger cah_rooms_updated_at
 create or replace trigger cah_rooms_protect_immutable
   before update on cah_rooms
   for each row execute function protect_immutable_columns();
-
-alter publication supabase_realtime add table cah_rooms;
 
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
@@ -168,8 +160,6 @@ create or replace trigger codenames_rooms_protect_immutable
   before update on codenames_rooms
   for each row execute function protect_immutable_columns();
 
-alter publication supabase_realtime add table codenames_rooms;
-
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table codenames_rooms enable row level security;
@@ -194,8 +184,6 @@ create or replace trigger mindmeld_rooms_protect_immutable
   before update on mindmeld_rooms
   for each row execute function protect_immutable_columns();
 
-alter publication supabase_realtime add table mindmeld_rooms;
-
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table mindmeld_rooms enable row level security;
@@ -219,8 +207,6 @@ create or replace trigger globetrotter_rooms_updated_at
 create or replace trigger globetrotter_rooms_protect_immutable
   before update on globetrotter_rooms
   for each row execute function protect_immutable_columns();
-
-alter publication supabase_realtime add table globetrotter_rooms;
 
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
@@ -254,6 +240,31 @@ begin
     loop
       execute format('drop policy if exists %I on public.%I', pol.policyname, t);
     end loop;
+  end loop;
+end $$;
+
+-- ─── Keep room tables OUT of the supabase_realtime publication ──────────────
+-- Clients no longer subscribe to postgres_changes: state sync is the broadcast
+-- signal below (realtime.send), which does not need the publication. Leaving the
+-- tables published made Realtime logically decode every UPDATE — the full state
+-- jsonb — through realtime.list_changes for no subscriber at all. Earlier versions
+-- of this file added the tables, so this block removes them where present (a
+-- no-op on a fresh project). Do NOT add them back.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    'uno_rooms', 'skribbl_rooms', 'agario_rooms', 'cah_rooms', 'codenames_rooms', 'mindmeld_rooms', 'globetrotter_rooms'
+  ] loop
+    if exists (
+      select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime drop table public.%I', t);
+    end if;
   end loop;
 end $$;
 
@@ -1948,6 +1959,10 @@ end;
 $$;
 
 revoke all on function public.cleanup_stale_rooms() from public;
+-- Supabase's default privileges grant EXECUTE on new public functions to anon and
+-- authenticated directly, so revoking from PUBLIC alone leaves this callable as
+-- /rest/v1/rpc/cleanup_stale_rooms. Only the pg_cron job (postgres) should run it.
+revoke execute on function public.cleanup_stale_rooms() from anon, authenticated;
 
 -- Replace any earlier per-table job with the one that sweeps every table.
 select cron.unschedule(jobid) from cron.job where command like '%_rooms where updated_at%';

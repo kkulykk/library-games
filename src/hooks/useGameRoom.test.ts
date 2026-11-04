@@ -9,7 +9,13 @@
  */
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { z } from 'zod'
-import { createLeaveByRemovingPlayer, useGameRoom, type GameRoomConfig } from './useGameRoom'
+import {
+  createLeaveByRemovingPlayer,
+  dispatchCooldownMs,
+  dispatchRetryDelayMs,
+  useGameRoom,
+  type GameRoomConfig,
+} from './useGameRoom'
 
 // --- Controllable supabase channel double ----------------------------------------------------
 
@@ -298,6 +304,85 @@ describe('useGameRoom dispatch CAS exhaustion (BL-02)', () => {
     // Only the single dispatch call — no get_ refetch, no retry loop.
     expect(rpc).toHaveBeenCalledTimes(1)
     expect(hook.result.current.connectionStatus).not.toBe('desynced')
+  })
+
+  it('drops further dispatches locally during the cooldown after an exhausted dispatch', async () => {
+    const hook = await connect()
+    authoritativeRow = { state: { phase: 'play', players: [{ id: 'a' }] }, version: 999 }
+
+    await act(async () => {
+      await hook.result.current.dispatch({ type: 'noop' })
+    })
+    expect(hook.result.current.error).toBe('Action failed due to a conflict. Please try again.')
+
+    // A caller that immediately re-dispatches (an effect, a stale bundle, a mashed button)
+    // must not reach the database at all while the breaker is open.
+    rpc.mockClear()
+    await act(async () => {
+      await hook.result.current.dispatch({ type: 'noop' })
+      await hook.result.current.dispatch({ type: 'noop' })
+    })
+    expect(rpc).not.toHaveBeenCalled()
+    expect(hook.result.current.error).toBe(
+      'Too many failed actions. Wait a moment, then try again.'
+    )
+  })
+
+  it('lets dispatches through again once the cooldown has elapsed, and resets on success', async () => {
+    const hook = await connect()
+    authoritativeRow = { state: { phase: 'play', players: [{ id: 'a' }] }, version: 999 }
+
+    await act(async () => {
+      await hook.result.current.dispatch({ type: 'noop' })
+    })
+
+    // Jump past the first (1s) cooldown.
+    const realNow = Date.now
+    const start = realNow()
+    jest.spyOn(Date, 'now').mockImplementation(() => start + dispatchCooldownMs(1) + 1)
+    try {
+      rpc.mockClear()
+      rpc.mockImplementationOnce(async () => ({
+        data: [{ state: {}, version: 1000 }],
+        error: null,
+      }))
+      await act(async () => {
+        await hook.result.current.dispatch({ type: 'noop' })
+      })
+      expect(rpc).toHaveBeenCalledTimes(1)
+      expect(rpc.mock.calls[0][0]).toBe('dispatch_test')
+
+      // Success closed the breaker: the next dispatch is sent straight away.
+      rpc.mockClear()
+      rpc.mockImplementationOnce(async () => ({
+        data: [{ state: {}, version: 1001 }],
+        error: null,
+      }))
+      await act(async () => {
+        await hook.result.current.dispatch({ type: 'noop' })
+      })
+      expect(rpc).toHaveBeenCalledTimes(1)
+    } finally {
+      jest.restoreAllMocks()
+    }
+  })
+})
+
+describe('dispatch backoff helpers', () => {
+  it('grows the retry delay exponentially with bounded jitter', () => {
+    expect(dispatchRetryDelayMs(0, () => 0)).toBe(50)
+    expect(dispatchRetryDelayMs(1, () => 0)).toBe(100)
+    expect(dispatchRetryDelayMs(2, () => 0)).toBe(200)
+    expect(dispatchRetryDelayMs(2, () => 1)).toBe(300)
+  })
+
+  it('doubles the cooldown per consecutive failure and caps it at 30s', () => {
+    expect(dispatchCooldownMs(0)).toBe(0)
+    expect(dispatchCooldownMs(1)).toBe(1_000)
+    expect(dispatchCooldownMs(2)).toBe(2_000)
+    expect(dispatchCooldownMs(5)).toBe(16_000)
+    expect(dispatchCooldownMs(6)).toBe(30_000)
+    expect(dispatchCooldownMs(50)).toBe(30_000)
   })
 })
 
