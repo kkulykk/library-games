@@ -15,6 +15,31 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000
 // burst into a single read without making the UI feel laggy.
 const REFETCH_DEBOUNCE_MS = 120
 
+// A dispatch that keeps losing the version CAS must not turn into a request storm.
+// In production a stale client once replayed failing dispatch_<game> calls at
+// ~2,000 req/s for months, every one a rolled-back transaction. Two brakes:
+//   * retries inside one dispatch wait a short, jittered, exponentially growing delay;
+//   * after a dispatch exhausts its retries, further dispatches are dropped locally
+//     (no RPC at all) for a cooldown that doubles with each consecutive failure.
+// A successful dispatch resets both.
+const DISPATCH_RETRY_BASE_MS = 50
+const DISPATCH_COOLDOWN_BASE_MS = 1_000
+const DISPATCH_COOLDOWN_MAX_MS = 30_000
+
+/** Delay before CAS retry `attempt` (0-based): 50, 100, 200 ms … plus up to 50% jitter. */
+export function dispatchRetryDelayMs(attempt: number, random: () => number = Math.random): number {
+  const base = DISPATCH_RETRY_BASE_MS * 2 ** attempt
+  return Math.round(base + base * 0.5 * random())
+}
+
+/** Cooldown after `streak` consecutive exhausted dispatches: 1s, 2s, 4s … capped at 30s. */
+export function dispatchCooldownMs(streak: number): number {
+  if (streak <= 0) return 0
+  return Math.min(DISPATCH_COOLDOWN_BASE_MS * 2 ** (streak - 1), DISPATCH_COOLDOWN_MAX_MS)
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 // Runtime guard for presence rows crossing the (untrusted) presence channel into React.
 // Strictly stronger than the previous unchecked player_id cast: a malformed presence row is
 // now filtered out instead of blindly trusted (T-04-02).
@@ -252,6 +277,9 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Per-room write capability for the dispatch RPC; set by create/join/restore (D-01..D-04).
   const roomTokenRef = useRef('')
+  // Dispatch circuit breaker: consecutive exhausted dispatches, and when writes may resume.
+  const failedDispatchStreakRef = useRef(0)
+  const dispatchBlockedUntilRef = useRef(0)
 
   // Store config in ref to avoid dependency issues
   const configRef = useRef(config)
@@ -260,6 +288,12 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   useEffect(() => {
     setSavedSession(loadSession(configRef.current.sessionKey))
   }, [])
+
+  // The dispatch circuit breaker is per room: a new room starts with a clean slate.
+  useEffect(() => {
+    failedDispatchStreakRef.current = 0
+    dispatchBlockedUntilRef.current = 0
+  }, [roomCode])
 
   // Create (or recreate) the presence channel and start tracking this player. Extracted from the
   // presence effect so the CLIENT-02 tab-close `visible` path can re-establish presence too:
@@ -631,6 +665,12 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
       if (!roomCode || !supabase) return
       const cfg = configRef.current
 
+      // Circuit breaker: drop writes locally while cooling down after repeated failures.
+      if (Date.now() < dispatchBlockedUntilRef.current) {
+        setError('Too many failed actions. Wait a moment, then try again.')
+        return
+      }
+
       const MAX_RETRIES = 3
       let currentState = gameStateRef.current
       let currentVersion = versionRef.current
@@ -656,6 +696,8 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           // Apply the accepted state locally right away so controls feel instant
           // instead of waiting for the realtime broadcast echo from Supabase.
           setStateAndRef(newState, data[0].version ?? currentVersion + 1)
+          failedDispatchStreakRef.current = 0
+          dispatchBlockedUntilRef.current = 0
           return
         }
 
@@ -674,6 +716,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         }
 
         if (attempt < MAX_RETRIES) {
+          await sleep(dispatchRetryDelayMs(attempt))
           const { data: fresh } = await supabase.rpc(rpcName(cfg.tableName, 'get'), {
             p_code: roomCode,
           })
@@ -692,6 +735,9 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           setStateAndRef(currentState, currentVersion)
         } else {
           setError('Action failed due to a conflict. Please try again.')
+          failedDispatchStreakRef.current += 1
+          dispatchBlockedUntilRef.current =
+            Date.now() + dispatchCooldownMs(failedDispatchStreakRef.current)
           // BL-02: MAX_RETRIES CAS conflicts exhausted means local {state, version} is
           // known-stale. Surface the desync indicator so the player knows they are out of sync.
           setConnectionStatus('desynced')

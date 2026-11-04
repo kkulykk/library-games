@@ -135,8 +135,6 @@ create or replace trigger ${table}_protect_immutable
   before update on ${table}
   for each row execute function protect_immutable_columns();
 
-alter publication supabase_realtime add table ${table};
-
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table ${table} enable row level security;
@@ -172,6 +170,34 @@ begin
     loop
       execute format('drop policy if exists %I on public.%I', pol.policyname, t);
     end loop;
+  end loop;
+end $$;`
+}
+
+function realtimePublicationBlock() {
+  const list = GAMES.map((g) => `'${g.table}'`).join(', ')
+  return `-- ─── Keep room tables OUT of the supabase_realtime publication ──────────────
+-- Clients no longer subscribe to postgres_changes: state sync is the broadcast
+-- signal below (realtime.send), which does not need the publication. Leaving the
+-- tables published made Realtime logically decode every UPDATE — the full state
+-- jsonb — through realtime.list_changes for no subscriber at all. Earlier versions
+-- of this file added the tables, so this block removes them where present (a
+-- no-op on a fresh project). Do NOT add them back.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    ${list}
+  ] loop
+    if exists (
+      select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime drop table public.%I', t);
+    end if;
   end loop;
 end $$;`
 }
@@ -534,6 +560,10 @@ end;
 $$;
 
 revoke all on function public.cleanup_stale_rooms() from public;
+-- Supabase's default privileges grant EXECUTE on new public functions to anon and
+-- authenticated directly, so revoking from PUBLIC alone leaves this callable as
+-- /rest/v1/rpc/cleanup_stale_rooms. Only the pg_cron job (postgres) should run it.
+revoke execute on function public.cleanup_stale_rooms() from anon, authenticated;
 
 -- Replace any earlier per-table job with the one that sweeps every table.
 select cron.unschedule(jobid) from cron.job where command like '%_rooms where updated_at%';
@@ -547,6 +577,7 @@ function build() {
   parts.push(sharedTriggerFunctions())
   for (const g of GAMES) parts.push(tableBlock(g))
   parts.push(sealBlock())
+  parts.push(realtimePublicationBlock())
   parts.push(roomTokenColumns())
   parts.push(broadcastFunctionAndTriggers())
   parts.push(nameHelper())

@@ -104,7 +104,7 @@ Important project structure:
 Online multiplayer games use Supabase as the real-time state bus.
 
 - room state is stored in a single `jsonb` payload
-- clients subscribe to updates with `postgres_changes`
+- every write fires a `{version}` broadcast signal on the room's topic; clients re-read authoritative state through `get_<game>` (room tables are deliberately not in the `supabase_realtime` publication)
 - shared room orchestration lives in `src/hooks/useGameRoom.ts`, with per-game `use<Name>Room.ts` wrappers
 - gameplay state transitions stay in pure `logic.ts` files
 
