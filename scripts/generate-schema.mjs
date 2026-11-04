@@ -81,6 +81,10 @@ function header() {
 --     pre-existing permissive using(true) policies so re-pasting this file onto
 --     an older deployment actually seals it. DELETE has no policy (pg_cron-only
 --     cleanup); the write RPCs also opportunistically prune rooms older than 24h.
+--   * anon/authenticated hold NO table privileges on the room tables and EXECUTE
+--     only where the client needs it (anon on the game RPCs). Supabase's default
+--     privileges grant both roles everything on new public tables and functions,
+--     so every object below revokes explicitly. RLS stays on as a second layer.
 --   * The room code is the read/write capability. The per-room room_token is
 --     defense-in-depth for the write path, NOT per-player authentication — see
 --     README.md "Security model & trust boundaries".`
@@ -91,7 +95,9 @@ function sharedTriggerFunctions() {
 
 -- Keep updated_at fresh on every update.
 create or replace function update_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = ''
+as $$
 begin
   new.updated_at = now();
   return new;
@@ -113,7 +119,11 @@ begin
   end if;
   return new;
 end;
-$$;`
+$$;
+
+-- Trigger functions are fired by Postgres, never via /rest/v1/rpc.
+revoke all on function public.update_updated_at() from public, anon, authenticated;
+revoke all on function public.protect_immutable_columns() from public, anon, authenticated;`
 }
 
 function tableBlock({ table, title }) {
@@ -138,6 +148,9 @@ create or replace trigger ${table}_protect_immutable
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table ${table} enable row level security;
+-- Belt and braces: even if a permissive policy is ever re-added or RLS switched
+-- off, the API roles still cannot touch the table directly.
+revoke all on table public.${table} from anon, authenticated;
 
 -- delete from ${table} where updated_at < now() - interval '24 hours';`
 }
@@ -259,6 +272,8 @@ begin
 end;
 $$;
 
+revoke all on function public.broadcast_room_state() from public, anon, authenticated;
+
 -- ─── Per-table broadcast triggers (×${GAMES.length}) ───────────────────────────────────────
 
 ${triggers}`
@@ -272,10 +287,12 @@ function nameHelper() {
 -- digits, punctuation, emoji — is allowed (the real risks for a casual arcade
 -- are length-DoS and blank/invisible names; React escapes rendered output).
 -- Client Zod is a SUBSET of this accept-set (INPUT-03: client ⊆ Postgres).
+-- Internal helper: only the SECURITY DEFINER RPCs call it (as the owner), so it
+-- reads no tables, runs as invoker and is not exposed to the API roles.
 create or replace function public.is_valid_player_name(p_name text)
 returns boolean
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -306,8 +323,7 @@ begin
 end;
 $$;
 
-revoke all on function public.is_valid_player_name(text) from public;
-grant execute on function public.is_valid_player_name(text) to anon;`
+revoke all on function public.is_valid_player_name(text) from public, anon, authenticated;`
 }
 
 function rpcHeaderComment() {
@@ -315,7 +331,7 @@ function rpcHeaderComment() {
 -- Four RPCs per game (create / join / restore / dispatch). Every function:
 --   * security definer + set search_path = '' + fully-qualified public. names
 --     (ACCESS-04, clears Security Advisor lint 0011)
---   * revoke all from public; grant execute to anon only (scoped EXECUTE)
+--   * revoke all from public, anon, authenticated; grant execute to anon only
 --   * re-checks the canonical 6-char Crockford code server-side (INPUT-02)
 --   * validates every player name in the candidate state (INPUT-01, helper)
 --   * caps payload size and roster size (P0-1) on the create/join/dispatch
@@ -359,7 +375,7 @@ ${validateNames('p_state')}
 end;
 $$;
 
-revoke all on function public.create_${g}(text, jsonb) from public;
+revoke all on function public.create_${g}(text, jsonb) from public, anon, authenticated;
 grant execute on function public.create_${g}(text, jsonb) to anon;`
 }
 
@@ -417,7 +433,7 @@ ${validateNames('p_new_state')}
 end;
 $$;
 
-revoke all on function public.join_${g}(text, jsonb, integer) from public;
+revoke all on function public.join_${g}(text, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.join_${g}(text, jsonb, integer) to anon;`
 }
 
@@ -454,7 +470,7 @@ begin
 end;
 $$;
 
-revoke all on function public.restore_${g}(text, text) from public;
+revoke all on function public.restore_${g}(text, text) from public, anon, authenticated;
 grant execute on function public.restore_${g}(text, text) to anon;`
 }
 
@@ -494,7 +510,7 @@ ${validateNames('p_new_state')}
 end;
 $$;
 
-revoke all on function public.dispatch_${g}(text, uuid, jsonb, integer) from public;
+revoke all on function public.dispatch_${g}(text, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.dispatch_${g}(text, uuid, jsonb, integer) to anon;`
 }
 
@@ -518,7 +534,7 @@ begin
 end;
 $$;
 
-revoke all on function public.get_${g}(text) from public;
+revoke all on function public.get_${g}(text) from public, anon, authenticated;
 grant execute on function public.get_${g}(text) to anon;`
 }
 
