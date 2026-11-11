@@ -9,10 +9,10 @@ Live: https://kkulykk.github.io/library-games
 - Discover + Library home experience
   - Discover: featured hero carousel, trending rail, quick plays, and multiplayer spotlight
   - Library: searchable/filterable catalog with sort controls and poster-grid browsing
-- 18 total titles
-  - 17 live
+- 19 total titles
+  - 18 live
   - 11 single-player
-  - 7 online multiplayer
+  - 8 online multiplayer
   - 1 coming soon
 - Real-time multiplayer rooms powered by Supabase
 - Static export deployment via GitHub Pages
@@ -38,6 +38,7 @@ Live: https://kkulykk.github.io/library-games
 | 🃏 Cards Against Humanity | Online multiplayer | Live        |
 | 🕵️ Codenames              | Online multiplayer | Live        |
 | 🧠 Mindmeld               | Online multiplayer | Live        |
+| 🌍 Globetrotter           | Online multiplayer | Live        |
 | ♟️ Chess                  | Online multiplayer | Coming Soon |
 
 Source of truth for game metadata and status: `src/data/games.ts`.
