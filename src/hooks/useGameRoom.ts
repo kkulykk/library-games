@@ -277,6 +277,12 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Per-room write capability for the dispatch RPC; set by create/join/restore (D-01..D-04).
   const roomTokenRef = useRef('')
+  // The room this hook is currently in, or null once it has been left. A read or
+  // write that was already in flight when the player left resolves afterwards,
+  // and without this check its result was applied anyway: `gameState` came back
+  // for a room the player was no longer in. Every async result is checked against
+  // it before touching state.
+  const activeRoomRef = useRef<string | null>(null)
   // Dispatch circuit breaker: consecutive exhausted dispatches, and when writes may resume.
   const failedDispatchStreakRef = useRef(0)
   const dispatchBlockedUntilRef = useRef(0)
@@ -353,11 +359,14 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
     (code: string) => {
       if (!supabase) return
       const { channelPrefix, tableName, stateSchema, broadcast: broadcastCfg } = configRef.current
+      activeRoomRef.current = code
 
       // Apply an incoming {state, version} only when it is strictly newer than what we hold
       // (Pitfall 5: strictly `>` drops stale/replayed payloads). The state is re-validated via
       // the Zod schema because the broadcast topic is public and attacker-influencable (T-02-10).
       const applyIfNewer = (rawState: unknown, version: unknown) => {
+        // A read that outlived the room it was for (see activeRoomRef).
+        if (activeRoomRef.current !== code) return
         if (typeof version !== 'number' || version <= versionRef.current) return
         const parsed = stateSchema.safeParse(rawState)
         if (!parsed.success) {
@@ -692,6 +701,10 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           }
         )
 
+        // The player left while this write was in flight (see activeRoomRef): the
+        // room's state and errors are no longer theirs to show.
+        if (activeRoomRef.current !== roomCode) return
+
         if (data && data.length > 0) {
           // Apply the accepted state locally right away so controls feel instant
           // instead of waiting for the realtime broadcast echo from Supabase.
@@ -720,6 +733,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
           const { data: fresh } = await supabase.rpc(rpcName(cfg.tableName, 'get'), {
             p_code: roomCode,
           })
+          if (activeRoomRef.current !== roomCode) return
           const freshRow = fresh && fresh.length > 0 ? fresh[0] : null
           if (!freshRow) return
           const parsedFresh = cfg.stateSchema.safeParse(freshRow.state)
@@ -762,6 +776,7 @@ export function useGameRoom<TState extends BaseGameState, TAction, TBroadcast = 
         })
       }
     } finally {
+      activeRoomRef.current = null
       if (refetchTimerRef.current !== null) {
         clearTimeout(refetchTimerRef.current)
         refetchTimerRef.current = null
