@@ -134,8 +134,8 @@ Dependency vulnerabilities are handled out of band instead — Dependabot PRs, o
 manually running `pnpm audit --prod` when you want to look. Fix findings by
 bumping the dependency, or — when it is a transitive dependency you do not depend
 on directly — by adding or raising an entry in `pnpm.overrides` in `package.json`
-(that block already pins `postcss`, `@babel/core`, `ws`, and `sharp` past known
-advisories).
+(that block already pins `postcss`, `@babel/core`, `ws`, `sharp`, `nanoid`,
+`browserslist`, and `source-map-js` past known advisories).
 
 Never skip the lint, test, or e2e step. Do not force-push to `main`.
 
