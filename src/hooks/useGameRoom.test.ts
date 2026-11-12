@@ -368,6 +368,86 @@ describe('useGameRoom dispatch CAS exhaustion (BL-02)', () => {
   })
 })
 
+describe('useGameRoom results that outlive the room', () => {
+  type Rpc = { data: unknown; error: { code?: string } | null }
+
+  // Make the next RPC hang until the test releases it, so the test can leave the
+  // room while that call is still in flight.
+  function holdNextRpc() {
+    let release: (value: Rpc) => void = () => {}
+    rpc.mockImplementationOnce(() => new Promise<Rpc>((resolve) => (release = resolve)))
+    return (value: Rpc) => release(value)
+  }
+
+  const otherRoomRow = { state: { phase: 'playing', players: [{ id: 'ghost' }] }, version: 7 }
+
+  it('ignores a state read that lands after the room was left', async () => {
+    const hook = renderHook(() => useGameRoom<State, Action>(config))
+    await act(async () => {
+      await hook.result.current.createRoom('Alice')
+    })
+
+    const release = holdNextRpc()
+    // A (re)SUBSCRIBED starts a read of the room's state, which is now in flight.
+    act(() => {
+      void stateChannel()!.statusCb!('SUBSCRIBED')
+    })
+    await act(async () => {
+      await hook.result.current.leaveRoom()
+    })
+    await act(async () => {
+      release({ data: [otherRoomRow], error: null })
+    })
+
+    expect(hook.result.current.gameState).toBeNull()
+    expect(hook.result.current.roomCode).toBeNull()
+  })
+
+  it('still applies a late read for the room the player is in', async () => {
+    const hook = renderHook(() => useGameRoom<State, Action>(config))
+    await act(async () => {
+      await hook.result.current.createRoom('Alice')
+    })
+
+    const release = holdNextRpc()
+    act(() => {
+      void stateChannel()!.statusCb!('SUBSCRIBED')
+    })
+    await act(async () => {
+      release({ data: [otherRoomRow], error: null })
+    })
+
+    expect(hook.result.current.gameState).toEqual(otherRoomRow.state)
+  })
+
+  it('ignores a write that is accepted after the room was left', async () => {
+    const writingConfig: GameRoomConfig<State, Action> = {
+      ...config,
+      applyAction: (s) => ({ ...s, players: [...s.players] }),
+    }
+    const hook = renderHook(() => useGameRoom<State, Action>(writingConfig))
+    await act(async () => {
+      await hook.result.current.createRoom('Alice')
+    })
+
+    const release = holdNextRpc()
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = hook.result.current.dispatch({ type: 'noop' })
+    })
+    await act(async () => {
+      await hook.result.current.leaveRoom()
+    })
+    await act(async () => {
+      release({ data: [{ state: otherRoomRow.state, version: 2 }], error: null })
+      await pending
+    })
+
+    expect(hook.result.current.gameState).toBeNull()
+    expect(hook.result.current.error).toBeNull()
+  })
+})
+
 describe('dispatch backoff helpers', () => {
   it('grows the retry delay exponentially with bounded jitter', () => {
     expect(dispatchRetryDelayMs(0, () => 0)).toBe(50)

@@ -14,6 +14,10 @@
 --     pre-existing permissive using(true) policies so re-pasting this file onto
 --     an older deployment actually seals it. DELETE has no policy (pg_cron-only
 --     cleanup); the write RPCs also opportunistically prune rooms older than 24h.
+--   * anon/authenticated hold NO table privileges on the room tables and EXECUTE
+--     only where the client needs it (anon on the game RPCs). Supabase's default
+--     privileges grant both roles everything on new public tables and functions,
+--     so every object below revokes explicitly. RLS stays on as a second layer.
 --   * The room code is the read/write capability. The per-room room_token is
 --     defense-in-depth for the write path, NOT per-player authentication — see
 --     README.md "Security model & trust boundaries".
@@ -22,7 +26,9 @@
 
 -- Keep updated_at fresh on every update.
 create or replace function update_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = ''
+as $$
 begin
   new.updated_at = now();
   return new;
@@ -46,6 +52,10 @@ begin
 end;
 $$;
 
+-- Trigger functions are fired by Postgres, never via /rest/v1/rpc.
+revoke all on function public.update_updated_at() from public, anon, authenticated;
+revoke all on function public.protect_immutable_columns() from public, anon, authenticated;
+
 -- ─── Uno rooms table ─────────────────────────────────────────────────────
 
 create table if not exists uno_rooms (
@@ -67,6 +77,9 @@ create or replace trigger uno_rooms_protect_immutable
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table uno_rooms enable row level security;
+-- Belt and braces: even if a permissive policy is ever re-added or RLS switched
+-- off, the API roles still cannot touch the table directly.
+revoke all on table public.uno_rooms from anon, authenticated;
 
 -- delete from uno_rooms where updated_at < now() - interval '24 hours';
 
@@ -91,6 +104,9 @@ create or replace trigger skribbl_rooms_protect_immutable
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table skribbl_rooms enable row level security;
+-- Belt and braces: even if a permissive policy is ever re-added or RLS switched
+-- off, the API roles still cannot touch the table directly.
+revoke all on table public.skribbl_rooms from anon, authenticated;
 
 -- delete from skribbl_rooms where updated_at < now() - interval '24 hours';
 
@@ -115,6 +131,9 @@ create or replace trigger agario_rooms_protect_immutable
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table agario_rooms enable row level security;
+-- Belt and braces: even if a permissive policy is ever re-added or RLS switched
+-- off, the API roles still cannot touch the table directly.
+revoke all on table public.agario_rooms from anon, authenticated;
 
 -- delete from agario_rooms where updated_at < now() - interval '24 hours';
 
@@ -139,6 +158,9 @@ create or replace trigger cah_rooms_protect_immutable
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table cah_rooms enable row level security;
+-- Belt and braces: even if a permissive policy is ever re-added or RLS switched
+-- off, the API roles still cannot touch the table directly.
+revoke all on table public.cah_rooms from anon, authenticated;
 
 -- delete from cah_rooms where updated_at < now() - interval '24 hours';
 
@@ -163,6 +185,9 @@ create or replace trigger codenames_rooms_protect_immutable
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table codenames_rooms enable row level security;
+-- Belt and braces: even if a permissive policy is ever re-added or RLS switched
+-- off, the API roles still cannot touch the table directly.
+revoke all on table public.codenames_rooms from anon, authenticated;
 
 -- delete from codenames_rooms where updated_at < now() - interval '24 hours';
 
@@ -187,6 +212,9 @@ create or replace trigger mindmeld_rooms_protect_immutable
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table mindmeld_rooms enable row level security;
+-- Belt and braces: even if a permissive policy is ever re-added or RLS switched
+-- off, the API roles still cannot touch the table directly.
+revoke all on table public.mindmeld_rooms from anon, authenticated;
 
 -- delete from mindmeld_rooms where updated_at < now() - interval '24 hours';
 
@@ -211,6 +239,9 @@ create or replace trigger globetrotter_rooms_protect_immutable
 -- SEALED (Phase 3, ACCESS-01): RLS enabled, no permissive policies (default-deny
 -- for anon). Access flows through the SECURITY DEFINER RPCs only.
 alter table globetrotter_rooms enable row level security;
+-- Belt and braces: even if a permissive policy is ever re-added or RLS switched
+-- off, the API roles still cannot touch the table directly.
+revoke all on table public.globetrotter_rooms from anon, authenticated;
 
 -- delete from globetrotter_rooms where updated_at < now() - interval '24 hours';
 
@@ -319,6 +350,8 @@ begin
 end;
 $$;
 
+revoke all on function public.broadcast_room_state() from public, anon, authenticated;
+
 -- ─── Per-table broadcast triggers (×7) ───────────────────────────────────────
 
 create or replace trigger uno_rooms_broadcast_state after update on public.uno_rooms
@@ -349,10 +382,12 @@ create or replace trigger globetrotter_rooms_broadcast_state after update on pub
 -- digits, punctuation, emoji — is allowed (the real risks for a casual arcade
 -- are length-DoS and blank/invisible names; React escapes rendered output).
 -- Client Zod is a SUBSET of this accept-set (INPUT-03: client ⊆ Postgres).
+-- Internal helper: only the SECURITY DEFINER RPCs call it (as the owner), so it
+-- reads no tables, runs as invoker and is not exposed to the API roles.
 create or replace function public.is_valid_player_name(p_name text)
 returns boolean
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -383,14 +418,13 @@ begin
 end;
 $$;
 
-revoke all on function public.is_valid_player_name(text) from public;
-grant execute on function public.is_valid_player_name(text) to anon;
+revoke all on function public.is_valid_player_name(text) from public, anon, authenticated;
 
 -- ─── Member-scoped SECURITY DEFINER RPCs (×7 games) ──────────────────────────
 -- Four RPCs per game (create / join / restore / dispatch). Every function:
 --   * security definer + set search_path = '' + fully-qualified public. names
 --     (ACCESS-04, clears Security Advisor lint 0011)
---   * revoke all from public; grant execute to anon only (scoped EXECUTE)
+--   * revoke all from public, anon, authenticated; grant execute to anon only
 --   * re-checks the canonical 6-char Crockford code server-side (INPUT-02)
 --   * validates every player name in the candidate state (INPUT-01, helper)
 --   * caps payload size and roster size (P0-1) on the create/join/dispatch
@@ -445,7 +479,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_uno(text, jsonb) from public;
+revoke all on function public.create_uno(text, jsonb) from public, anon, authenticated;
 grant execute on function public.create_uno(text, jsonb) to anon;
 
 create or replace function public.join_uno(p_code text, p_new_state jsonb, p_expected_version integer)
@@ -512,7 +546,7 @@ begin
 end;
 $$;
 
-revoke all on function public.join_uno(text, jsonb, integer) from public;
+revoke all on function public.join_uno(text, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.join_uno(text, jsonb, integer) to anon;
 
 create or replace function public.restore_uno(p_code text, p_player_id text)
@@ -546,7 +580,7 @@ begin
 end;
 $$;
 
-revoke all on function public.restore_uno(text, text) from public;
+revoke all on function public.restore_uno(text, text) from public, anon, authenticated;
 grant execute on function public.restore_uno(text, text) to anon;
 
 create or replace function public.dispatch_uno(p_code text, p_room_token uuid, p_new_state jsonb, p_expected_version integer)
@@ -595,7 +629,7 @@ begin
 end;
 $$;
 
-revoke all on function public.dispatch_uno(text, uuid, jsonb, integer) from public;
+revoke all on function public.dispatch_uno(text, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.dispatch_uno(text, uuid, jsonb, integer) to anon;
 
 -- ── skribbl_rooms ──
@@ -641,7 +675,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_skribbl(text, jsonb) from public;
+revoke all on function public.create_skribbl(text, jsonb) from public, anon, authenticated;
 grant execute on function public.create_skribbl(text, jsonb) to anon;
 
 create or replace function public.join_skribbl(p_code text, p_new_state jsonb, p_expected_version integer)
@@ -708,7 +742,7 @@ begin
 end;
 $$;
 
-revoke all on function public.join_skribbl(text, jsonb, integer) from public;
+revoke all on function public.join_skribbl(text, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.join_skribbl(text, jsonb, integer) to anon;
 
 create or replace function public.restore_skribbl(p_code text, p_player_id text)
@@ -742,7 +776,7 @@ begin
 end;
 $$;
 
-revoke all on function public.restore_skribbl(text, text) from public;
+revoke all on function public.restore_skribbl(text, text) from public, anon, authenticated;
 grant execute on function public.restore_skribbl(text, text) to anon;
 
 create or replace function public.dispatch_skribbl(p_code text, p_room_token uuid, p_new_state jsonb, p_expected_version integer)
@@ -791,7 +825,7 @@ begin
 end;
 $$;
 
-revoke all on function public.dispatch_skribbl(text, uuid, jsonb, integer) from public;
+revoke all on function public.dispatch_skribbl(text, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.dispatch_skribbl(text, uuid, jsonb, integer) to anon;
 
 -- ── agario_rooms ──
@@ -837,7 +871,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_agario(text, jsonb) from public;
+revoke all on function public.create_agario(text, jsonb) from public, anon, authenticated;
 grant execute on function public.create_agario(text, jsonb) to anon;
 
 create or replace function public.join_agario(p_code text, p_new_state jsonb, p_expected_version integer)
@@ -904,7 +938,7 @@ begin
 end;
 $$;
 
-revoke all on function public.join_agario(text, jsonb, integer) from public;
+revoke all on function public.join_agario(text, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.join_agario(text, jsonb, integer) to anon;
 
 create or replace function public.restore_agario(p_code text, p_player_id text)
@@ -938,7 +972,7 @@ begin
 end;
 $$;
 
-revoke all on function public.restore_agario(text, text) from public;
+revoke all on function public.restore_agario(text, text) from public, anon, authenticated;
 grant execute on function public.restore_agario(text, text) to anon;
 
 create or replace function public.dispatch_agario(p_code text, p_room_token uuid, p_new_state jsonb, p_expected_version integer)
@@ -987,7 +1021,7 @@ begin
 end;
 $$;
 
-revoke all on function public.dispatch_agario(text, uuid, jsonb, integer) from public;
+revoke all on function public.dispatch_agario(text, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.dispatch_agario(text, uuid, jsonb, integer) to anon;
 
 -- ── cah_rooms ──
@@ -1033,7 +1067,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_cah(text, jsonb) from public;
+revoke all on function public.create_cah(text, jsonb) from public, anon, authenticated;
 grant execute on function public.create_cah(text, jsonb) to anon;
 
 create or replace function public.join_cah(p_code text, p_new_state jsonb, p_expected_version integer)
@@ -1100,7 +1134,7 @@ begin
 end;
 $$;
 
-revoke all on function public.join_cah(text, jsonb, integer) from public;
+revoke all on function public.join_cah(text, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.join_cah(text, jsonb, integer) to anon;
 
 create or replace function public.restore_cah(p_code text, p_player_id text)
@@ -1134,7 +1168,7 @@ begin
 end;
 $$;
 
-revoke all on function public.restore_cah(text, text) from public;
+revoke all on function public.restore_cah(text, text) from public, anon, authenticated;
 grant execute on function public.restore_cah(text, text) to anon;
 
 create or replace function public.dispatch_cah(p_code text, p_room_token uuid, p_new_state jsonb, p_expected_version integer)
@@ -1183,7 +1217,7 @@ begin
 end;
 $$;
 
-revoke all on function public.dispatch_cah(text, uuid, jsonb, integer) from public;
+revoke all on function public.dispatch_cah(text, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.dispatch_cah(text, uuid, jsonb, integer) to anon;
 
 -- ── codenames_rooms ──
@@ -1229,7 +1263,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_codenames(text, jsonb) from public;
+revoke all on function public.create_codenames(text, jsonb) from public, anon, authenticated;
 grant execute on function public.create_codenames(text, jsonb) to anon;
 
 create or replace function public.join_codenames(p_code text, p_new_state jsonb, p_expected_version integer)
@@ -1296,7 +1330,7 @@ begin
 end;
 $$;
 
-revoke all on function public.join_codenames(text, jsonb, integer) from public;
+revoke all on function public.join_codenames(text, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.join_codenames(text, jsonb, integer) to anon;
 
 create or replace function public.restore_codenames(p_code text, p_player_id text)
@@ -1330,7 +1364,7 @@ begin
 end;
 $$;
 
-revoke all on function public.restore_codenames(text, text) from public;
+revoke all on function public.restore_codenames(text, text) from public, anon, authenticated;
 grant execute on function public.restore_codenames(text, text) to anon;
 
 create or replace function public.dispatch_codenames(p_code text, p_room_token uuid, p_new_state jsonb, p_expected_version integer)
@@ -1379,7 +1413,7 @@ begin
 end;
 $$;
 
-revoke all on function public.dispatch_codenames(text, uuid, jsonb, integer) from public;
+revoke all on function public.dispatch_codenames(text, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.dispatch_codenames(text, uuid, jsonb, integer) to anon;
 
 -- ── mindmeld_rooms ──
@@ -1425,7 +1459,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_mindmeld(text, jsonb) from public;
+revoke all on function public.create_mindmeld(text, jsonb) from public, anon, authenticated;
 grant execute on function public.create_mindmeld(text, jsonb) to anon;
 
 create or replace function public.join_mindmeld(p_code text, p_new_state jsonb, p_expected_version integer)
@@ -1492,7 +1526,7 @@ begin
 end;
 $$;
 
-revoke all on function public.join_mindmeld(text, jsonb, integer) from public;
+revoke all on function public.join_mindmeld(text, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.join_mindmeld(text, jsonb, integer) to anon;
 
 create or replace function public.restore_mindmeld(p_code text, p_player_id text)
@@ -1526,7 +1560,7 @@ begin
 end;
 $$;
 
-revoke all on function public.restore_mindmeld(text, text) from public;
+revoke all on function public.restore_mindmeld(text, text) from public, anon, authenticated;
 grant execute on function public.restore_mindmeld(text, text) to anon;
 
 create or replace function public.dispatch_mindmeld(p_code text, p_room_token uuid, p_new_state jsonb, p_expected_version integer)
@@ -1575,7 +1609,7 @@ begin
 end;
 $$;
 
-revoke all on function public.dispatch_mindmeld(text, uuid, jsonb, integer) from public;
+revoke all on function public.dispatch_mindmeld(text, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.dispatch_mindmeld(text, uuid, jsonb, integer) to anon;
 
 -- ── globetrotter_rooms ──
@@ -1621,7 +1655,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_globetrotter(text, jsonb) from public;
+revoke all on function public.create_globetrotter(text, jsonb) from public, anon, authenticated;
 grant execute on function public.create_globetrotter(text, jsonb) to anon;
 
 create or replace function public.join_globetrotter(p_code text, p_new_state jsonb, p_expected_version integer)
@@ -1688,7 +1722,7 @@ begin
 end;
 $$;
 
-revoke all on function public.join_globetrotter(text, jsonb, integer) from public;
+revoke all on function public.join_globetrotter(text, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.join_globetrotter(text, jsonb, integer) to anon;
 
 create or replace function public.restore_globetrotter(p_code text, p_player_id text)
@@ -1722,7 +1756,7 @@ begin
 end;
 $$;
 
-revoke all on function public.restore_globetrotter(text, text) from public;
+revoke all on function public.restore_globetrotter(text, text) from public, anon, authenticated;
 grant execute on function public.restore_globetrotter(text, text) to anon;
 
 create or replace function public.dispatch_globetrotter(p_code text, p_room_token uuid, p_new_state jsonb, p_expected_version integer)
@@ -1771,7 +1805,7 @@ begin
 end;
 $$;
 
-revoke all on function public.dispatch_globetrotter(text, uuid, jsonb, integer) from public;
+revoke all on function public.dispatch_globetrotter(text, uuid, jsonb, integer) from public, anon, authenticated;
 grant execute on function public.dispatch_globetrotter(text, uuid, jsonb, integer) to anon;
 
 -- ─── Code-gated read RPCs (ACCESS-01) ─────────────────────────────────────────
@@ -1801,7 +1835,7 @@ begin
 end;
 $$;
 
-revoke all on function public.get_uno(text) from public;
+revoke all on function public.get_uno(text) from public, anon, authenticated;
 grant execute on function public.get_uno(text) to anon;
 
 create or replace function public.get_skribbl(p_code text)
@@ -1822,7 +1856,7 @@ begin
 end;
 $$;
 
-revoke all on function public.get_skribbl(text) from public;
+revoke all on function public.get_skribbl(text) from public, anon, authenticated;
 grant execute on function public.get_skribbl(text) to anon;
 
 create or replace function public.get_agario(p_code text)
@@ -1843,7 +1877,7 @@ begin
 end;
 $$;
 
-revoke all on function public.get_agario(text) from public;
+revoke all on function public.get_agario(text) from public, anon, authenticated;
 grant execute on function public.get_agario(text) to anon;
 
 create or replace function public.get_cah(p_code text)
@@ -1864,7 +1898,7 @@ begin
 end;
 $$;
 
-revoke all on function public.get_cah(text) from public;
+revoke all on function public.get_cah(text) from public, anon, authenticated;
 grant execute on function public.get_cah(text) to anon;
 
 create or replace function public.get_codenames(p_code text)
@@ -1885,7 +1919,7 @@ begin
 end;
 $$;
 
-revoke all on function public.get_codenames(text) from public;
+revoke all on function public.get_codenames(text) from public, anon, authenticated;
 grant execute on function public.get_codenames(text) to anon;
 
 create or replace function public.get_mindmeld(p_code text)
@@ -1906,7 +1940,7 @@ begin
 end;
 $$;
 
-revoke all on function public.get_mindmeld(text) from public;
+revoke all on function public.get_mindmeld(text) from public, anon, authenticated;
 grant execute on function public.get_mindmeld(text) to anon;
 
 create or replace function public.get_globetrotter(p_code text)
@@ -1927,7 +1961,7 @@ begin
 end;
 $$;
 
-revoke all on function public.get_globetrotter(text) from public;
+revoke all on function public.get_globetrotter(text) from public, anon, authenticated;
 grant execute on function public.get_globetrotter(text) to anon;
 
 -- ─── Scheduled room cleanup (pg_cron) ────────────────────────────────────────

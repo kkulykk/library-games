@@ -1,17 +1,30 @@
-# Keep Dependabot noise low by batching updates into one grouped PR per ecosystem.
-# Dependabot groups cannot span ecosystems, so npm and GitHub Actions each get
-# their own rolling PR.
+# One rolling PR per kind of update that can be reviewed and merged as a unit.
+#
+# npm used to be a single group matching everything. That put major bumps in the
+# same PR as patch releases, so one incompatible major (ESLint 10) kept the whole
+# PR red and no update of any kind landed for months. Now:
+#   - minor and patch updates are batched, production and development apart, so
+#     a runtime bump is never held up by a tooling one;
+#   - a major matches neither group and gets a PR of its own.
+# Dependabot groups cannot span ecosystems, so GitHub Actions has its own entry.
 version: 2
 updates:
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
       interval: 'weekly'
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 5
     groups:
-      npm-dependencies:
-        patterns:
-          - '*'
+      npm-production:
+        dependency-type: 'production'
+        update-types:
+          - 'minor'
+          - 'patch'
+      npm-development:
+        dependency-type: 'development'
+        update-types:
+          - 'minor'
+          - 'patch'
 
   - package-ecosystem: 'github-actions'
     directory: '/'

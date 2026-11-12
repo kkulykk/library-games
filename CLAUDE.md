@@ -104,8 +104,10 @@ Two workflows, each with a single responsibility and a single trigger:
 - **`test.yml`** (_Test_) — the CI gate. Runs on **every branch push except
   `main`** (`branches-ignore: [main]`). A single `test` job runs
   `pnpm test:all`, which chains `lint` (ESLint + Prettier), `typecheck`,
-  `check:schema`, `test:coverage`, and Playwright (`e2e:ci`) against the fake
-  Supabase server. Keep the whole gate in `test:all` so it stays one command
+  `check:schema`, `test:coverage`, `build`, and Playwright (`e2e:ci`) against
+  the fake Supabase server. `build` is in the chain because Playwright runs
+  against `pnpm dev`: without it the static export is first built by the deploy,
+  after the merge. Keep the whole gate in `test:all` so it stays one command
   locally and in CI.
 - **`deploy.yml`** (_Deploy_) — builds the static export and
   publishes it. Runs **only** on push/merge to `main`. It does not run the test
@@ -134,8 +136,8 @@ Dependency vulnerabilities are handled out of band instead — Dependabot PRs, o
 manually running `pnpm audit --prod` when you want to look. Fix findings by
 bumping the dependency, or — when it is a transitive dependency you do not depend
 on directly — by adding or raising an entry in `pnpm.overrides` in `package.json`
-(that block already pins `postcss`, `@babel/core`, `ws`, and `sharp` past known
-advisories).
+(that block already pins `postcss`, `@babel/core`, `ws`, `sharp`, `nanoid`,
+`browserslist`, and `source-map-js` past known advisories).
 
 Never skip the lint, test, or e2e step. Do not force-push to `main`.
 
